@@ -49,8 +49,8 @@ temp/
 
 
 # Private or large project files
-outputs/
-data/
-who.pdf
+#outputs/
+#data/
+#who.pdf
 
-config.neo4j.json
+#config.neo4j.json
