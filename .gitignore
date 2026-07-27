@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables
+.env
+
+# FAISS Indices and Large Outputs
+outputs/text/*.faiss
+outputs/text/*.npy
+outputs/images/*.faiss
+outputs/*.jsonl
+outputs/who_clean.txt
+
+# Neo4j dumps and backups
+*.dump
+*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+
+# Private or large project files
+outputs/
+data/
+who.pdf
+
+config.neo4j.json

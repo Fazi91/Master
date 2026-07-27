@@ -1,0 +1,12 @@
+{
+  "emb_model": "BAAI/bge-small-en-v1.5",
+  "chunk_file": "outputs/who_chunks_semantic.jsonl",
+  "chunks_path": "outputs/who_chunks_semantic.jsonl",
+  "faiss_index": "outputs/text/bge_index.faiss",
+  "faiss_meta": "outputs/text/bge_meta.jsonl",
+  "embedding_dim": 384,
+  "ntotal_expected": 620,
+  "top_k": 5
+}
+ 
+
