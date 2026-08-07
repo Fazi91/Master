@@ -1,3 +1,8 @@
+#start app http://127.0.0.1:8000/docs#/
+#uvicorn webapp.main:app --reload
+#start neo4j local aura, on ... robezan o bas connect kon
+# passwort aura :nBLN1BRnoQHgnNnBEkYgCuOHkzYFqA3VGuvI3tWjl3g
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -142,24 +147,47 @@ def _detect_question_intent(question: str) -> dict:
     detected_intent = "fact_lookup"  # default
     concept_phrase = ""
     raw_concepts = []
-    
+    pattern_matched = False
+
     for intent, pattern_list in patterns.items():
         for pattern in pattern_list:
             match = re.search(pattern, q_lower)
             if match:
                 detected_intent = intent
-                raw_concepts = [g.strip() for g in match.groups() if g and g.strip()]
+                raw_concepts = [
+                    group.strip()
+                    for group in match.groups()
+                    if group and group.strip()
+                ]
                 concept_phrase = " ".join(raw_concepts)
+                pattern_matched = True
                 break
-        if detected_intent != "fact_lookup":
+
+        if pattern_matched:
             break
-    
+
+    # Recognize operational headings that describe laboratory procedures
+    # without using explicit question forms such as "how to".
+    if not pattern_matched:
+        procedure_heading_patterns = [
+            r"^(?:technique|method|procedure|process)\s+(?:for|of|to)\s+.+$",
+            r"^(?:preparation|collection|examination|detection|identification|measurement|testing|staining|fixation|washing|incubation|sterilization|disinfection)\s+(?:of|for|with|using)\s+.+$",
+            r"^(?:preparing|collecting|examining|detecting|identifying|measuring|testing|staining|fixing|washing|incubating|sterilizing|disinfecting)\s+.+$",
+        ]
+
+        if any(
+            re.search(pattern, q_lower)
+            for pattern in procedure_heading_patterns
+        ):
+            detected_intent = "procedure"
+            concept_phrase = q_lower
+
     # Extract core concepts (nouns/entities) as HARD CONSTRAINTS
     def _extract_core_concepts(phrase: str) -> list:
         """Extract meaningful multi-word entities and single-word concepts"""
         # First: extract multi-word entities (2-3 consecutive important words)
         tokens = [t for t in re.findall(r'\b\w+\b', phrase.lower()) if t not in STOPWORDS]
-        
+
         multi_word_entities = []
         for i in range(len(tokens) - 1):
             # Capture 2-word and 3-word phrases
@@ -168,19 +196,19 @@ def _detect_question_intent(question: str) -> dict:
             if i < len(tokens) - 2:
                 three_word = f"{tokens[i]} {tokens[i+1]} {tokens[i+2]}"
                 multi_word_entities.append(three_word)
-        
+
         # Single meaningful tokens (length > 3 or known important terms)
         important_terms = {"bsl", "ppe", "who", "cdc", "fda"}
         single_concepts = [t for t in tokens if len(t) > 3 or t in important_terms]
-        
+
         return multi_word_entities + single_concepts
-    
+
     if not concept_phrase:
         # Extract from full question if no pattern match
         concept_phrase = q_lower
-    
+
     core_concepts = _extract_core_concepts(concept_phrase)
-    
+
     # Extract entities (domain-specific terms)
     DOMAIN_ENTITIES = [
         "biosafety", "bsl", "containment", "level", "risk group",
@@ -191,13 +219,13 @@ def _detect_question_intent(question: str) -> dict:
         "microscope", "centrifuge", "incubator",
         "pregnancy test", "test kit", "diagnostic"
     ]
-    
+
     entities = [e for e in DOMAIN_ENTITIES if e in q_lower]
-    
+
     print(f"[INTENT] Question: '{question}' → Intent: {detected_intent}")
     print(f"[CONCEPTS] Core concepts (HARD CONSTRAINTS): {core_concepts[:5]}")
     print(f"[ENTITIES] Domain entities: {entities}")
-    
+
     return {
         "intent": detected_intent,
         "core_concepts": core_concepts[:10],  # Top 10 concepts as hard constraints
@@ -1496,7 +1524,7 @@ def ask(req: QuestionRequest):
         for i, chunk in enumerate(faiss_texts_all[:3]):
             print(f"[FAISS] Chunk {i}: ID={chunk.get('id')}, Page={chunk.get('page')}, Text[:100]={chunk.get('content', '')[:100]}")
         
-        faiss_texts_raw = faiss_texts_all[:TOP_N_CONTEXT]
+        faiss_texts_raw = faiss_texts_all
         
         # 3. Apply semantic filtering with HARD CONSTRAINTS from core concepts
         faiss_texts, faiss_filtered = _semantic_filter(req.query, faiss_texts_raw, core_concepts=core_concepts, entities=entities)
