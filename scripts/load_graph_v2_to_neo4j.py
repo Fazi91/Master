@@ -201,6 +201,10 @@ def to_float(value):
     return float(value) if str(value).strip() else None
 
 
+def to_text(value):
+    return str(value).strip() if value is not None and str(value).strip() else None
+
+
 def batches(rows, size):
     for start in range(0, len(rows), size):
         yield rows[start:start + size]
@@ -248,7 +252,7 @@ def load_graph(session, data, batch_size):
     """, data["document"], batch_size)
 
     page_rows = [dict(row, pdf_page=to_int(row["pdf_page"]),
-                      printed_page=to_int(row.get("printed_page")))
+                      printed_page=to_text(row.get("printed_page")))
                  for row in data["pages"]]
     run_batches(session, """
         UNWIND $rows AS row
@@ -258,7 +262,7 @@ def load_graph(session, data, batch_size):
     """, page_rows, batch_size)
 
     chunk_rows = [dict(row, pdf_page=to_int(row["pdf_page"]),
-                       printed_page=to_int(row.get("printed_page")),
+                       printed_page=to_text(row.get("printed_page")),
                        chunk_index_on_page=to_int(row.get("chunk_index_on_page")))
                   for row in data["chunks"]]
     run_batches(session, """
