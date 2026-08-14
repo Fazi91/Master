@@ -1,315 +1,3276 @@
 ﻿entity_id,canonical_name,normalized_name,entity_type
-E_000001,B,b,ANATOMICAL_SITE
-E_000002,base of the head,base of the head,ANATOMICAL_SITE
-E_000003,base of the head of the tap,base of the head of the tap,ANATOMICAL_SITE
-E_000004,body,body,ANATOMICAL_SITE
-E_000005,eyes,eyes,ANATOMICAL_SITE
-E_000006,H,h,ANATOMICAL_SITE
-E_000007,head,head,ANATOMICAL_SITE
-E_000008,J,j,ANATOMICAL_SITE
-E_000009,J1,j1,ANATOMICAL_SITE
-E_000010,J2,j2,ANATOMICAL_SITE
-E_000011,J3,j3,ANATOMICAL_SITE
-E_000012,joint,joint,ANATOMICAL_SITE
-E_000013,joint J2,joint j2,ANATOMICAL_SITE
-E_000014,joints,joints,ANATOMICAL_SITE
-E_000015,screw thread,screw thread,ANATOMICAL_SITE
-E_000016,skin,skin,ANATOMICAL_SITE
-E_000017,top,top,ANATOMICAL_SITE
-E_000018,tow,tow,ANATOMICAL_SITE
-E_000019,wall,wall,ANATOMICAL_SITE
-E_000020,cells of crystalline silicon,cells of crystalline silicon,CELL
-E_000021,erythrocyte,erythrocyte,CELL
-E_000022,leukocyte,leukocyte,CELL
-E_000023,lymphocytes,lymphocyte,CELL
-E_000024,panels with cells of amorphous silicon,panels with cells of amorphous silicon,CELL
-E_000025,Reticulocyte,reticulocyte,CELL
-E_000026,anaemia,anaemia,DISEASE
-E_000027,haematology,haematology,DISEASE
-E_000028,leprosy,leprosy,DISEASE
-E_000029,limescale,limescale,DISEASE
-E_000030,onchocerciasis,onchocerciasis,DISEASE
-E_000031,1,1,EQUIPMENT
-E_000032,1000-ml volumetric flask,1000-ml volumetric flask,EQUIPMENT
-E_000033,110–220V transformer,110–220v transformer,EQUIPMENT
-E_000034,5 Equipment,5 equipment,EQUIPMENT
-E_000035,A water distributor,a water distributor,EQUIPMENT
-E_000036,alembics,alembics,EQUIPMENT
-E_000037,analytical balance,analytical balance,EQUIPMENT
-E_000038,Applicators,applicators,EQUIPMENT
-E_000039,Autoclave,autoclave,EQUIPMENT
-E_000040,balance,balance,EQUIPMENT
-E_000041,batteries,batteries,EQUIPMENT
-E_000042,beaker,beaker,EQUIPMENT
-E_000043,binocular microscope,binocular microscope,EQUIPMENT
-E_000044,bottle,bottle,EQUIPMENT
-E_000045,Bottles,bottles,EQUIPMENT
-E_000046,Boxes,boxes,EQUIPMENT
-E_000047,bucket,bucket,EQUIPMENT
-E_000048,Bunsen burner,bunsen burner,EQUIPMENT
-E_000049,Bunsen burner (B),bunsen burner (b,EQUIPMENT
-E_000050,burner,burner,EQUIPMENT
-E_000051,button,button,EQUIPMENT
-E_000052,car batteries,car batteries,EQUIPMENT
-E_000053,cartridge,cartridge,EQUIPMENT
-E_000054,cartridges,cartridges,EQUIPMENT
-E_000055,centrifuge,centrifuge,EQUIPMENT
-E_000056,Centrifuge tubes,centrifuge tubes,EQUIPMENT
-E_000057,centrifuges,centrifuges,EQUIPMENT
-E_000058,Centrifuges2,centrifuges2,EQUIPMENT
-E_000059,Certain pieces of equipment,certain pieces of equipment,EQUIPMENT
-E_000060,certain transport media,certain transport media,EQUIPMENT
-E_000061,charge regulator,charge regulator,EQUIPMENT
-E_000062,clean plastic container,clean plastic container,EQUIPMENT
-E_000063,closed container,closed container,EQUIPMENT
-E_000064,cold-water tube,cold-water tube,EQUIPMENT
-E_000065,colorimeter,colorimeter,EQUIPMENT
-E_000066,column of granules,column of granules,EQUIPMENT
-E_000067,condenser,condenser,EQUIPMENT
-E_000068,container,container,EQUIPMENT
-E_000069,container of water,container of water,EQUIPMENT
-E_000070,converter,converter,EQUIPMENT
-E_000071,cooling column,cooling column,EQUIPMENT
-E_000072,cooling tube,cooling tube,EQUIPMENT
-E_000073,Copper or stainless steel alembics,copper or stainless steel alembics,EQUIPMENT
-E_000074,copper or stainless steel stills,copper or stainless steel stills,EQUIPMENT
-E_000075,corresponding set of weights,corresponding set of weights,EQUIPMENT
-E_000076,Counting chambers,counting chambers,EQUIPMENT
-E_000077,Coverslips,coverslips,EQUIPMENT
-E_000078,cross-matching tubes,cross-matching tubes,EQUIPMENT
-E_000079,Curved clamp forceps,curved clamp forceps,EQUIPMENT
-E_000080,deionizer,deionizer,EQUIPMENT
-E_000081,Deionizer or water still,deionizer or water still,EQUIPMENT
-E_000082,Dessicator,dessicator,EQUIPMENT
-E_000083,diamond pencil,diamond pencil,EQUIPMENT
-E_000084,distributor,distributor,EQUIPMENT
-E_000085,drug containers,drug containers,EQUIPMENT
-E_000086,Dual-voltage equipment,dual-voltage equipment,EQUIPMENT
-E_000087,Dual-voltage instruments,dual-voltage instruments,EQUIPMENT
-E_000088,Each piece of electrical equipment,each piece of electrical equipment,EQUIPMENT
-E_000089,electric centrifuge,electric centrifuge,EQUIPMENT
-E_000090,electric element,electric element,EQUIPMENT
-E_000091,electric lamp,electric lamp,EQUIPMENT
-E_000092,electrical equipment,electrical equipment,EQUIPMENT
-E_000093,electricity supply,electricity supply,EQUIPMENT
-E_000094,empty bottles,empty bottles,EQUIPMENT
-E_000095,empty tins,empty tins,EQUIPMENT
-E_000096,Equipment and supplies,equipment and supplies,EQUIPMENT
-E_000097,Equipment for haematology tests,equipment for haematology tests,EQUIPMENT
-E_000098,Essential equipment,essential equipment,EQUIPMENT
-E_000099,Evaporating dishes,evaporating dishes,EQUIPMENT
-E_000100,file,file,EQUIPMENT
-E_000101,filter reservoir,filter reservoir,EQUIPMENT
-E_000102,Filters,filters,EQUIPMENT
-E_000103,flask,flask,EQUIPMENT
-E_000104,flask stopper,flask stopper,EQUIPMENT
-E_000105,funnel,funnel,EQUIPMENT
-E_000106,fuse box,fuse box,EQUIPMENT
-E_000107,G File,g file,EQUIPMENT
-E_000108,gas bottle,gas bottle,EQUIPMENT
-E_000109,generators,generator,EQUIPMENT
-E_000110,glass bottle,glass bottle,EQUIPMENT
-E_000111,glass cover,glass cover,EQUIPMENT
-E_000112,glass cutter,glass cutter,EQUIPMENT
-E_000113,glass or plastic container,glass or plastic container,EQUIPMENT
-E_000114,glass or plastic containers,glass or plastic containers,EQUIPMENT
-E_000115,glass still,glass still,EQUIPMENT
-E_000116,Glass stills,glass stills,EQUIPMENT
-E_000117,glass tubing,glass tubing,EQUIPMENT
-E_000118,glassware,glassware,EQUIPMENT
-E_000119,glassware shelf,glassware shelf,EQUIPMENT
-E_000120,graduated glassware,graduated glassware,EQUIPMENT
-E_000121,hand glass tubing,hand glass tubing,EQUIPMENT
-E_000122,hand-operated centrifuge,hand-operated centrifuge,EQUIPMENT
-E_000123,high shelf,high shelf,EQUIPMENT
-E_000124,Hot-air oven,hot-air oven,EQUIPMENT
-E_000125,Inverters,inverter,EQUIPMENT
-E_000126,Kahn tubes,kahn tubes,EQUIPMENT
-E_000127,kerosene heater,kerosene heater,EQUIPMENT
-E_000128,knife,knife,EQUIPMENT
-E_000129,Labels for specimen bottles,labels for specimen bottles,EQUIPMENT
-E_000130,Lancets,lancets,EQUIPMENT
-E_000131,large compartment,large compartment,EQUIPMENT
-E_000132,large pipettes,large pipettes,EQUIPMENT
-E_000133,local generator,local generator,EQUIPMENT
-E_000134,long cartridge,long cartridge,EQUIPMENT
-E_000135,manually operated type,manually operated type,EQUIPMENT
-E_000136,Measuring cylinders,measuring cylinders,EQUIPMENT
-E_000137,metal drum,metal drum,EQUIPMENT
-E_000138,meter,meter,EQUIPMENT
-E_000139,microhaematocrit centrifuge,microhaematocrit centrifuge,EQUIPMENT
-E_000140,microhaematocrit head attachment,microhaematocrit head attachment,EQUIPMENT
-E_000141,microhaematocrit tubes,microhaematocrit tubes,EQUIPMENT
-E_000142,microscopes,microscope,EQUIPMENT
-E_000143,Microscope slides,microscope slides,EQUIPMENT
-E_000144,Microscopes1,microscopes1,EQUIPMENT
-E_000145,Mohr clip,mohr clip,EQUIPMENT
-E_000146,needle,needle,EQUIPMENT
-E_000147,new piece of equipment,new piece of equipment,EQUIPMENT
-E_000148,Nichrome wire,nichrome wire,EQUIPMENT
-E_000149,Ni–Cd battery,ni–cd battery,EQUIPMENT
-E_000150,oil stove,oil stove,EQUIPMENT
-E_000151,outpatient’s table,outpatient’s table,EQUIPMENT
-E_000152,panel,panel,EQUIPMENT
-E_000153,paper,paper,EQUIPMENT
-E_000154,Pasteur pipette,pasteur pipette,EQUIPMENT
-E_000155,pellets,pellets,EQUIPMENT
-E_000156,penicillin bottles,penicillin bottles,EQUIPMENT
-E_000157,perforated bucket,perforated bucket,EQUIPMENT
-E_000158,Petri dishes,petri dishes,EQUIPMENT
-E_000159,Photometer or colorimeter,photometer or colorimeter,EQUIPMENT
-E_000160,Pipettes,pipettes,EQUIPMENT
-E_000161,"Pipettes, Pasteur 2","pipettes, pasteur 2",EQUIPMENT
-E_000162,plate,plate,EQUIPMENT
-E_000163,plunger,plunger,EQUIPMENT
-E_000164,plungerternatively,plungerternatively,EQUIPMENT
-E_000165,pressure cooker,pressure cooker,EQUIPMENT
-E_000166,Protein standard tubes,protein standard tubes,EQUIPMENT
-E_000167,reader,reader,EQUIPMENT
-E_000168,Reagent bottles,reagent bottles,EQUIPMENT
-E_000169,reagent refrigerator,reagent refrigerator,EQUIPMENT
-E_000170,reagent shelf,reagent shelf,EQUIPMENT
-E_000171,refrigerator,refrigerator,EQUIPMENT
-E_000172,reservoir,reservoir,EQUIPMENT
-E_000173,resin,resin,EQUIPMENT
-E_000174,sand filter,sand filter,EQUIPMENT
-E_000175,Scalpel,scalpel,EQUIPMENT
-E_000176,second microscope,second microscope,EQUIPMENT
-E_000177,set of weights,set of weights,EQUIPMENT
-E_000178,sink,sink,EQUIPMENT
-E_000179,small autoclave,small autoclave,EQUIPMENT
-E_000180,small compartment,small compartment,EQUIPMENT
-E_000181,small pipettes,small pipettes,EQUIPMENT
-E_000182,solar energy supply system,solar energy supply system,EQUIPMENT
-E_000183,Solar panels,solar panels,EQUIPMENT
-E_000184,solar stills,solar stills,EQUIPMENT
-E_000185,Some demineralizers,some demineralizers,EQUIPMENT
-E_000186,spectrophotometer,spectrophotometer,EQUIPMENT
-E_000187,staining box,staining box,EQUIPMENT
-E_000188,Staining troughs,staining troughs,EQUIPMENT
-E_000189,standard chart,standard chart,EQUIPMENT
-E_000190,still,still,EQUIPMENT
-E_000191,Syringes,syringes,EQUIPMENT
-E_000192,Tally counter,tally counter,EQUIPMENT
-E_000193,Test-tubes,test-tubes,EQUIPMENT
-E_000194,The apparatus,the apparatus,EQUIPMENT
-E_000195,The electricity meter,the electricity meter,EQUIPMENT
-E_000196,The instrument,the instrument,EQUIPMENT
-E_000197,The needle,the needle,EQUIPMENT
-E_000198,The still,the still,EQUIPMENT
-E_000199,thermostat,thermostat,EQUIPMENT
-E_000200,this equipment,this equipment,EQUIPMENT
-E_000201,Tools and materials,tools and materials,EQUIPMENT
-E_000202,transformer,transformer,EQUIPMENT
-E_000203,trap,trap,EQUIPMENT
-E_000204,tube,tube,EQUIPMENT
-E_000205,tubes and slides,tubes and slides,EQUIPMENT
-E_000206,two-pan balance,two-pan balance,EQUIPMENT
-E_000207,uncovered round flask,uncovered round flask,EQUIPMENT
-E_000208,volumetric flask,volumetric flask,EQUIPMENT
-E_000209,washer,washer,EQUIPMENT
-E_000210,waste sink,waste sink,EQUIPMENT
-E_000211,Water bath,water bath,EQUIPMENT
-E_000212,water still,water still,EQUIPMENT
-E_000213,water-bath,water-bath,EQUIPMENT
-E_000214,Wax,wax,EQUIPMENT
-E_000215,weighing container,weighing container,EQUIPMENT
-E_000216,white glass reagent bottle,white glass reagent bottle,EQUIPMENT
-E_000217,0–100°C,0–100 °c,MEASUREMENT
-E_000218,0–60min,0–60min,MEASUREMENT
-E_000219,1kg,1 kg,MEASUREMENT
-E_000220,1m,1 m,MEASUREMENT
-E_000221,1ml,1 ml,MEASUREMENT
-E_000222,1mm,1 mm,MEASUREMENT
-E_000223,10cm,10 cm,MEASUREMENT
-E_000224,100ml,100 ml,MEASUREMENT
-E_000225,1000ml,1000 ml,MEASUREMENT
-E_000226,112mm,112 mm,MEASUREMENT
-E_000227,12cm ¥ 1mm,12 cm × 1 mm,MEASUREMENT
-E_000228,15cm,15 cm,MEASUREMENT
-E_000229,15ml,15 ml,MEASUREMENT
-E_000230,150mm ¥ 16mm,150 mm × 16 mm,MEASUREMENT
-E_000231,156mm,156 mm,MEASUREMENT
-E_000232,20ml,20 ml,MEASUREMENT
-E_000233,20mm ¥ 20mm,20 mm × 20 mm,MEASUREMENT
-E_000234,200ml,200 ml,MEASUREMENT
-E_000235,200mm,200 mm,MEASUREMENT
-E_000236,25ml,25 ml,MEASUREMENT
-E_000237,25mm ¥ 75mm,25 mm × 75 mm,MEASUREMENT
-E_000238,250ml,250 ml,MEASUREMENT
-E_000239,30cm,30 cm,MEASUREMENT
-E_000240,5cm,5 cm,MEASUREMENT
-E_000241,5ml,5 ml,MEASUREMENT
-E_000242,5mm,5 mm,MEASUREMENT
-E_000243,50cm,50 cm,MEASUREMENT
-E_000244,50ml,50 ml,MEASUREMENT
-E_000245,50mm,50 mm,MEASUREMENT
-E_000246,50mm ¥ 6mm,50 mm × 6 mm,MEASUREMENT
-E_000247,500ml,500 ml,MEASUREMENT
-E_000248,6mm,6 mm,MEASUREMENT
-E_000249,60mm,60 mm,MEASUREMENT
-E_000250,75ml,75 ml,MEASUREMENT
-E_000251,75mm,75 mm,MEASUREMENT
-E_000252,7–8mm,7–8 mm,MEASUREMENT
-E_000253,85mm ¥ 15mm,85 mm × 15 mm,MEASUREMENT
-E_000254,90mm,90 mm,MEASUREMENT
-E_000255,bacteria,bacteria,ORGANISM
-E_000256,bat,bat,ORGANISM
-E_000257,helminth eggs,helminth eggs,ORGANISM
-E_000258,malaria parasites,malaria parasites,ORGANISM
-E_000259,tubercle bacilli,tubercle bacilli,ORGANISM
-E_000260,bacteriology,bacteriology,PROCEDURE
-E_000261,basic laboratory techniques,basic laboratory techniques,PROCEDURE
-E_000262,blood chemistry,blood chemistry,PROCEDURE
-E_000263,blood chemistry tests,blood chemistry tests,PROCEDURE
-E_000264,distillation method,distillation method,PROCEDURE
-E_000265,distillation process,distillation process,PROCEDURE
-E_000266,flaming,flaming,PROCEDURE
-E_000267,Gram staining,gram staining,PROCEDURE
-E_000268,hospital sterilization service,hospital sterilization service,PROCEDURE
-E_000269,laboratory procedures,laboratory procedures,PROCEDURE
-E_000270,mix the solution well,mix the solution well,PROCEDURE
-E_000271,parasitology,parasitology,PROCEDURE
-E_000272,plumbing operation,plumbing operation,PROCEDURE
-E_000273,pregnancy tests,pregnancy tests,PROCEDURE
-E_000274,preparation of stains,preparation of stains,PROCEDURE
-E_000275,scraping,scraping,PROCEDURE
-E_000276,serological tests,serological tests,PROCEDURE
-E_000277,slit skin smear,slit skin smear,PROCEDURE
-E_000278,steps 2 and 3,steps 2 and 3,PROCEDURE
-E_000279,sterilization,sterilization,PROCEDURE
-E_000280,stool collection,stool collection,PROCEDURE
-E_000281,test,test,PROCEDURE
-E_000282,Unblocking,unblocking,PROCEDURE
-E_000283,urine analysis,urine analysis,PROCEDURE
-E_000284,"washing
+E_000001,0-mm mark,0-mm mark,ANATOMICAL_SITE
+E_000002,abdominal,abdominal,ANATOMICAL_SITE
+E_000003,abnormally shaped heads,abnormally shaped heads,ANATOMICAL_SITE
+E_000004,acute kidney,acute kidney,ANATOMICAL_SITE
+E_000005,affected area,affected area,ANATOMICAL_SITE
+E_000006,Affected glands,affected glands,ANATOMICAL_SITE
+E_000007,affected part,affected part,ANATOMICAL_SITE
+E_000008,affected skin,affected skin,ANATOMICAL_SITE
+E_000009,anal pore,anal pore,ANATOMICAL_SITE
+E_000010,anterior extremity,anterior extremity,ANATOMICAL_SITE
+E_000011,anus,anus,ANATOMICAL_SITE
+E_000012,AP,ap,ANATOMICAL_SITE
+E_000013,appropriate cavity,appropriate cavity,ANATOMICAL_SITE
+E_000014,area,area,ANATOMICAL_SITE
+E_000015,area of skin,area of skin,ANATOMICAL_SITE
+E_000016,areas of skin,areas of skin,ANATOMICAL_SITE
+E_000017,areas where nerves run near to the skin surface,areas where nerves run near to the skin surface,ANATOMICAL_SITE
+E_000018,arm,arm,ANATOMICAL_SITE
+E_000019,armadillo,armadillo,ANATOMICAL_SITE
+E_000020,arteries,arteries,ANATOMICAL_SITE
+E_000021,axillae,axillae,ANATOMICAL_SITE
+E_000022,back,back,ANATOMICAL_SITE
+E_000023,back of the throat,back of the throat,ANATOMICAL_SITE
+E_000024,ball of the finger,ball of the finger,ANATOMICAL_SITE
+E_000025,base,base,ANATOMICAL_SITE
+E_000026,base of the head,base of the head,ANATOMICAL_SITE
+E_000027,base of the head of the tap,base of the head of the tap,ANATOMICAL_SITE
+E_000028,base of the neck,base of the neck,ANATOMICAL_SITE
+E_000029,between the toes,between the toes,ANATOMICAL_SITE
+E_000030,big toe,big toe,ANATOMICAL_SITE
+E_000031,blood vessel,blood vessel,ANATOMICAL_SITE
+E_000032,blood vessels,blood vessels,ANATOMICAL_SITE
+E_000033,bloodstream,bloodstream,ANATOMICAL_SITE
+E_000034,body,body,ANATOMICAL_SITE
+E_000035,body sites,body sites,ANATOMICAL_SITE
+E_000036,bone marrow,bone marrow,ANATOMICAL_SITE
+E_000037,Boss,boss,ANATOMICAL_SITE
+E_000038,brain,brain,ANATOMICAL_SITE
+E_000039,brain and spinal column,brain and spinal column,ANATOMICAL_SITE
+E_000040,breast bone,breast bone,ANATOMICAL_SITE
+E_000041,burn,burn,ANATOMICAL_SITE
+E_000042,burns,burns,ANATOMICAL_SITE
+E_000043,bursa,bursa,ANATOMICAL_SITE
+E_000044,buttocks,buttocks,ANATOMICAL_SITE
+E_000045,caecum,caecum,ANATOMICAL_SITE
+E_000046,calf,calf,ANATOMICAL_SITE
+E_000047,calves,calves,ANATOMICAL_SITE
+E_000048,capillary,capillary,ANATOMICAL_SITE
+E_000049,cavity,cavity,ANATOMICAL_SITE
+E_000050,cell membrane,cell membrane,ANATOMICAL_SITE
+E_000051,central,central,ANATOMICAL_SITE
+E_000052,central nervous system,central nervous system,ANATOMICAL_SITE
+E_000053,centre,centre,ANATOMICAL_SITE
+E_000054,centre of the cyst,centre of the cyst,ANATOMICAL_SITE
+E_000055,centre of the gland,centre of the gland,ANATOMICAL_SITE
+E_000056,centre of the shoulder-blade,centre of the shoulder-blade,ANATOMICAL_SITE
+E_000057,centre of the vein,centre of the vein,ANATOMICAL_SITE
+E_000058,cephalic or head space,cephalic or head space,ANATOMICAL_SITE
+E_000059,cephalic space,cephalic space,ANATOMICAL_SITE
+E_000060,certain regions of the body,certain regions of the body,ANATOMICAL_SITE
+E_000061,cervical canal,cervical canal,ANATOMICAL_SITE
+E_000062,cervical glands,cervical glands,ANATOMICAL_SITE
+E_000063,chamber,chamber,ANATOMICAL_SITE
+E_000064,chancre,chancre,ANATOMICAL_SITE
+E_000065,chest,chest,ANATOMICAL_SITE
+E_000066,chest wall,chest wall,ANATOMICAL_SITE
+E_000067,Cilia,cilia,ANATOMICAL_SITE
+E_000068,clot,clot,ANATOMICAL_SITE
+E_000069,conjunctiva,conjunctiva,ANATOMICAL_SITE
+E_000070,corner of the eye,corner of the eye,ANATOMICAL_SITE
+E_000071,corner squares,corner squares,ANATOMICAL_SITE
+E_000072,covered wound,covered wound,ANATOMICAL_SITE
+E_000073,coverslip area,coverslip area,ANATOMICAL_SITE
+E_000074,CSF,csf,ANATOMICAL_SITE
+E_000075,cut,cut,ANATOMICAL_SITE
+E_000076,cyst,cyst,ANATOMICAL_SITE
+E_000077,cysts,cysts,ANATOMICAL_SITE
+E_000078,cytoplasm,cytoplasm,ANATOMICAL_SITE
+E_000079,cytostome,cytostome,ANATOMICAL_SITE
+E_000080,different parts of the body,different parts of the body,ANATOMICAL_SITE
+E_000081,digestive tract,digestive tract,ANATOMICAL_SITE
+E_000082,ear,ear,ANATOMICAL_SITE
+E_000083,ear and skin lesions,ear and skin lesions,ANATOMICAL_SITE
+E_000084,ear lobe,ear lobe,ANATOMICAL_SITE
+E_000085,ear or skin lesions,ear or skin lesions,ANATOMICAL_SITE
+E_000086,ears,ears,ANATOMICAL_SITE
+E_000087,edge of the ulcer,edge of the ulcer,ANATOMICAL_SITE
+E_000088,edges,edges,ANATOMICAL_SITE
+E_000089,edges of the cut,edges of the cut,ANATOMICAL_SITE
+E_000090,elbow,elbow,ANATOMICAL_SITE
+E_000091,enlarged cervical lymph nodes,enlarged cervical lymph nodes,ANATOMICAL_SITE
+E_000092,excretory cell,excretory cell,ANATOMICAL_SITE
+E_000093,excretory pore,excretory pore,ANATOMICAL_SITE
+E_000094,extremity,extremity,ANATOMICAL_SITE
+E_000095,eye,eye,ANATOMICAL_SITE
+E_000096,eye(s),eye(s,ANATOMICAL_SITE
+E_000097,eyelids,eyelids,ANATOMICAL_SITE
+E_000098,eyes,eyes,ANATOMICAL_SITE
+E_000099,face,face,ANATOMICAL_SITE
+E_000100,faeces,faeces,ANATOMICAL_SITE
+E_000101,felineus,felineus,ANATOMICAL_SITE
+E_000102,fields,fields,ANATOMICAL_SITE
+E_000103,Fig.,fig,ANATOMICAL_SITE
+E_000104,finger,finger,ANATOMICAL_SITE
+E_000105,first slit,first slit,ANATOMICAL_SITE
+E_000106,Flagellum,flagellum,ANATOMICAL_SITE
+E_000107,folds of skin,folds of skin,ANATOMICAL_SITE
+E_000108,foot,foot,ANATOMICAL_SITE
+E_000109,foot pads,foot pads,ANATOMICAL_SITE
+E_000110,four corner squares,four corner squares,ANATOMICAL_SITE
+E_000111,four squares,four squares,ANATOMICAL_SITE
+E_000112,fourth and fifth lumbar vertebrae,fourth and fifth lumbar vertebrae,ANATOMICAL_SITE
+E_000113,From each ear,from each ear,ANATOMICAL_SITE
+E_000114,front end,front end,ANATOMICAL_SITE
+E_000115,genital primordium,genital primordium,ANATOMICAL_SITE
+E_000116,genital rudiment,genital rudiment,ANATOMICAL_SITE
+E_000117,genitalia,genitalia,ANATOMICAL_SITE
+E_000118,gland,gland,ANATOMICAL_SITE
+E_000119,glands,glands,ANATOMICAL_SITE
+E_000120,GR,gr,ANATOMICAL_SITE
+E_000121,groin,groin,ANATOMICAL_SITE
+E_000122,hairs,hairs,ANATOMICAL_SITE
+E_000123,hands,hands,ANATOMICAL_SITE
+E_000124,head,head,ANATOMICAL_SITE
+E_000125,heart,heart,ANATOMICAL_SITE
+E_000126,heel,heel,ANATOMICAL_SITE
+E_000127,hidden point,hidden point,ANATOMICAL_SITE
+E_000128,hips,hips,ANATOMICAL_SITE
+E_000129,hooklets,hooklets,ANATOMICAL_SITE
+E_000130,incision,incision,ANATOMICAL_SITE
+E_000131,index finger,index finger,ANATOMICAL_SITE
+E_000132,infected area,infected area,ANATOMICAL_SITE
+E_000133,infected finger,infected finger,ANATOMICAL_SITE
+E_000134,inner body,inner body,ANATOMICAL_SITE
+E_000135,inoculation site,inoculation site,ANATOMICAL_SITE
+E_000136,inside the cut,inside the cut,ANATOMICAL_SITE
+E_000137,intestinalis,intestinalis,ANATOMICAL_SITE
+E_000138,intestine,intestine,ANATOMICAL_SITE
+E_000139,intestines,intestines,ANATOMICAL_SITE
+E_000140,intravenously,intravenously,ANATOMICAL_SITE
+E_000141,joint,joint,ANATOMICAL_SITE
+E_000142,joint J2,joint j2,ANATOMICAL_SITE
+E_000143,joints,joints,ANATOMICAL_SITE
+E_000144,jugular vein,jugular vein,ANATOMICAL_SITE
+E_000145,karyosome,karyosome,ANATOMICAL_SITE
+E_000146,kidney tubules,kidney tubules,ANATOMICAL_SITE
+E_000147,kidneys,kidneys,ANATOMICAL_SITE
+E_000148,kinetoplast,kinetoplast,ANATOMICAL_SITE
+E_000149,knees and ankles,knees and ankles,ANATOMICAL_SITE
+E_000150,large oval head,large oval head,ANATOMICAL_SITE
+E_000151,lateral,lateral,ANATOMICAL_SITE
+E_000152,lateral pores,lateral pores,ANATOMICAL_SITE
+E_000153,layer of skin,layer of skin,ANATOMICAL_SITE
+E_000154,left arm,left arm,ANATOMICAL_SITE
+E_000155,left ear,left ear,ANATOMICAL_SITE
+E_000156,left eye,left eye,ANATOMICAL_SITE
+E_000157,legs,legs,ANATOMICAL_SITE
+E_000158,lepromatous lesions,lepromatous lesions,ANATOMICAL_SITE
+E_000159,lesion,lesion,ANATOMICAL_SITE
+E_000160,lids,lids,ANATOMICAL_SITE
+E_000161,limb,limb,ANATOMICAL_SITE
+E_000162,lining of the cavity,lining of the cavity,ANATOMICAL_SITE
+E_000163,lips and tongue,lips and tongue,ANATOMICAL_SITE
+E_000164,liver,liver,ANATOMICAL_SITE
+E_000165,liver stages,liver stages,ANATOMICAL_SITE
+E_000166,lobe,lobe,ANATOMICAL_SITE
+E_000167,lobe of the ear,lobe of the ear,ANATOMICAL_SITE
+E_000168,lungs,lungs,ANATOMICAL_SITE
+E_000169,lymph gland,lymph gland,ANATOMICAL_SITE
+E_000170,lymph glands,lymph glands,ANATOMICAL_SITE
+E_000171,lymph node,lymph node,ANATOMICAL_SITE
+E_000172,lymph nodes,lymph nodes,ANATOMICAL_SITE
+E_000173,lymphatic circulation,lymphatic circulation,ANATOMICAL_SITE
+E_000174,lymphatic system,lymphatic system,ANATOMICAL_SITE
+E_000175,Madura foot,madura foot,ANATOMICAL_SITE
+E_000176,malignant pustules,malignant pustules,ANATOMICAL_SITE
+E_000177,mammilated outer coats,mammilated outer coats,ANATOMICAL_SITE
+E_000178,Maurer’s clefts,maurer’s clefts,ANATOMICAL_SITE
+E_000179,meatus,meatus,ANATOMICAL_SITE
+E_000180,meninges,meninges,ANATOMICAL_SITE
+E_000181,middle,middle,ANATOMICAL_SITE
+E_000182,middle section,middle section,ANATOMICAL_SITE
+E_000183,mouth,mouth,ANATOMICAL_SITE
+E_000184,mouth opening,mouth opening,ANATOMICAL_SITE
+E_000185,mouth parts,mouth parts,ANATOMICAL_SITE
+E_000186,mouth-like cleft,mouth-like cleft,ANATOMICAL_SITE
+E_000187,mucous membranes,mucous membranes,ANATOMICAL_SITE
+E_000188,nails,nails,ANATOMICAL_SITE
+E_000189,neck,neck,ANATOMICAL_SITE
+E_000190,nodule,nodule,ANATOMICAL_SITE
+E_000191,nodules,nodules,ANATOMICAL_SITE
+E_000192,normal human eye,normal human eye,ANATOMICAL_SITE
+E_000193,nose,nose,ANATOMICAL_SITE
+E_000194,nuclei,nuclei,ANATOMICAL_SITE
+E_000195,nucleoli,nucleoli,ANATOMICAL_SITE
+E_000196,Nucleus,nucleus,ANATOMICAL_SITE
+E_000197,oesophagus,oesophagus,ANATOMICAL_SITE
+E_000198,one pole,one pole,ANATOMICAL_SITE
+E_000199,opercula,opercula,ANATOMICAL_SITE
+E_000200,operculum,operculum,ANATOMICAL_SITE
+E_000201,oral or genital tract,oral or genital tract,ANATOMICAL_SITE
+E_000202,organs,organs,ANATOMICAL_SITE
+E_000203,origin,origin,ANATOMICAL_SITE
+E_000204,other pole,other pole,ANATOMICAL_SITE
+E_000205,outer part,outer part,ANATOMICAL_SITE
+E_000206,over the ribs,over the ribs,ANATOMICAL_SITE
+E_000207,patient’s finger,patient’s finger,ANATOMICAL_SITE
+E_000208,patient’s organs,patient’s organs,ANATOMICAL_SITE
+E_000209,penis,penis,ANATOMICAL_SITE
+E_000210,pericardial,pericardial,ANATOMICAL_SITE
+E_000211,peripheral blood,peripheral blood,ANATOMICAL_SITE
+E_000212,peripheral nerve tissues,peripheral nerve tissues,ANATOMICAL_SITE
+E_000213,periphery,periphery,ANATOMICAL_SITE
+E_000214,peritoneal,peritoneal,ANATOMICAL_SITE
+E_000215,pharynx,pharynx,ANATOMICAL_SITE
+E_000216,pit,pit,ANATOMICAL_SITE
+E_000217,Place 8,place 8,ANATOMICAL_SITE
+E_000218,placenta,placenta,ANATOMICAL_SITE
+E_000219,plasma column,plasma column,ANATOMICAL_SITE
+E_000220,pleural,pleural,ANATOMICAL_SITE
+E_000221,plugs,plugs,ANATOMICAL_SITE
+E_000222,pole,pole,ANATOMICAL_SITE
+E_000223,poles,poles,ANATOMICAL_SITE
+E_000224,posterior end,posterior end,ANATOMICAL_SITE
+E_000225,posterior extremity,posterior extremity,ANATOMICAL_SITE
+E_000226,pseudopodia,pseudopodia,ANATOMICAL_SITE
+E_000227,pseudopodium,pseudopodium,ANATOMICAL_SITE
+E_000228,puncture,puncture,ANATOMICAL_SITE
+E_000229,rectum,rectum,ANATOMICAL_SITE
+E_000230,reticuloendothelial system,reticuloendothelial system,ANATOMICAL_SITE
+E_000231,reticulum,reticulum,ANATOMICAL_SITE
+E_000232,ribs,ribs,ANATOMICAL_SITE
+E_000233,right ear,right ear,ANATOMICAL_SITE
+E_000234,right eye,right eye,ANATOMICAL_SITE
+E_000235,rod-shaped kinetoplast,rod-shaped kinetoplast,ANATOMICAL_SITE
+E_000236,rounded crook,rounded crook,ANATOMICAL_SITE
+E_000237,rounded end,rounded end,ANATOMICAL_SITE
+E_000238,rounded pole,rounded pole,ANATOMICAL_SITE
+E_000239,ruled area,ruled area,ANATOMICAL_SITE
+E_000240,scalp,scalp,ANATOMICAL_SITE
+E_000241,scolex,scolex,ANATOMICAL_SITE
+E_000242,screw thread,screw thread,ANATOMICAL_SITE
+E_000243,scrotum,scrotum,ANATOMICAL_SITE
+E_000244,septum of the nose,septum of the nose,ANATOMICAL_SITE
+E_000245,sheath,sheath,ANATOMICAL_SITE
+E_000246,Shell,shell,ANATOMICAL_SITE
+E_000247,shoulder blades,shoulder blades,ANATOMICAL_SITE
+E_000248,shoulder-blades,shoulder-blades,ANATOMICAL_SITE
+E_000249,sinus,sinus,ANATOMICAL_SITE
+E_000250,sinuses,sinuses,ANATOMICAL_SITE
+E_000251,site of inoculation,site of inoculation,ANATOMICAL_SITE
+E_000252,six sites,six sites,ANATOMICAL_SITE
+E_000253,skin,skin,ANATOMICAL_SITE
+E_000254,skin and hair,skin and hair,ANATOMICAL_SITE
+E_000255,skin area,skin area,ANATOMICAL_SITE
+E_000256,skin lesion,skin lesion,ANATOMICAL_SITE
+E_000257,skull,skull,ANATOMICAL_SITE
+E_000258,spinal column,spinal column,ANATOMICAL_SITE
+E_000259,spinal cord,spinal cord,ANATOMICAL_SITE
+E_000260,spine,spine,ANATOMICAL_SITE
+E_000261,spines,spines,ANATOMICAL_SITE
+E_000262,spleen,spleen,ANATOMICAL_SITE
+E_000263,Spot,spot,ANATOMICAL_SITE
+E_000264,stretched skin,stretched skin,ANATOMICAL_SITE
+E_000265,subarachnoid,subarachnoid,ANATOMICAL_SITE
+E_000266,subcutaneous,subcutaneous,ANATOMICAL_SITE
+E_000267,subcutaneously,subcutaneously,ANATOMICAL_SITE
+E_000268,surface,surface,ANATOMICAL_SITE
+E_000269,synovial joint,synovial joint,ANATOMICAL_SITE
+E_000270,tail,tail,ANATOMICAL_SITE
+E_000271,tapered end,tapered end,ANATOMICAL_SITE
+E_000272,terminal,terminal,ANATOMICAL_SITE
+E_000273,terminal spine,terminal spine,ANATOMICAL_SITE
+E_000274,testis,testis,ANATOMICAL_SITE
+E_000275,the back,the back,ANATOMICAL_SITE
+E_000276,The chancre area,the chancre area,ANATOMICAL_SITE
+E_000277,The face and body,the face and body,ANATOMICAL_SITE
+E_000278,The genitals,the genitals,ANATOMICAL_SITE
+E_000279,the heel,the heel,ANATOMICAL_SITE
+E_000280,the kidney,the kidney,ANATOMICAL_SITE
+E_000281,The thumb,the thumb,ANATOMICAL_SITE
+E_000282,thick end,thick end,ANATOMICAL_SITE
+E_000283,thin blood film,thin blood film,ANATOMICAL_SITE
+E_000284,thin end,thin end,ANATOMICAL_SITE
+E_000285,thin end of the film,thin end of the film,ANATOMICAL_SITE
+E_000286,third finger,third finger,ANATOMICAL_SITE
+E_000287,third or fourth finger,third or fourth finger,ANATOMICAL_SITE
+E_000288,thumb,thumb,ANATOMICAL_SITE
+E_000289,tibia,tibia,ANATOMICAL_SITE
+E_000290,tip,tip,ANATOMICAL_SITE
+E_000291,tip of the tail,tip of the tail,ANATOMICAL_SITE
+E_000292,tissues,tissues,ANATOMICAL_SITE
+E_000293,tissues and organs,tissues and organs,ANATOMICAL_SITE
+E_000294,tive sites,tive sites,ANATOMICAL_SITE
+E_000295,tongue,tongue,ANATOMICAL_SITE
+E_000296,top,top,ANATOMICAL_SITE
+E_000297,top of the buttocks,top of the buttocks,ANATOMICAL_SITE
+E_000298,tow,tow,ANATOMICAL_SITE
+E_000299,tuberculoid lesions,tuberculoid lesions,ANATOMICAL_SITE
+E_000300,tubules of the kidney,tubules of the kidney,ANATOMICAL_SITE
+E_000301,ulcers,ulcers,ANATOMICAL_SITE
+E_000302,undulating membrane,undulating membrane,ANATOMICAL_SITE
+E_000303,universal,universal,ANATOMICAL_SITE
+E_000304,upper outer part,upper outer part,ANATOMICAL_SITE
+E_000305,ureter,ureter,ANATOMICAL_SITE
+E_000306,urethra,urethra,ANATOMICAL_SITE
+E_000307,urethral opening,urethral opening,ANATOMICAL_SITE
+E_000308,urinary,urinary,ANATOMICAL_SITE
+E_000309,urinary tract,urinary tract,ANATOMICAL_SITE
+E_000310,urine,urine,ANATOMICAL_SITE
+E_000311,vacuole,vacuole,ANATOMICAL_SITE
+E_000312,vein,vein,ANATOMICAL_SITE
+E_000313,veins,veins,ANATOMICAL_SITE
+E_000314,venous,venous,ANATOMICAL_SITE
+E_000315,viscera,viscera,ANATOMICAL_SITE
+E_000316,visibleB surfacespot,visibleb surfacespot,ANATOMICAL_SITE
+E_000317,wall,wall,ANATOMICAL_SITE
+E_000318,wall of the vein,wall of the vein,ANATOMICAL_SITE
+E_000319,well 1,well 1,ANATOMICAL_SITE
+E_000320,well 2,well 2,ANATOMICAL_SITE
+E_000321,wound,wound,ANATOMICAL_SITE
+E_000322,zone A,zone a,ANATOMICAL_SITE
+E_000323,zone B,zone b,ANATOMICAL_SITE
+E_000324,150 cells per mm3,150 cells per mm3,CELL
+E_000325,agglutinated cells,agglutinated cells,CELL
+E_000326,amastigotes,amastigotes,CELL
+E_000327,amoebae,amoebae,CELL
+E_000328,asexual blood stages,asexual blood stages,CELL
+E_000329,atypical cells,atypical cells,CELL
+E_000330,Atypical lymphocyte,atypical lymphocyte,CELL
+E_000331,Atypical lymphocytes,atypical lymphocytes,CELL
+E_000332,B-lymphocytes,b-lymphocytes,CELL
+E_000333,band form,band form,CELL
+E_000334,basophils,basophils,CELL
+E_000335,blastomeres,blastomeres,CELL
+E_000336,blood,blood,CELL
+E_000337,blood cells,blood cells,CELL
+E_000338,cancer cells,cancer cells,CELL
+E_000339,cells of crystalline silicon,cells of crystalline silicon,CELL
+E_000340,cellular debris,cellular debris,CELL
+E_000341,Chromatin,chromatin,CELL
+E_000342,Chromatoid bodies,chromatoid bodies,CELL
+E_000343,ciliated embryo,ciliated embryo,CELL
+E_000344,circulating erythrocytes,circulating erythrocytes,CELL
+E_000345,cocci,cocci,CELL
+E_000346,control erythrocytes,control erythrocytes,CELL
+E_000347,crenated cells,crenated cells,CELL
+E_000348,crenation cells,crenation cells,CELL
+E_000349,cysts,cysts,CELL
+E_000350,Cytoplasm,cytoplasm,CELL
+E_000351,debris,debris,CELL
+E_000352,degenerated cells,degenerated cells,CELL
+E_000353,degenerated epithelial cells,degenerated epithelial cells,CELL
+E_000354,diplococci,diplococci,CELL
+E_000355,Elliptocytes,elliptocytes,CELL
+E_000356,embryophores,embryophores,CELL
+E_000357,eosinophils,eosinophils,CELL
+E_000358,epithelial cells,epithelial cells,CELL
+E_000359,erythrocytes,erythrocyte,CELL
+E_000360,Excretory cell,excretory cell,CELL
+E_000361,extracellular elements,extracellular elements,CELL
+E_000362,filaments,filaments,CELL
+E_000363,flagellates,flagellates,CELL
+E_000364,flame cells,flame cells,CELL
+E_000365,four small cells,four small cells,CELL
+E_000366,Gametocyte,gametocyte,CELL
+E_000367,gametocytes,gametocytes,CELL
+E_000368,gonococci,gonococci,CELL
+E_000369,Gram-positive cocci,gram-positive cocci,CELL
+E_000370,granulocyte,granulocyte,CELL
+E_000371,granulocytes,granulocytes,CELL
+E_000372,green rods,green rods,CELL
+E_000373,grey granular cells,grey granular cells,CELL
+E_000374,Hypersegmented polymorphonuclear neutrophils,hypersegmented polymorphonuclear neutrophils,CELL
+E_000375,immature cells,immature cells,CELL
+E_000376,Immature granulocytes,immature granulocytes,CELL
+E_000377,Immature polymorphonuclear granulocytes,immature polymorphonuclear granulocytes,CELL
+E_000378,immature polymorphonuclear neutrophils,immature polymorphonuclear neutrophils,CELL
+E_000379,indented cells,indented cells,CELL
+E_000380,Intact cells,intact cells,CELL
+E_000381,Intracellular gonococci,intracellular gonococci,CELL
+E_000382,karyosomes,karyosomes,CELL
+E_000383,large cells,large cells,CELL
+E_000384,large central cell,large central cell,CELL
+E_000385,large indistinct cells,large indistinct cells,CELL
+E_000386,Large lymphocytes,large lymphocytes,CELL
+E_000387,large round granular cell,large round granular cell,CELL
+E_000388,leukocyte,leukocyte,CELL
+E_000389,leukocytes,leukocytes,CELL
+E_000390,Lymphoblasts,lymphoblasts,CELL
+E_000391,lymphocytes,lymphocyte,CELL
+E_000392,Lymphocytes and monocytes,lymphocytes and monocytes,CELL
+E_000393,macrocytes,macrocytes,CELL
+E_000394,macrophages,macrophages,CELL
+E_000395,mass of cells,mass of cells,CELL
+E_000396,mature reticulocytes,mature reticulocytes,CELL
+E_000397,mature trophozoites,mature trophozoites,CELL
+E_000398,Medium-sized oval cells,medium-sized oval cells,CELL
+E_000399,Megakaryocyte,megakaryocyte,CELL
+E_000400,megakaryocytes,megakaryocytes,CELL
+E_000401,Merozoites,merozoites,CELL
+E_000402,mesothelial cells,mesothelial cells,CELL
+E_000403,Microcytes,microcytes,CELL
+E_000404,monocytes,monocytes,CELL
+E_000405,Mott cells,mott cells,CELL
+E_000406,moving cells,moving cells,CELL
+E_000407,mucosal cells,mucosal cells,CELL
+E_000408,neutrophil,neutrophil,CELL
+E_000409,neutrophils,neutrophils,CELL
+E_000410,non-agglutinated cells,non-agglutinated cells,CELL
+E_000411,Normal erythrocytes,normal erythrocytes,CELL
+E_000412,Normal spermatozoa,normal spermatozoa,CELL
+E_000413,normoblasts,normoblasts,CELL
+E_000414,nucleated erythrocytes,nucleated erythrocytes,CELL
+E_000415,nuclei,nuclei,CELL
+E_000416,nucleus,nucleus,CELL
+E_000417,one cell,one cell,CELL
+E_000418,one clear cell,one clear cell,CELL
+E_000419,oocysts,oocysts,CELL
+E_000420,ova,ova,CELL
+E_000421,oval budding spores,oval budding spores,CELL
+E_000422,pale yellow epithelial cells,pale yellow epithelial cells,CELL
+E_000423,panels with cells of amorphous silicon,panels with cells of amorphous silicon,CELL
+E_000424,parasite eggs,parasite eggs,CELL
+E_000425,phagocytic cells,phagocytic cells,CELL
+E_000426,plasma,plasma,CELL
+E_000427,Plasma cells,plasma cells,CELL
+E_000428,platelets,platelets,CELL
+E_000429,pneumococci,pneumococci,CELL
+E_000430,Poikilocytes,poikilocytes,CELL
+E_000431,Polymorphonuclear basophils,polymorphonuclear basophils,CELL
+E_000432,Polymorphonuclear cells,polymorphonuclear cells,CELL
+E_000433,Polymorphonuclear eosinophils,polymorphonuclear eosinophils,CELL
+E_000434,polymorphonuclear leukocytes,polymorphonuclear leukocytes,CELL
+E_000435,Polymorphonuclear neutrophils,polymorphonuclear neutrophils,CELL
+E_000436,polymorphs,polymorphs,CELL
+E_000437,pus,pus,CELL
+E_000438,pus cells,pus cells,CELL
+E_000439,R1 cell,r1 cell,CELL
+E_000440,R2 cell,r2 cell,CELL
+E_000441,R3 cell,r3 cell,CELL
+E_000442,R4 cell,r4 cell,CELL
+E_000443,rectal cells,rectal cells,CELL
+E_000444,red cell,red cell,CELL
+E_000445,red cell mass,red cell mass,CELL
+E_000446,red cells,red cells,CELL
+E_000447,Renal cells,renal cells,CELL
+E_000448,renal pelvic cells,renal pelvic cells,CELL
+E_000449,reticulocyte,reticulocyte,CELL
+E_000450,reticulocytes,reticulocytes,CELL
+E_000451,round cells,round cells,CELL
+E_000452,round or slightly oval cells,round or slightly oval cells,CELL
+E_000453,Schistocytes,schistocytes,CELL
+E_000454,several cells,several cells,CELL
+E_000455,sheep erythrocytes,sheep erythrocytes,CELL
+E_000456,sickle cells,sickle cells,CELL
+E_000457,Sickle-shaped erythrocytes,sickle-shaped erythrocytes,CELL
+E_000458,siderophils,siderophils,CELL
+E_000459,single cell,single cell,CELL
+E_000460,small cells,small cells,CELL
+E_000461,small grey granular cells,small grey granular cells,CELL
+E_000462,Small lymphocytes,small lymphocytes,CELL
+E_000463,small round granular cells,small round granular cells,CELL
+E_000464,sperm,sperm,CELL
+E_000465,spermatozoa,spermatozoa,CELL
+E_000466,spherocytes,spherocytes,CELL
+E_000467,squarish cells,squarish cells,CELL
+E_000468,T-lymphocytes,t-lymphocytes,CELL
+E_000469,target cells,target cells,CELL
+E_000470,The cells,the cells,CELL
+E_000471,The parent cells,the parent cells,CELL
+E_000472,thrombocyte,thrombocyte,CELL
+E_000473,thrombocytes,thrombocytes,CELL
+E_000474,tissue cells,tissue cells,CELL
+E_000475,trophozoite,trophozoite,CELL
+E_000476,trophozoites,trophozoites,CELL
+E_000477,Trypanosomes,trypanosomes,CELL
+E_000478,unsensitized erythrocytes,unsensitized erythrocytes,CELL
+E_000479,Ureteral and renal pelvic cells,ureteral and renal pelvic cells,CELL
+E_000480,white blood cells,white blood cells,CELL
+E_000481,white cells,white cells,CELL
+E_000482,yeast cells,yeast cells,CELL
+E_000483,young cysts,young cysts,CELL
+E_000484,A pathogenic microfilaria,a pathogenic microfilaria,DISEASE
+E_000485,a-thalassaemia,a-thalassaemia,DISEASE
+E_000486,abdominal pain,abdominal pain,DISEASE
+E_000487,acidosis,acidosis,DISEASE
+E_000488,acute and chronic infections,acute and chronic infections,DISEASE
+E_000489,acute cystitis,acute cystitis,DISEASE
+E_000490,acute diarrhoea,acute diarrhoea,DISEASE
+E_000491,acute glomerulonephritis,acute glomerulonephritis,DISEASE
+E_000492,African trypanosomiasis,african trypanosomiasis,DISEASE
+E_000493,AIDS,aids,DISEASE
+E_000494,allergies,allergies,DISEASE
+E_000495,anaemia,anaemia,DISEASE
+E_000496,Ancylostoma duodenale,ancylostoma duodenale,DISEASE
+E_000497,Anisocytosis,anisocytosis,DISEASE
+E_000498,anthrax,anthrax,DISEASE
+E_000499,Any disease,any disease,DISEASE
+E_000500,appendicitis,appendicitis,DISEASE
+E_000501,ascariasis,ascariasis,DISEASE
+E_000502,autoimmune diseases,autoimmune diseases,DISEASE
+E_000503,bacterial infection,bacterial infection,DISEASE
+E_000504,bacterial infections,bacterial infections,DISEASE
+E_000505,Bacterial meningitis,bacterial meningitis,DISEASE
+E_000506,bacterial vaginosis,bacterial vaginosis,DISEASE
+E_000507,bancroftian,bancroftian,DISEASE
+E_000508,bancroftian filariasis,bancroftian filariasis,DISEASE
+E_000509,brugian filariasis,brugian filariasis,DISEASE
+E_000510,bubonic plague,bubonic plague,DISEASE
+E_000511,burns,burns,DISEASE
+E_000512,Calabar-like swellings,calabar-like swellings,DISEASE
+E_000513,cancer,cancer,DISEASE
+E_000514,cancers,cancers,DISEASE
+E_000515,cardiac disease,cardiac disease,DISEASE
+E_000516,cardiomyopathy,cardiomyopathy,DISEASE
+E_000517,cerebral malaria,cerebral malaria,DISEASE
+E_000518,certain cancers,certain cancers,DISEASE
+E_000519,certain tumours,certain tumours,DISEASE
+E_000520,Chagas disease,chagas disease,DISEASE
+E_000521,chancre,chancre,DISEASE
+E_000522,cholera,cholera,DISEASE
+E_000523,chronic diarrhoea,chronic diarrhoea,DISEASE
+E_000524,chronic diseases,chronic diseases,DISEASE
+E_000525,chronic gonorrhoea,chronic gonorrhoea,DISEASE
+E_000526,chronic granulomatous disease,chronic granulomatous disease,DISEASE
+E_000527,Chronic infection,chronic infection,DISEASE
+E_000528,chronic leukaemia,chronic leukaemia,DISEASE
+E_000529,chronic malaria,chronic malaria,DISEASE
+E_000530,chronic renal disease,chronic renal disease,DISEASE
+E_000531,chronic renal failure,chronic renal failure,DISEASE
+E_000532,communicable diseases,communicable diseases,DISEASE
+E_000533,Cryptosporidiosis,cryptosporidiosis,DISEASE
+E_000534,cutaneous leishmaniasis,cutaneous leishmaniasis,DISEASE
+E_000535,cyst,cyst,DISEASE
+E_000536,cystinuria,cystinuria,DISEASE
+E_000537,cystitis,cystitis,DISEASE
+E_000538,cysts,cysts,DISEASE
+E_000539,dehydration,dehydration,DISEASE
+E_000540,depression,depression,DISEASE
+E_000541,diabetes,diabetes,DISEASE
+E_000542,diabetes mellitus,diabetes mellitus,DISEASE
+E_000543,diarrhoea,diarrhoea,DISEASE
+E_000544,diarrhoeal diseases,diarrhoeal diseases,DISEASE
+E_000545,diphtheria,diphtheria,DISEASE
+E_000546,disease,disease,DISEASE
+E_000547,diseases of the endocrine system,diseases of the endocrine system,DISEASE
+E_000548,dysentery,dysentery,DISEASE
+E_000549,elephantiasis,elephantiasis,DISEASE
+E_000550,encephalopathy,encephalopathy,DISEASE
+E_000551,eosinophilia,eosinophilia,DISEASE
+E_000552,falciparum,falciparum,DISEASE
+E_000553,falciparum malaria,falciparum malaria,DISEASE
+E_000554,fat,fat,DISEASE
+E_000555,fever,fever,DISEASE
+E_000556,filariasis,filariasis,DISEASE
+E_000557,folic acid deficiency,folic acid deficiency,DISEASE
+E_000558,functional proteinuria,functional proteinuria,DISEASE
+E_000559,generalized oedema,generalized oedema,DISEASE
+E_000560,genital warts,genital warts,DISEASE
+E_000561,glandular fever,glandular fever,DISEASE
+E_000562,gonococcal infection,gonococcal infection,DISEASE
+E_000563,gonorrhoea,gonorrhoea,DISEASE
+E_000564,Haematology,haematology,DISEASE
+E_000565,haematoma,haematoma,DISEASE
+E_000566,haemoglobin H disease,haemoglobin h disease,DISEASE
+E_000567,haemoglobinopathy,haemoglobinopathy,DISEASE
+E_000568,haemolytic anaemias,haemolytic anaemias,DISEASE
+E_000569,Haemophilia,haemophilia,DISEASE
+E_000570,haemorrhage,haemorrhage,DISEASE
+E_000571,haemorrhagic disease,haemorrhagic disease,DISEASE
+E_000572,Hansen disease,hansen disease,DISEASE
+E_000573,Heavy infection,heavy infection,DISEASE
+E_000574,Helminth infections,helminth infections,DISEASE
+E_000575,hepatitis,hepatitis,DISEASE
+E_000576,Hepatitis A,hepatitis a,DISEASE
+E_000577,Hepatitis B and C viruses,hepatitis b and c viruses,DISEASE
+E_000578,hepatitis B infection,hepatitis b infection,DISEASE
+E_000579,hepatitis B surface antigen,hepatitis b surface antigen,DISEASE
+E_000580,hepatitis B virus,hepatitis b virus,DISEASE
+E_000581,hepatitisof,hepatitisof,DISEASE
+E_000582,hereditary disease,hereditary disease,DISEASE
+E_000583,hereditary elliptocytosis,hereditary elliptocytosis,DISEASE
+E_000584,hereditary spherocytosis,hereditary spherocytosis,DISEASE
+E_000585,HIV,hiv,DISEASE
+E_000586,hookworm,hookworm,DISEASE
+E_000587,human immunodeficiency virus,human immunodeficiency virus,DISEASE
+E_000588,hydatid cysts,hydatid cysts,DISEASE
+E_000589,Hydatid disease,hydatid disease,DISEASE
+E_000590,hypochromic anaemia,hypochromic anaemia,DISEASE
+E_000591,immune diseases,immune diseases,DISEASE
+E_000592,immunological disorders,immunological disorders,DISEASE
+E_000593,inborn errors of metabolism,inborn errors of metabolism,DISEASE
+E_000594,infection,infection,DISEASE
+E_000595,infections,infections,DISEASE
+E_000596,infectious diseases,infectious diseases,DISEASE
+E_000597,infectious mononucleosis,infectious mononucleosis,DISEASE
+E_000598,infertility,infertility,DISEASE
+E_000599,inflammation,inflammation,DISEASE
+E_000600,influenza infection,influenza infection,DISEASE
+E_000601,intoxication,intoxication,DISEASE
+E_000602,iron deficiency,iron deficiency,DISEASE
+E_000603,iron-deficiency anaemia,iron-deficiency anaemia,DISEASE
+E_000604,itchy dermatitis,itchy dermatitis,DISEASE
+E_000605,kala-azar,kala-azar,DISEASE
+E_000606,kidney infection,kidney infection,DISEASE
+E_000607,lead poisoning,lead poisoning,DISEASE
+E_000608,leishmaniasis,leishmaniasis,DISEASE
+E_000609,Leprosy,leprosy,DISEASE
+E_000610,leukaemia,leukaemia,DISEASE
+E_000611,leukaemias,leukaemias,DISEASE
+E_000612,leukocytosis,leukocytosis,DISEASE
+E_000613,leukopenia,leukopenia,DISEASE
+E_000614,Light infection,light infection,DISEASE
+E_000615,limescale,limescale,DISEASE
+E_000616,liver diseases,liver diseases,DISEASE
+E_000617,lupus erythematosus,lupus erythematosus,DISEASE
+E_000618,lymphadenopathy,lymphadenopathy,DISEASE
+E_000619,lymphadenopathy and lymphangitis,lymphadenopathy and lymphangitis,DISEASE
+E_000620,lymphatic filariasis,lymphatic filariasis,DISEASE
+E_000621,Lymphocytosis,lymphocytosis,DISEASE
+E_000622,macrocytic anaemia,macrocytic anaemia,DISEASE
+E_000623,macrocytic anaemias,macrocytic anaemias,DISEASE
+E_000624,malaria,malaria,DISEASE
+E_000625,malariae,malariae,DISEASE
+E_000626,malnutrition,malnutrition,DISEASE
+E_000627,mansoni,mansoni,DISEASE
+E_000628,Many diseases,many diseases,DISEASE
+E_000629,measles,measles,DISEASE
+E_000630,megaloblastic anaemia,megaloblastic anaemia,DISEASE
+E_000631,meningitis,meningitis,DISEASE
+E_000632,meningococcal,meningococcal,DISEASE
+E_000633,meningococci,meningococci,DISEASE
+E_000634,microalbuminuria,microalbuminuria,DISEASE
+E_000635,microfilaria,microfilaria,DISEASE
+E_000636,microproteinuria,microproteinuria,DISEASE
+E_000637,mixed infections,mixed infections,DISEASE
+E_000638,Monocytosis,monocytosis,DISEASE
+E_000639,motile microfilariae,motile microfilariae,DISEASE
+E_000640,mouth ulcers,mouth ulcers,DISEASE
+E_000641,mucocutaneous leishmaniasis,mucocutaneous leishmaniasis,DISEASE
+E_000642,multibacillary leprosy,multibacillary leprosy,DISEASE
+E_000643,multiple myeloma,multiple myeloma,DISEASE
+E_000644,muscular fatigue,muscular fatigue,DISEASE
+E_000645,Mycetoma,mycetoma,DISEASE
+E_000646,mycobacteria,mycobacteria,DISEASE
+E_000647,Mycobacterium tuberculosis,mycobacterium tuberculosis,DISEASE
+E_000648,myelofibrosis,myelofibrosis,DISEASE
+E_000649,myocardial infarctions,myocardial infarctions,DISEASE
+E_000650,myocarditis,myocarditis,DISEASE
+E_000651,nephritis,nephritis,DISEASE
+E_000652,nephrotic syndrome,nephrotic syndrome,DISEASE
+E_000653,Neutropenia,neutropenia,DISEASE
+E_000654,Neutrophilia,neutrophilia,DISEASE
+E_000655,notifiable diseases,notifiable diseases,DISEASE
+E_000656,obstructive jaundice,obstructive jaundice,DISEASE
+E_000657,old haemorrhage,old haemorrhage,DISEASE
+E_000658,orthostatic proteinuria,orthostatic proteinuria,DISEASE
+E_000659,parasitaemia,parasitaemia,DISEASE
+E_000660,parasitic infection,parasitic infection,DISEASE
+E_000661,parasitic infections,parasitic infections,DISEASE
+E_000662,paucibacillary leprosy,paucibacillary leprosy,DISEASE
+E_000663,pernicious anaemia,pernicious anaemia,DISEASE
+E_000664,pinworm,pinworm,DISEASE
+E_000665,Pinworms,pinworms,DISEASE
+E_000666,pityriasis,pityriasis,DISEASE
+E_000667,pityriasis versicolor,pityriasis versicolor,DISEASE
+E_000668,pneumococcal,pneumococcal,DISEASE
+E_000669,poisoning,poisoning,DISEASE
+E_000670,polycythaemia,polycythaemia,DISEASE
+E_000671,polyps,polyps,DISEASE
+E_000672,Primary infections,primary infections,DISEASE
+E_000673,pruritus,pruritus,DISEASE
+E_000674,purulent meningitis,purulent meningitis,DISEASE
+E_000675,pus,pus,DISEASE
+E_000676,pyelonephritis,pyelonephritis,DISEASE
+E_000677,rash,rash,DISEASE
+E_000678,renal disease,renal disease,DISEASE
+E_000679,rheumatic fever,rheumatic fever,DISEASE
+E_000680,rhodesiense,rhodesiense,DISEASE
+E_000681,Ringworm,ringworm,DISEASE
+E_000682,salmonella,salmonella,DISEASE
+E_000683,salmonellae,salmonellae,DISEASE
+E_000684,schistosomiasis,schistosomiasis,DISEASE
+E_000685,Secondary or tertiary syphilis,secondary or tertiary syphilis,DISEASE
+E_000686,sepsis,sepsis,DISEASE
+E_000687,severe anaemia,severe anaemia,DISEASE
+E_000688,severe anaemias,severe anaemias,DISEASE
+E_000689,severe bacterial infections,severe bacterial infections,DISEASE
+E_000690,severe infections,severe infections,DISEASE
+E_000691,severe jaundice,severe jaundice,DISEASE
+E_000692,severe kidney disease,severe kidney disease,DISEASE
+E_000693,severe malaria,severe malaria,DISEASE
+E_000694,sexually transmitted disease,sexually transmitted disease,DISEASE
+E_000695,shock,shock,DISEASE
+E_000696,sickle cell anaemia,sickle cell anaemia,DISEASE
+E_000697,sickle-cell anaemia,sickle-cell anaemia,DISEASE
+E_000698,sickle-cell disease,sickle-cell disease,DISEASE
+E_000699,sickle-cell thalassaemia,sickle-cell thalassaemia,DISEASE
+E_000700,sickle-cell trait,sickle-cell trait,DISEASE
+E_000701,sickling,sickling,DISEASE
+E_000702,sideroblastic anaemia,sideroblastic anaemia,DISEASE
+E_000703,skin rash,skin rash,DISEASE
+E_000704,sleeping sickness,sleeping sickness,DISEASE
+E_000705,strongyloidiasis,strongyloidiasis,DISEASE
+E_000706,subarachnoid haemorrhage,subarachnoid haemorrhage,DISEASE
+E_000707,subperiodic strains,subperiodic strains,DISEASE
+E_000708,syphilis,syphilis,DISEASE
+E_000709,syphilitic chancre,syphilitic chancre,DISEASE
+E_000710,systemic disorders,systemic disorders,DISEASE
+E_000711,thalassaemias,thalassaemias,DISEASE
+E_000712,The disease,the disease,DISEASE
+E_000713,The infection,the infection,DISEASE
+E_000714,threadworm,threadworm,DISEASE
+E_000715,threadworms,threadworms,DISEASE
+E_000716,tinea,tinea,DISEASE
+E_000717,Tinea infection,tinea infection,DISEASE
+E_000718,Toxic granulation,toxic granulation,DISEASE
+E_000719,trauma,trauma,DISEASE
+E_000720,treponemal infection,treponemal infection,DISEASE
+E_000721,trichomoniasis,trichomoniasis,DISEASE
+E_000722,trypanosomiasis,trypanosomiasis,DISEASE
+E_000723,tuberculosis,tuberculosis,DISEASE
+E_000724,Tuberculous and viral meningitis,tuberculous and viral meningitis,DISEASE
+E_000725,tuberculous meningitis,tuberculous meningitis,DISEASE
+E_000726,tumours,tumours,DISEASE
+E_000727,type D,type d,DISEASE
+E_000728,typhoid,typhoid,DISEASE
+E_000729,typhoid fever,typhoid fever,DISEASE
+E_000730,ulcer,ulcer,DISEASE
+E_000731,urethritis,urethritis,DISEASE
+E_000732,urinary infections,urinary infections,DISEASE
+E_000733,urinary schistosomiasis,urinary schistosomiasis,DISEASE
+E_000734,urinary tract infections,urinary tract infections,DISEASE
+E_000735,urticaria,urticaria,DISEASE
+E_000736,vaginal tract infections,vaginal tract infections,DISEASE
+E_000737,Venereal Disease,venereal disease,DISEASE
+E_000738,viral infections,viral infections,DISEASE
+E_000739,viral influenza infection,viral influenza infection,DISEASE
+E_000740,virus infections,virus infections,DISEASE
+E_000741,visceral leishmaniasis,visceral leishmaniasis,DISEASE
+E_000742,vitamin B12 deficiency,vitamin b12 deficiency,DISEASE
+E_000743,vitamin B6 deficiency,vitamin b6 deficiency,DISEASE
+E_000744,vitamin deficiency,vitamin deficiency,DISEASE
+E_000745,vivax,vivax,DISEASE
+E_000746,Waldenström macroglobulinaemia,waldenström macroglobulinaemia,DISEASE
+E_000747,whooping cough,whooping cough,DISEASE
+E_000748,Yaws,yaws,DISEASE
+E_000749,1-kg weight,1-kg weight,EQUIPMENT
+E_000750,10-ml pipette,10-ml pipette,EQUIPMENT
+E_000751,10-ml tubes,10-ml tubes,EQUIPMENT
+E_000752,100-ml stoppered flask,100-ml stoppered flask,EQUIPMENT
+E_000753,100-ml volumetric flask,100-ml volumetric flask,EQUIPMENT
+E_000754,100-ml volumetric flasks,100-ml volumetric flasks,EQUIPMENT
+E_000755,1000-ml bottle,1000-ml bottle,EQUIPMENT
+E_000756,1000-ml flask,1000-ml flask,EQUIPMENT
+E_000757,1000-ml glass-stoppered bottle,1000-ml glass-stoppered bottle,EQUIPMENT
+E_000758,1000-ml volumetric flask,1000-ml volumetric flask,EQUIPMENT
+E_000759,110–220V transformer,110–220v transformer,EQUIPMENT
+E_000760,125-ml flask,125-ml flask,EQUIPMENT
+E_000761,1500g,1500g,EQUIPMENT
+E_000762,2-ml blood pipette,2-ml blood pipette,EQUIPMENT
+E_000763,200-ml volumetric flask,200-ml volumetric flask,EQUIPMENT
+E_000764,2000g,2000g,EQUIPMENT
+E_000765,22mm ¥ 40mm coverslip,22mm ¥ 40mm coverslip,EQUIPMENT
+E_000766,2ml blood pipette,2ml blood pipette,EQUIPMENT
+E_000767,30-ml bottles,30-ml bottles,EQUIPMENT
+E_000768,30-ml flat bottles,30-ml flat bottles,EQUIPMENT
+E_000769,3000g,3000g,EQUIPMENT
+E_000770,40-ml bottle,40-ml bottle,EQUIPMENT
+E_000771,5 Equipment,5 equipment,EQUIPMENT
+E_000772,5-ml bottle,5-ml bottle,EQUIPMENT
+E_000773,5-ml bottles,5-ml bottles,EQUIPMENT
+E_000774,5-mm bore,5-mm bore,EQUIPMENT
+E_000775,500-ml flask,500-ml flask,EQUIPMENT
+E_000776,5000g,5000g,EQUIPMENT
+E_000777,A calibrated pipette,a calibrated pipette,EQUIPMENT
+E_000778,A water distributor,a water distributor,EQUIPMENT
+E_000779,absorbent paper,absorbent paper,EQUIPMENT
+E_000780,accurate balance,accurate balance,EQUIPMENT
+E_000781,adhesive mouth,adhesive mouth,EQUIPMENT
+E_000782,AHD standard,ahd standard,EQUIPMENT
+E_000783,air outlet valve,air outlet valve,EQUIPMENT
+E_000784,airtight plastic cover,airtight plastic cover,EQUIPMENT
+E_000785,albumin standard,albumin standard,EQUIPMENT
+E_000786,alembics,alembics,EQUIPMENT
+E_000787,aluminium tube,aluminium tube,EQUIPMENT
+E_000788,amber glass bottle,amber glass bottle,EQUIPMENT
+E_000789,An old metal drum,an old metal drum,EQUIPMENT
+E_000790,analytical balance,analytical balance,EQUIPMENT
+E_000791,applicator,applicator,EQUIPMENT
+E_000792,applicator or wire loop,applicator or wire loop,EQUIPMENT
+E_000793,applicator stick,applicator stick,EQUIPMENT
+E_000794,appropriate agarose gels,appropriate agarose gels,EQUIPMENT
+E_000795,appropriate tools,appropriate tools,EQUIPMENT
+E_000796,appropriate tube,appropriate tube,EQUIPMENT
+E_000797,AS1 and AS2,as1 and as2,EQUIPMENT
+E_000798,aspirates,aspirates,EQUIPMENT
+E_000799,autoclave,autoclave,EQUIPMENT
+E_000800,autoclave1,autoclave1,EQUIPMENT
+E_000801,Autoclaves,autoclaves,EQUIPMENT
+E_000802,automated washer,automated washer,EQUIPMENT
+E_000803,bacterial cultures,bacterial cultures,EQUIPMENT
+E_000804,Bacteriological culture media,bacteriological culture media,EQUIPMENT
+E_000805,bacteriological loops,bacteriological loops,EQUIPMENT
+E_000806,balance,balance,EQUIPMENT
+E_000807,Balances,balances,EQUIPMENT
+E_000808,barrel,barrel,EQUIPMENT
+E_000809,basket,basket,EQUIPMENT
+E_000810,basket of sterile equipment,basket of sterile equipment,EQUIPMENT
+E_000811,baskets,baskets,EQUIPMENT
+E_000812,batteries,batteries,EQUIPMENT
+E_000813,Battery-operated centrifuges,battery-operated centrifuges,EQUIPMENT
+E_000814,beads,beads,EQUIPMENT
+E_000815,beaker,beaker,EQUIPMENT
+E_000816,Beaker or can,beaker or can,EQUIPMENT
+E_000817,beakers,beakers,EQUIPMENT
+E_000818,bench,bench,EQUIPMENT
+E_000819,benches,benches,EQUIPMENT
+E_000820,bijou bottles,bijou bottles,EQUIPMENT
+E_000821,binocular microscope,binocular microscope,EQUIPMENT
+E_000822,Binocular microscopes,binocular microscopes,EQUIPMENT
+E_000823,Black cardboard,black cardboard,EQUIPMENT
+E_000824,blade,blade,EQUIPMENT
+E_000825,blank tube,blank tube,EQUIPMENT
+E_000826,Blocked pipettes,blocked pipettes,EQUIPMENT
+E_000827,Blood casts,blood casts,EQUIPMENT
+E_000828,blood film,blood film,EQUIPMENT
+E_000829,blood films,blood films,EQUIPMENT
+E_000830,blood lancet,blood lancet,EQUIPMENT
+E_000831,Blood lancets,blood lancets,EQUIPMENT
+E_000832,blood pipette,blood pipette,EQUIPMENT
+E_000833,bloodstained tubes,bloodstained tubes,EQUIPMENT
+E_000834,blotting paper,blotting paper,EQUIPMENT
+E_000835,Blunt forceps,blunt forceps,EQUIPMENT
+E_000836,body tube,body tube,EQUIPMENT
+E_000837,boiler,boiler,EQUIPMENT
+E_000838,bottle,bottle,EQUIPMENT
+E_000839,bottle containing glass beads,bottle containing glass beads,EQUIPMENT
+E_000840,bottle of diluting fluid,bottle of diluting fluid,EQUIPMENT
+E_000841,bottle of medium,bottle of medium,EQUIPMENT
+E_000842,bottle or tube,bottle or tube,EQUIPMENT
+E_000843,"Bottle, 2–5 ml","bottle, 2–5 ml",EQUIPMENT
+E_000844,bottles,bottles,EQUIPMENT
+E_000845,Bottles and test-tubes,bottles and test-tubes,EQUIPMENT
+E_000846,bottles and tubes,bottles and tubes,EQUIPMENT
+E_000847,bottles or test-tubes,bottles or test-tubes,EQUIPMENT
+E_000848,bowl,bowl,EQUIPMENT
+E_000849,bowl of water,bowl of water,EQUIPMENT
+E_000850,bowl of weak detergent solution,bowl of weak detergent solution,EQUIPMENT
+E_000851,Boxes with tightly fitting lids,boxes with tightly fitting lids,EQUIPMENT
+E_000852,broad tweezers,broad tweezers,EQUIPMENT
+E_000853,broken culture tubes,broken culture tubes,EQUIPMENT
+E_000854,broken tube,broken tube,EQUIPMENT
+E_000855,brown bottle,brown bottle,EQUIPMENT
+E_000856,brown reagent bottle,brown reagent bottle,EQUIPMENT
+E_000857,Bubo aspirates,bubo aspirates,EQUIPMENT
+E_000858,bucket,bucket,EQUIPMENT
+E_000859,buckets,buckets,EQUIPMENT
+E_000860,bulb,bulb,EQUIPMENT
+E_000861,Bunsen burner,bunsen burner,EQUIPMENT
+E_000862,Bunsen burner (B),bunsen burner (b,EQUIPMENT
+E_000863,Bunsen burner or spirit lamp,bunsen burner or spirit lamp,EQUIPMENT
+E_000864,Bunsen flame,bunsen flame,EQUIPMENT
+E_000865,burette,burette,EQUIPMENT
+E_000866,Burettes,burettes,EQUIPMENT
+E_000867,burner,burner,EQUIPMENT
+E_000868,button,button,EQUIPMENT
+E_000869,Bürker chamber,bürker chamber,EQUIPMENT
+E_000870,cabinet,cabinet,EQUIPMENT
+E_000871,Calibrated dropping pipettes,calibrated dropping pipettes,EQUIPMENT
+E_000872,calibration curve,calibration curve,EQUIPMENT
+E_000873,calibration graph,calibration graph,EQUIPMENT
+E_000874,cap,cap,EQUIPMENT
+E_000875,capillary bore,capillary bore,EQUIPMENT
+E_000876,capillary pipette,capillary pipette,EQUIPMENT
+E_000877,capillary tube,capillary tube,EQUIPMENT
+E_000878,Capillary tubes,capillary tubes,EQUIPMENT
+E_000879,Capillary tubes and rubber bulbs,capillary tubes and rubber bulbs,EQUIPMENT
+E_000880,caps,caps,EQUIPMENT
+E_000881,car batteries,car batteries,EQUIPMENT
+E_000882,carbon brushes,carbon brushes,EQUIPMENT
+E_000883,carbon dioxide incubators,carbon dioxide incubators,EQUIPMENT
+E_000884,cardboard cartons,cardboard cartons,EQUIPMENT
+E_000885,cartridge,cartridge,EQUIPMENT
+E_000886,cartridges,cartridges,EQUIPMENT
+E_000887,Cary–Blair transport medium,cary–blair transport medium,EQUIPMENT
+E_000888,cast,cast,EQUIPMENT
+E_000889,catheter,catheter,EQUIPMENT
+E_000890,CATT,catt,EQUIPMENT
+E_000891,cellophane,cellophane,EQUIPMENT
+E_000892,cellophane strip,cellophane strip,EQUIPMENT
+E_000893,central heating radiator,central heating radiator,EQUIPMENT
+E_000894,centrifu,centrifu,EQUIPMENT
+E_000895,Centrifugation,centrifugation,EQUIPMENT
+E_000896,centrifuge,centrifuge,EQUIPMENT
+E_000897,centrifuge buckets,centrifuge buckets,EQUIPMENT
+E_000898,centrifuge head,centrifuge head,EQUIPMENT
+E_000899,centrifuge tube,centrifuge tube,EQUIPMENT
+E_000900,centrifuge tubes,centrifuge tubes,EQUIPMENT
+E_000901,centrifuged CSF,centrifuged csf,EQUIPMENT
+E_000902,centrifuges,centrifuges,EQUIPMENT
+E_000903,Centrifuges1,centrifuges1,EQUIPMENT
+E_000904,Centrifuges2,centrifuges2,EQUIPMENT
+E_000905,Certain pieces of equipment,certain pieces of equipment,EQUIPMENT
+E_000906,certain transport media,certain transport media,EQUIPMENT
+E_000907,chamber,chamber,EQUIPMENT
+E_000908,charge regulator,charge regulator,EQUIPMENT
+E_000909,chart,chart,EQUIPMENT
+E_000910,clamp,clamp,EQUIPMENT
+E_000911,clean,clean,EQUIPMENT
+E_000912,clean 100-ml bottle,clean 100-ml bottle,EQUIPMENT
+E_000913,clean brown bottle,clean brown bottle,EQUIPMENT
+E_000914,clean cork or rubber stopper,clean cork or rubber stopper,EQUIPMENT
+E_000915,clean flask or bottle,clean flask or bottle,EQUIPMENT
+E_000916,clean plastic container,clean plastic container,EQUIPMENT
+E_000917,clean slide,clean slide,EQUIPMENT
+E_000918,clean slides,clean slides,EQUIPMENT
+E_000919,clean test-tube,clean test-tube,EQUIPMENT
+E_000920,clean wide-mouthed bottles,clean wide-mouthed bottles,EQUIPMENT
+E_000921,"clean, dry bottle","clean, dry bottle",EQUIPMENT
+E_000922,"clean, dry container","clean, dry container",EQUIPMENT
+E_000923,Cleaning slides,cleaning slides,EQUIPMENT
+E_000924,clear 2-litre bottle,clear 2-litre bottle,EQUIPMENT
+E_000925,closed container,closed container,EQUIPMENT
+E_000926,cold-water tube,cold-water tube,EQUIPMENT
+E_000927,colorimeter,colorimeter,EQUIPMENT
+E_000928,column of granules,column of granules,EQUIPMENT
+E_000929,column of plasma,column of plasma,EQUIPMENT
+E_000930,commercial detergent,commercial detergent,EQUIPMENT
+E_000931,Commercial kits,commercial kits,EQUIPMENT
+E_000932,commercial serum-based standards,commercial serum-based standards,EQUIPMENT
+E_000933,comparison chart,comparison chart,EQUIPMENT
+E_000934,condenser,condenser,EQUIPMENT
+E_000935,Condenser adjustment screw,condenser adjustment screw,EQUIPMENT
+E_000936,condenser aperture,condenser aperture,EQUIPMENT
+E_000937,condenser centring screws,condenser centring screws,EQUIPMENT
+E_000938,condenser clamp screws,condenser clamp screws,EQUIPMENT
+E_000939,conical centrifuge tube,conical centrifuge tube,EQUIPMENT
+E_000940,Conical centrifuge tubes and large test-tubes,conical centrifuge tubes and large test-tubes,EQUIPMENT
+E_000941,Conical centrifuge tubes or microhaematocrit capillary tubes,conical centrifuge tubes or microhaematocrit capillary tubes,EQUIPMENT
+E_000942,conical flask,conical flask,EQUIPMENT
+E_000943,Conical flask for urine collection,conical flask for urine collection,EQUIPMENT
+E_000944,conical tube,conical tube,EQUIPMENT
+E_000945,Conical tubes and test-tubes,conical tubes and test-tubes,EQUIPMENT
+E_000946,conical-based container,conical-based container,EQUIPMENT
+E_000947,container,container,EQUIPMENT
+E_000948,container of methanol,container of methanol,EQUIPMENT
+E_000949,container of water,container of water,EQUIPMENT
+E_000950,containers,containers,EQUIPMENT
+E_000951,Containers for stool specimens,containers for stool specimens,EQUIPMENT
+E_000952,Containers for the collection of urine,containers for the collection of urine,EQUIPMENT
+E_000953,Containers of infected material,containers of infected material,EQUIPMENT
+E_000954,containers without lids,containers without lids,EQUIPMENT
+E_000955,contaminated needles,contaminated needles,EQUIPMENT
+E_000956,control,control,EQUIPMENT
+E_000957,Control tube 13,control tube 13,EQUIPMENT
+E_000958,Control tube 14,control tube 14,EQUIPMENT
+E_000959,converter,converter,EQUIPMENT
+E_000960,cooling chamber,cooling chamber,EQUIPMENT
+E_000961,cooling column,cooling column,EQUIPMENT
+E_000962,cooling tube,cooling tube,EQUIPMENT
+E_000963,Copper or stainless steel alembics,copper or stainless steel alembics,EQUIPMENT
+E_000964,copper or stainless steel stills,copper or stainless steel stills,EQUIPMENT
+E_000965,cork borer,cork borer,EQUIPMENT
+E_000966,Corresponding objectives,corresponding objectives,EQUIPMENT
+E_000967,corresponding set of weights,corresponding set of weights,EQUIPMENT
+E_000968,cotton wool,cotton wool,EQUIPMENT
+E_000969,cotton wool ball,cotton wool ball,EQUIPMENT
+E_000970,cotton wool swab,cotton wool swab,EQUIPMENT
+E_000971,Cotton-wool plugs,cotton-wool plugs,EQUIPMENT
+E_000972,counting chamber,counting chamber,EQUIPMENT
+E_000973,coverslip,coverslip,EQUIPMENT
+E_000974,Coverslips,coverslips,EQUIPMENT
+E_000975,crates,crates,EQUIPMENT
+E_000976,cross-beam,cross-beam,EQUIPMENT
+E_000977,CSF,csf,EQUIPMENT
+E_000978,culture media,culture media,EQUIPMENT
+E_000979,cupboards,cupboards,EQUIPMENT
+E_000980,cuvette,cuvette,EQUIPMENT
+E_000981,cuvettes,cuvettes,EQUIPMENT
+E_000982,cylinder,cylinder,EQUIPMENT
+E_000983,damper,damper,EQUIPMENT
+E_000984,dark bottle,dark bottle,EQUIPMENT
+E_000985,dark-field condenser,dark-field condenser,EQUIPMENT
+E_000986,dark-field microscope,dark-field microscope,EQUIPMENT
+E_000987,dark-field microscopy,dark-field microscopy,EQUIPMENT
+E_000988,deionizer,deionizer,EQUIPMENT
+E_000989,desiccator,desiccator,EQUIPMENT
+E_000990,detection strip,detection strip,EQUIPMENT
+E_000991,dial,dial,EQUIPMENT
+E_000992,diamond pencil,diamond pencil,EQUIPMENT
+E_000993,diaphragm,diaphragm,EQUIPMENT
+E_000994,Different types of containers,different types of containers,EQUIPMENT
+E_000995,dipstick,dipstick,EQUIPMENT
+E_000996,Dipstick tests,dipstick tests,EQUIPMENT
+E_000997,dipsticks,dipsticks,EQUIPMENT
+E_000998,direct microscopy,direct microscopy,EQUIPMENT
+E_000999,dirty cuvettes,dirty cuvettes,EQUIPMENT
+E_001000,dirty filters,dirty filters,EQUIPMENT
+E_001001,Dirty glassware,dirty glassware,EQUIPMENT
+E_001002,dirty pipettes,dirty pipettes,EQUIPMENT
+E_001003,dish,dish,EQUIPMENT
+E_001004,dispensary balance,dispensary balance,EQUIPMENT
+E_001005,disposable plastic jars,disposable plastic jars,EQUIPMENT
+E_001006,disposable specimen container,disposable specimen container,EQUIPMENT
+E_001007,disposable tip,disposable tip,EQUIPMENT
+E_001008,disposable tips,disposable tips,EQUIPMENT
+E_001009,distributor,distributor,EQUIPMENT
+E_001010,drainage tap,drainage tap,EQUIPMENT
+E_001011,draining rack,draining rack,EQUIPMENT
+E_001012,drawers,drawers,EQUIPMENT
+E_001013,drop bottle,drop bottle,EQUIPMENT
+E_001014,dropper,dropper,EQUIPMENT
+E_001015,dropping pipette,dropping pipette,EQUIPMENT
+E_001016,Dropping pipettes,dropping pipettes,EQUIPMENT
+E_001017,drops of CSF,drops of csf,EQUIPMENT
+E_001018,drug containers,drug containers,EQUIPMENT
+E_001019,drum,drum,EQUIPMENT
+E_001020,dry microscope slide,dry microscope slide,EQUIPMENT
+E_001021,dry objective,dry objective,EQUIPMENT
+E_001022,dry-heat sterilizer,dry-heat sterilizer,EQUIPMENT
+E_001023,Dual-voltage equipment,dual-voltage equipment,EQUIPMENT
+E_001024,Dual-voltage instruments,dual-voltage instruments,EQUIPMENT
+E_001025,Each piece of electrical equipment,each piece of electrical equipment,EQUIPMENT
+E_001026,ejector mechanism,ejector mechanism,EQUIPMENT
+E_001027,electric centrifuge,electric centrifuge,EQUIPMENT
+E_001028,Electric centrifuges,electric centrifuges,EQUIPMENT
+E_001029,electric element,electric element,EQUIPMENT
+E_001030,electric fan,electric fan,EQUIPMENT
+E_001031,electric lamp,electric lamp,EQUIPMENT
+E_001032,electrical equipment,electrical equipment,EQUIPMENT
+E_001033,electricity supply,electricity supply,EQUIPMENT
+E_001034,electronic counter system,electronic counter system,EQUIPMENT
+E_001035,ELISA,elisa,EQUIPMENT
+E_001036,empty bottles,empty bottles,EQUIPMENT
+E_001037,empty tins,empty tins,EQUIPMENT
+E_001038,Epithelial casts,epithelial casts,EQUIPMENT
+E_001039,Equipment and supplies,equipment and supplies,EQUIPMENT
+E_001040,Erlenmeyer flask,erlenmeyer flask,EQUIPMENT
+E_001041,Erlenmeyer flasks,erlenmeyer flasks,EQUIPMENT
+E_001042,examination request forms,examination request forms,EQUIPMENT
+E_001043,extraction system,extraction system,EQUIPMENT
+E_001044,eye shields,eye shields,EQUIPMENT
+E_001045,eyedrop bottle,eyedrop bottle,EQUIPMENT
+E_001046,eyepiece,eyepiece,EQUIPMENT
+E_001047,eyepieces,eyepieces,EQUIPMENT
+E_001048,facilities,facilities,EQUIPMENT
+E_001049,fan,fan,EQUIPMENT
+E_001050,faulty equipment,faulty equipment,EQUIPMENT
+E_001051,Field stain A,field stain a,EQUIPMENT
+E_001052,Field stain B,field stain b,EQUIPMENT
+E_001053,Fig.,fig,EQUIPMENT
+E_001054,filing drawer,filing drawer,EQUIPMENT
+E_001055,film,film,EQUIPMENT
+E_001056,filter,filter,EQUIPMENT
+E_001057,filter holder,filter holder,EQUIPMENT
+E_001058,filter reservoir,filter reservoir,EQUIPMENT
+E_001059,filter-paper,filter-paper,EQUIPMENT
+E_001060,Filter-paper pad,filter-paper pad,EQUIPMENT
+E_001061,filtered haematoxylin solution,filtered haematoxylin solution,EQUIPMENT
+E_001062,Filters,filters,EQUIPMENT
+E_001063,fine adjustment screw,fine adjustment screw,EQUIPMENT
+E_001064,firm level bench,firm level bench,EQUIPMENT
+E_001065,first card,first card,EQUIPMENT
+E_001066,first centrifuge tube,first centrifuge tube,EQUIPMENT
+E_001067,first container,first container,EQUIPMENT
+E_001068,first seven tubes,first seven tubes,EQUIPMENT
+E_001069,first slide,first slide,EQUIPMENT
+E_001070,first tube,first tube,EQUIPMENT
+E_001071,first-aid box,first-aid box,EQUIPMENT
+E_001072,fixed or variable volume dispenser,fixed or variable volume dispenser,EQUIPMENT
+E_001073,flaming burner,flaming burner,EQUIPMENT
+E_001074,flask,flask,EQUIPMENT
+E_001075,flask stopper,flask stopper,EQUIPMENT
+E_001076,flasks,flasks,EQUIPMENT
+E_001077,flat bottle,flat bottle,EQUIPMENT
+E_001078,Flat bottles,flat bottles,EQUIPMENT
+E_001079,Flat-bottomed jar,flat-bottomed jar,EQUIPMENT
+E_001080,fluorescent microscope,fluorescent microscope,EQUIPMENT
+E_001081,focusing collar,focusing collar,EQUIPMENT
+E_001082,folded gauze pad,folded gauze pad,EQUIPMENT
+E_001083,forceps,forceps,EQUIPMENT
+E_001084,Fuchs–Rosenthal counting chamber,fuchs–rosenthal counting chamber,EQUIPMENT
+E_001085,Fuchs–Rosenthal ruled counting chamber,fuchs–rosenthal ruled counting chamber,EQUIPMENT
+E_001086,fully or semi-automated cell counter,fully or semi-automated cell counter,EQUIPMENT
+E_001087,funnel,funnel,EQUIPMENT
+E_001088,fuse box,fuse box,EQUIPMENT
+E_001089,G Applicators,g applicators,EQUIPMENT
+E_001090,G Centrifuge,g centrifuge,EQUIPMENT
+E_001091,G Centrifuge tubes,g centrifuge tubes,EQUIPMENT
+E_001092,G File,g file,EQUIPMENT
+E_001093,G Forceps,g forceps,EQUIPMENT
+E_001094,G Gauze pads,g gauze pads,EQUIPMENT
+E_001095,G Glass stirring rods,g glass stirring rods,EQUIPMENT
+E_001096,G Inoculating loop,g inoculating loop,EQUIPMENT
+E_001097,G Jar,g jar,EQUIPMENT
+E_001098,G Mechanical rotator,g mechanical rotator,EQUIPMENT
+E_001099,G Rubber bulb for microhaematocrit tubes,g rubber bulb for microhaematocrit tubes,EQUIPMENT
+E_001100,G Scale reader,g scale reader,EQUIPMENT
+E_001101,G Screen,g screen,EQUIPMENT
+E_001102,G Slide rack,g slide rack,EQUIPMENT
+E_001103,G Template,g template,EQUIPMENT
+E_001104,G Test-tube rack,g test-tube rack,EQUIPMENT
+E_001105,G Test-tubes,g test-tubes,EQUIPMENT
+E_001106,G Timer,g timer,EQUIPMENT
+E_001107,G Westergren ESR tube,g westergren esr tube,EQUIPMENT
+E_001108,gas,gas,EQUIPMENT
+E_001109,gas bottle,gas bottle,EQUIPMENT
+E_001110,gas burners,gas burners,EQUIPMENT
+E_001111,gauze,gauze,EQUIPMENT
+E_001112,gauze pad,gauze pad,EQUIPMENT
+E_001113,gauze swab,gauze swab,EQUIPMENT
+E_001114,gels,gels,EQUIPMENT
+E_001115,generators,generator,EQUIPMENT
+E_001116,glass beads,glass beads,EQUIPMENT
+E_001117,glass bottle,glass bottle,EQUIPMENT
+E_001118,glass case,glass case,EQUIPMENT
+E_001119,glass containers,glass containers,EQUIPMENT
+E_001120,glass cover,glass cover,EQUIPMENT
+E_001121,glass cutter,glass cutter,EQUIPMENT
+E_001122,glass jar,glass jar,EQUIPMENT
+E_001123,glass jars and bottles,glass jars and bottles,EQUIPMENT
+E_001124,glass or plastic container,glass or plastic container,EQUIPMENT
+E_001125,glass or plastic containers,glass or plastic containers,EQUIPMENT
+E_001126,glass plate,glass plate,EQUIPMENT
+E_001127,glass plates,glass plates,EQUIPMENT
+E_001128,glass rod,glass rod,EQUIPMENT
+E_001129,Glass rods,glass rods,EQUIPMENT
+E_001130,Glass screw-top jars,glass screw-top jars,EQUIPMENT
+E_001131,glass slide,glass slide,EQUIPMENT
+E_001132,Glass spreader,glass spreader,EQUIPMENT
+E_001133,glass still,glass still,EQUIPMENT
+E_001134,Glass stills,glass stills,EQUIPMENT
+E_001135,glass stopcock,glass stopcock,EQUIPMENT
+E_001136,glass test-tube,glass test-tube,EQUIPMENT
+E_001137,Glass test-tubes,glass test-tubes,EQUIPMENT
+E_001138,glass tube,glass tube,EQUIPMENT
+E_001139,glass tubing,glass tubing,EQUIPMENT
+E_001140,glass-stoppered bottle,glass-stoppered bottle,EQUIPMENT
+E_001141,glassware,glassware,EQUIPMENT
+E_001142,glassware shelf,glassware shelf,EQUIPMENT
+E_001143,gloves,gloves,EQUIPMENT
+E_001144,glycerol-soaked cellophane strip,glycerol-soaked cellophane strip,EQUIPMENT
+E_001145,graduated glassware,graduated glassware,EQUIPMENT
+E_001146,graduated pipette,graduated pipette,EQUIPMENT
+E_001147,Graduated pipettes,graduated pipettes,EQUIPMENT
+E_001148,graduated tube,graduated tube,EQUIPMENT
+E_001149,Gram-stained smear,gram-stained smear,EQUIPMENT
+E_001150,Granular casts,granular casts,EQUIPMENT
+E_001151,grease pencil,grease pencil,EQUIPMENT
+E_001152,greasy slide,greasy slide,EQUIPMENT
+E_001153,ground glass stoppers,ground glass stoppers,EQUIPMENT
+E_001154,haemoglobinometer,haemoglobinometer,EQUIPMENT
+E_001155,hand glass tubing,hand glass tubing,EQUIPMENT
+E_001156,Hand tally counter,hand tally counter,EQUIPMENT
+E_001157,Hand tally counter or bead counter,hand tally counter or bead counter,EQUIPMENT
+E_001158,hand tally counters,hand tally counters,EQUIPMENT
+E_001159,hand-operated centrifuge,hand-operated centrifuge,EQUIPMENT
+E_001160,hand-operated centrifuges,hand-operated centrifuges,EQUIPMENT
+E_001161,handle,handle,EQUIPMENT
+E_001162,health centre,health centre,EQUIPMENT
+E_001163,heat-resistant glass pipettes,heat-resistant glass pipettes,EQUIPMENT
+E_001164,heated tubing,heated tubing,EQUIPMENT
+E_001165,heating element,heating element,EQUIPMENT
+E_001166,Heparinized microhaematocrit tubes,heparinized microhaematocrit tubes,EQUIPMENT
+E_001167,Heparinized tubes,heparinized tubes,EQUIPMENT
+E_001168,high shelf,high shelf,EQUIPMENT
+E_001169,high-power objective,high-power objective,EQUIPMENT
+E_001170,holder,holder,EQUIPMENT
+E_001171,Hole-punch,hole-punch,EQUIPMENT
+E_001172,hot glassware,hot glassware,EQUIPMENT
+E_001173,hot-air oven,hot-air oven,EQUIPMENT
+E_001174,hub cavity,hub cavity,EQUIPMENT
+E_001175,hyaline casts,hyaline casts,EQUIPMENT
+E_001176,improved Neubauer chamber,improved neubauer chamber,EQUIPMENT
+E_001177,Improved Neubauer counting chamber,improved neubauer counting chamber,EQUIPMENT
+E_001178,incinerator,incinerator,EQUIPMENT
+E_001179,incubator,incubator,EQUIPMENT
+E_001180,Incubator or water-bath,incubator or water-bath,EQUIPMENT
+E_001181,Incubators,incubators,EQUIPMENT
+E_001182,individual wells,individual wells,EQUIPMENT
+E_001183,infant tube,infant tube,EQUIPMENT
+E_001184,inoculating loop,inoculating loop,EQUIPMENT
+E_001185,Inverters,inverter,EQUIPMENT
+E_001186,iodine mount,iodine mount,EQUIPMENT
+E_001187,iodine mounts,iodine mounts,EQUIPMENT
+E_001188,iris diaphragm,iris diaphragm,EQUIPMENT
+E_001189,jar,jar,EQUIPMENT
+E_001190,jar of clean water,jar of clean water,EQUIPMENT
+E_001191,jars,jars,EQUIPMENT
+E_001192,jars and containers,jars and containers,EQUIPMENT
+E_001193,jars containing stools,jars containing stools,EQUIPMENT
+E_001194,kerosene heater,kerosene heater,EQUIPMENT
+E_001195,kit,kit,EQUIPMENT
+E_001196,kits,kits,EQUIPMENT
+E_001197,knife,knife,EQUIPMENT
+E_001198,lamp,lamp,EQUIPMENT
+E_001199,lancet,lancet,EQUIPMENT
+E_001200,large beaker,large beaker,EQUIPMENT
+E_001201,large beaker of water,large beaker of water,EQUIPMENT
+E_001202,large compartment,large compartment,EQUIPMENT
+E_001203,large glass test-tubes,large glass test-tubes,EQUIPMENT
+E_001204,large pan,large pan,EQUIPMENT
+E_001205,large pipettes,large pipettes,EQUIPMENT
+E_001206,large test-tube,large test-tube,EQUIPMENT
+E_001207,large test-tubes,large test-tubes,EQUIPMENT
+E_001208,large tubes,large tubes,EQUIPMENT
+E_001209,"large, plastic measuring cylinder","large, plastic measuring cylinder",EQUIPMENT
+E_001210,lavatory,lavatory,EQUIPMENT
+E_001211,lens,lens,EQUIPMENT
+E_001212,lenses,lenses,EQUIPMENT
+E_001213,lid,lid,EQUIPMENT
+E_001214,lid clamps,lid clamps,EQUIPMENT
+E_001215,light microscope,light microscope,EQUIPMENT
+E_001216,light plastic box,light plastic box,EQUIPMENT
+E_001217,lighter tube,lighter tube,EQUIPMENT
+E_001218,local generator,local generator,EQUIPMENT
+E_001219,locked cupboard,locked cupboard,EQUIPMENT
+E_001220,Loeffler,loeffler,EQUIPMENT
+E_001221,long capillary tube,long capillary tube,EQUIPMENT
+E_001222,long cartridge,long cartridge,EQUIPMENT
+E_001223,Long fine capillary Pasteur pipette,long fine capillary pasteur pipette,EQUIPMENT
+E_001224,Long fine capillary Pasteur pipettes,long fine capillary pasteur pipettes,EQUIPMENT
+E_001225,long graduated tube,long graduated tube,EQUIPMENT
+E_001226,loop,loop,EQUIPMENT
+E_001227,low-power objective,low-power objective,EQUIPMENT
+E_001228,lysed blood dipstick,lysed blood dipstick,EQUIPMENT
+E_001229,machine,machine,EQUIPMENT
+E_001230,macro scale graduated tube,macro scale graduated tube,EQUIPMENT
+E_001231,main valves,main valves,EQUIPMENT
+E_001232,manually operated type,manually operated type,EQUIPMENT
+E_001233,manufacturer,manufacturer,EQUIPMENT
+E_001234,materials,materials,EQUIPMENT
+E_001235,measuring cylinder,measuring cylinder,EQUIPMENT
+E_001236,Measuring cylinders,measuring cylinders,EQUIPMENT
+E_001237,measuring equipment,measuring equipment,EQUIPMENT
+E_001238,mechanical rotator,mechanical rotator,EQUIPMENT
+E_001239,mechanical stage,mechanical stage,EQUIPMENT
+E_001240,mechanical stage controls,mechanical stage controls,EQUIPMENT
+E_001241,medical-grade cotton wool,medical-grade cotton wool,EQUIPMENT
+E_001242,membrane filter,membrane filter,EQUIPMENT
+E_001243,Metal articles,metal articles,EQUIPMENT
+E_001244,metal bowls,metal bowls,EQUIPMENT
+E_001245,metal boxes,metal boxes,EQUIPMENT
+E_001246,metal drum,metal drum,EQUIPMENT
+E_001247,metal or plastic bucket,metal or plastic bucket,EQUIPMENT
+E_001248,Metal test-tube rack,metal test-tube rack,EQUIPMENT
+E_001249,metal tray,metal tray,EQUIPMENT
+E_001250,metal trays,metal trays,EQUIPMENT
+E_001251,metal tube,metal tube,EQUIPMENT
+E_001252,meter,meter,EQUIPMENT
+E_001253,micro scale,micro scale,EQUIPMENT
+E_001254,microhaematocrit capillary tube,microhaematocrit capillary tube,EQUIPMENT
+E_001255,microhaematocrit centrifuge,microhaematocrit centrifuge,EQUIPMENT
+E_001256,microhaematocrit head attachment,microhaematocrit head attachment,EQUIPMENT
+E_001257,microhaematocrit tube,microhaematocrit tube,EQUIPMENT
+E_001258,microhaematocrit tube holder,microhaematocrit tube holder,EQUIPMENT
+E_001259,Microhaematocrit tube holders,microhaematocrit tube holders,EQUIPMENT
+E_001260,micrometer,micrometer,EQUIPMENT
+E_001261,micrometer disc,micrometer disc,EQUIPMENT
+E_001262,micrometer scale slide,micrometer scale slide,EQUIPMENT
+E_001263,micropipette,micropipette,EQUIPMENT
+E_001264,Micropipettes,micropipettes,EQUIPMENT
+E_001265,microscope,microscope,EQUIPMENT
+E_001266,microscope lamp,microscope lamp,EQUIPMENT
+E_001267,microscope light source,microscope light source,EQUIPMENT
+E_001268,Microscope or magnifying glass,microscope or magnifying glass,EQUIPMENT
+E_001269,microscope slide,microscope slide,EQUIPMENT
+E_001270,Microscope slides,microscope slides,EQUIPMENT
+E_001271,microscope stage,microscope stage,EQUIPMENT
+E_001272,Microscope with dark-field attachment,microscope with dark-field attachment,EQUIPMENT
+E_001273,microscope-slide boxes,microscope-slide boxes,EQUIPMENT
+E_001274,Microscopes1,microscopes1,EQUIPMENT
+E_001275,microscopy,microscopy,EQUIPMENT
+E_001276,microtitre plate,microtitre plate,EQUIPMENT
+E_001277,microtitre plates,microtitre plates,EQUIPMENT
+E_001278,mirror,mirror,EQUIPMENT
+E_001279,Modern microscopes,modern microscopes,EQUIPMENT
+E_001280,modern objectives,modern objectives,EQUIPMENT
+E_001281,Mohr clip,mohr clip,EQUIPMENT
+E_001282,monthly report forms,monthly report forms,EQUIPMENT
+E_001283,mortar,mortar,EQUIPMENT
+E_001284,needle,needle,EQUIPMENT
+E_001285,needle and syringe,needle and syringe,EQUIPMENT
+E_001286,needles,needles,EQUIPMENT
+E_001287,negative control,negative control,EQUIPMENT
+E_001288,Negative control tube,negative control tube,EQUIPMENT
+E_001289,Neubauer chamber,neubauer chamber,EQUIPMENT
+E_001290,Neubauer counting chamber,neubauer counting chamber,EQUIPMENT
+E_001291,Neubauer ruled chamber,neubauer ruled chamber,EQUIPMENT
+E_001292,new glassware,new glassware,EQUIPMENT
+E_001293,new piece of equipment,new piece of equipment,EQUIPMENT
+E_001294,new slides,new slides,EQUIPMENT
+E_001295,newspaper,newspaper,EQUIPMENT
+E_001296,nitrocellulose strip,nitrocellulose strip,EQUIPMENT
+E_001297,Ni–Cd battery,ni–cd battery,EQUIPMENT
+E_001298,Non-disposable containers,non-disposable containers,EQUIPMENT
+E_001299,non-disposable specimen containers,non-disposable specimen containers,EQUIPMENT
+E_001300,numbered stand,numbered stand,EQUIPMENT
+E_001301,nylon coffee strainers,nylon coffee strainers,EQUIPMENT
+E_001302,nylon thread,nylon thread,EQUIPMENT
+E_001303,objective,objective,EQUIPMENT
+E_001304,objectives,objectives,EQUIPMENT
+E_001305,ocular,ocular,EQUIPMENT
+E_001306,ocular micrometer,ocular micrometer,EQUIPMENT
+E_001307,ocular micrometer scale,ocular micrometer scale,EQUIPMENT
+E_001308,oil stove,oil stove,EQUIPMENT
+E_001309,Oil-immersion objective,oil-immersion objective,EQUIPMENT
+E_001310,oily slides,oily slides,EQUIPMENT
+E_001311,open container,open container,EQUIPMENT
+E_001312,open two-pan balance,open two-pan balance,EQUIPMENT
+E_001313,Optical instruments,optical instruments,EQUIPMENT
+E_001314,optical parts,optical parts,EQUIPMENT
+E_001315,orange sticks,orange sticks,EQUIPMENT
+E_001316,Ordinary calibrated dropping pipettes,ordinary calibrated dropping pipettes,EQUIPMENT
+E_001317,Ordinary glass,ordinary glass,EQUIPMENT
+E_001318,ordinary pipettes,ordinary pipettes,EQUIPMENT
+E_001319,outflow valve,outflow valve,EQUIPMENT
+E_001320,outlet valve,outlet valve,EQUIPMENT
+E_001321,outpatient’s table,outpatient’s table,EQUIPMENT
+E_001322,oven,oven,EQUIPMENT
+E_001323,P tubes,p tubes,EQUIPMENT
+E_001324,pad of gauze,pad of gauze,EQUIPMENT
+E_001325,pan,pan,EQUIPMENT
+E_001326,panel,panel,EQUIPMENT
+E_001327,pans,pans,EQUIPMENT
+E_001328,paper,paper,EQUIPMENT
+E_001329,Pasteur pipette,pasteur pipette,EQUIPMENT
+E_001330,Pasteur pipette or capillary tube,pasteur pipette or capillary tube,EQUIPMENT
+E_001331,Pasteur pipettes,pasteur pipettes,EQUIPMENT
+E_001332,patient tube,patient tube,EQUIPMENT
+E_001333,pellets,pellets,EQUIPMENT
+E_001334,penicillin bottles,penicillin bottles,EQUIPMENT
+E_001335,perforated bucket,perforated bucket,EQUIPMENT
+E_001336,pestle and mortar,pestle and mortar,EQUIPMENT
+E_001337,Petri,petri,EQUIPMENT
+E_001338,Petri dish,petri dish,EQUIPMENT
+E_001339,Petri dishes,petri dishes,EQUIPMENT
+E_001340,photoelectric colorimeter,photoelectric colorimeter,EQUIPMENT
+E_001341,Photometer or colorimeter,photometer or colorimeter,EQUIPMENT
+E_001342,piece of dark paper,piece of dark paper,EQUIPMENT
+E_001343,piece of glassware,piece of glassware,EQUIPMENT
+E_001344,pill bottle,pill bottle,EQUIPMENT
+E_001345,pipette,pipette,EQUIPMENT
+E_001346,pipettes,pipettes,EQUIPMENT
+E_001347,pipetting and dispensing devices,pipetting and dispensing devices,EQUIPMENT
+E_001348,piston,piston,EQUIPMENT
+E_001349,plastic bag,plastic bag,EQUIPMENT
+E_001350,plastic bottles,plastic bottles,EQUIPMENT
+E_001351,Plastic bulb pipettes,plastic bulb pipettes,EQUIPMENT
+E_001352,plastic dropper,plastic dropper,EQUIPMENT
+E_001353,plastic dropper bottle,plastic dropper bottle,EQUIPMENT
+E_001354,plastic filter,plastic filter,EQUIPMENT
+E_001355,plastic ones,plastic ones,EQUIPMENT
+E_001356,plastic pots,plastic pots,EQUIPMENT
+E_001357,plastic strainer,plastic strainer,EQUIPMENT
+E_001358,Plastic syringe,plastic syringe,EQUIPMENT
+E_001359,plastic weigh boat,plastic weigh boat,EQUIPMENT
+E_001360,plastic-capped bottle,plastic-capped bottle,EQUIPMENT
+E_001361,plate,plate,EQUIPMENT
+E_001362,plates,plates,EQUIPMENT
+E_001363,plugs,plugs,EQUIPMENT
+E_001364,plunger,plunger,EQUIPMENT
+E_001365,polyethylene bottle,polyethylene bottle,EQUIPMENT
+E_001366,porcelain dish,porcelain dish,EQUIPMENT
+E_001367,positive control,positive control,EQUIPMENT
+E_001368,Positive control tube,positive control tube,EQUIPMENT
+E_001369,preparation,preparation,EQUIPMENT
+E_001370,preservative,preservative,EQUIPMENT
+E_001371,pressure cooker,pressure cooker,EQUIPMENT
+E_001372,Pressure cooker with revolving valve,pressure cooker with revolving valve,EQUIPMENT
+E_001373,pressure gauge,pressure gauge,EQUIPMENT
+E_001374,protective clothing,protective clothing,EQUIPMENT
+E_001375,protein dipstick,protein dipstick,EQUIPMENT
+E_001376,pump,pump,EQUIPMENT
+E_001377,rack,rack,EQUIPMENT
+E_001378,Rack for drying slides,rack for drying slides,EQUIPMENT
+E_001379,rack provided,rack provided,EQUIPMENT
+E_001380,rapid plasma,rapid plasma,EQUIPMENT
+E_001381,razor,razor,EQUIPMENT
+E_001382,razor blade,razor blade,EQUIPMENT
+E_001383,Reaction stand,reaction stand,EQUIPMENT
+E_001384,reader,reader,EQUIPMENT
+E_001385,reagent refrigerator,reagent refrigerator,EQUIPMENT
+E_001386,reagent shelf,reagent shelf,EQUIPMENT
+E_001387,receptacle,receptacle,EQUIPMENT
+E_001388,receptacles,receptacles,EQUIPMENT
+E_001389,recipient container,recipient container,EQUIPMENT
+E_001390,reduced condenser aperture,reduced condenser aperture,EQUIPMENT
+E_001391,reference tube,reference tube,EQUIPMENT
+E_001392,refrigerator,refrigerator,EQUIPMENT
+E_001393,register,register,EQUIPMENT
+E_001394,reservoir,reservoir,EQUIPMENT
+E_001395,resin,resin,EQUIPMENT
+E_001396,restopper,restopper,EQUIPMENT
+E_001397,reusable needles,reusable needles,EQUIPMENT
+E_001398,Reusable syringes,reusable syringes,EQUIPMENT
+E_001399,reusable syringes and needles,reusable syringes and needles,EQUIPMENT
+E_001400,revolution counter,revolution counter,EQUIPMENT
+E_001401,right-hand pan,right-hand pan,EQUIPMENT
+E_001402,rods,rods,EQUIPMENT
+E_001403,rotator,rotator,EQUIPMENT
+E_001404,Round bottles,round bottles,EQUIPMENT
+E_001405,rubber bulb,rubber bulb,EQUIPMENT
+E_001406,rubber cushions,rubber cushions,EQUIPMENT
+E_001407,rubber gloves,rubber gloves,EQUIPMENT
+E_001408,rubber safety bulb,rubber safety bulb,EQUIPMENT
+E_001409,rubber stamps,rubber stamps,EQUIPMENT
+E_001410,rubber teat,rubber teat,EQUIPMENT
+E_001411,Ruled counting chamber,ruled counting chamber,EQUIPMENT
+E_001412,ruler,ruler,EQUIPMENT
+E_001413,safety bulb,safety bulb,EQUIPMENT
+E_001414,safety cabinet,safety cabinet,EQUIPMENT
+E_001415,safety valve,safety valve,EQUIPMENT
+E_001416,Sahli,sahli,EQUIPMENT
+E_001417,Sahli pipette,sahli pipette,EQUIPMENT
+E_001418,saline mount,saline mount,EQUIPMENT
+E_001419,saline mounts,saline mounts,EQUIPMENT
+E_001420,saline preparation,saline preparation,EQUIPMENT
+E_001421,sand filter,sand filter,EQUIPMENT
+E_001422,saucepan,saucepan,EQUIPMENT
+E_001423,scale,scale,EQUIPMENT
+E_001424,scale reader,scale reader,EQUIPMENT
+E_001425,scales,scales,EQUIPMENT
+E_001426,scalpel,scalpel,EQUIPMENT
+E_001427,scalpel blade,scalpel blade,EQUIPMENT
+E_001428,scalpel or razor blade,scalpel or razor blade,EQUIPMENT
+E_001429,scalpels,scalpels,EQUIPMENT
+E_001430,screen,screen,EQUIPMENT
+E_001431,screw cap,screw cap,EQUIPMENT
+E_001432,screw-cap,screw-cap,EQUIPMENT
+E_001433,screw-cap or glass-stoppered bottle,screw-cap or glass-stoppered bottle,EQUIPMENT
+E_001434,screw-capped tube,screw-capped tube,EQUIPMENT
+E_001435,screw-top container,screw-top container,EQUIPMENT
+E_001436,sealed bottle,sealed bottle,EQUIPMENT
+E_001437,second card,second card,EQUIPMENT
+E_001438,second centrifuge tube,second centrifuge tube,EQUIPMENT
+E_001439,second container,second container,EQUIPMENT
+E_001440,second microscope,second microscope,EQUIPMENT
+E_001441,second slide,second slide,EQUIPMENT
+E_001442,second tube,second tube,EQUIPMENT
+E_001443,separate weights,separate weights,EQUIPMENT
+E_001444,septic tank,septic tank,EQUIPMENT
+E_001445,Serological pipette,serological pipette,EQUIPMENT
+E_001446,Serological pipettes,serological pipettes,EQUIPMENT
+E_001447,set of weights,set of weights,EQUIPMENT
+E_001448,Shallow dish,shallow dish,EQUIPMENT
+E_001449,sharps,sharps,EQUIPMENT
+E_001450,side arm,side arm,EQUIPMENT
+E_001451,Siliconized glass plates,siliconized glass plates,EQUIPMENT
+E_001452,sink,sink,EQUIPMENT
+E_001453,sintered glass plate,sintered glass plate,EQUIPMENT
+E_001454,skin-cutting and invasive instruments,skin-cutting and invasive instruments,EQUIPMENT
+E_001455,slide,slide,EQUIPMENT
+E_001456,Slide forceps,slide forceps,EQUIPMENT
+E_001457,slide preparation,slide preparation,EQUIPMENT
+E_001458,slide rack,slide rack,EQUIPMENT
+E_001459,Slide racks,slide racks,EQUIPMENT
+E_001460,slide well,slide well,EQUIPMENT
+E_001461,slides,slides,EQUIPMENT
+E_001462,slides and tubes,slides and tubes,EQUIPMENT
+E_001463,small autoclave,small autoclave,EQUIPMENT
+E_001464,Small battery-operated centrifuges,small battery-operated centrifuges,EQUIPMENT
+E_001465,small beaker,small beaker,EQUIPMENT
+E_001466,small bottle,small bottle,EQUIPMENT
+E_001467,small caps,small caps,EQUIPMENT
+E_001468,small compartment,small compartment,EQUIPMENT
+E_001469,small container,small container,EQUIPMENT
+E_001470,small containers,small containers,EQUIPMENT
+E_001471,small cotton wool swab,small cotton wool swab,EQUIPMENT
+E_001472,small flask,small flask,EQUIPMENT
+E_001473,small glass tube,small glass tube,EQUIPMENT
+E_001474,small glass tubes,small glass tubes,EQUIPMENT
+E_001475,small graduated cylinder,small graduated cylinder,EQUIPMENT
+E_001476,small measuring cylinders,small measuring cylinders,EQUIPMENT
+E_001477,small pipettes,small pipettes,EQUIPMENT
+E_001478,small test-tube,small test-tube,EQUIPMENT
+E_001479,small test-tubes,small test-tubes,EQUIPMENT
+E_001480,small tube,small tube,EQUIPMENT
+E_001481,small tubes,small tubes,EQUIPMENT
+E_001482,smear,smear,EQUIPMENT
+E_001483,soft brush,soft brush,EQUIPMENT
+E_001484,solar energy supply system,solar energy supply system,EQUIPMENT
+E_001485,Solar panels,solar panels,EQUIPMENT
+E_001486,solar stills,solar stills,EQUIPMENT
+E_001487,solid-phase ELISA,solid-phase elisa,EQUIPMENT
+E_001488,solid-phase system,solid-phase system,EQUIPMENT
+E_001489,Some demineralizers,some demineralizers,EQUIPMENT
+E_001490,spatula,spatula,EQUIPMENT
+E_001491,special condenser,special condenser,EQUIPMENT
+E_001492,Special graduated tubes,special graduated tubes,EQUIPMENT
+E_001493,special holder,special holder,EQUIPMENT
+E_001494,special scalpel,special scalpel,EQUIPMENT
+E_001495,specimen clamp,specimen clamp,EQUIPMENT
+E_001496,specimen container,specimen container,EQUIPMENT
+E_001497,Specimen containers,specimen containers,EQUIPMENT
+E_001498,Specimen tubes,specimen tubes,EQUIPMENT
+E_001499,spectrophotometer,spectrophotometer,EQUIPMENT
+E_001500,Spectrophotometer (reader),spectrophotometer (reader,EQUIPMENT
+E_001501,spectrophotometer test-tube or cuvette,spectrophotometer test-tube or cuvette,EQUIPMENT
+E_001502,Spectrophotometer1,spectrophotometer1,EQUIPMENT
+E_001503,spectrophotometers,spectrophotometers,EQUIPMENT
+E_001504,spindle,spindle,EQUIPMENT
+E_001505,spirit lamp,spirit lamp,EQUIPMENT
+E_001506,Spirit lamp or Bunsen burner,spirit lamp or bunsen burner,EQUIPMENT
+E_001507,spirit level,spirit level,EQUIPMENT
+E_001508,spoon,spoon,EQUIPMENT
+E_001509,spoon handle,spoon handle,EQUIPMENT
+E_001510,spreader,spreader,EQUIPMENT
+E_001511,sputum pot,sputum pot,EQUIPMENT
+E_001512,sputum pots,sputum pots,EQUIPMENT
+E_001513,Sputum pots and tubes,sputum pots and tubes,EQUIPMENT
+E_001514,sputum smears,sputum smears,EQUIPMENT
+E_001515,stage,stage,EQUIPMENT
+E_001516,stage micrometer,stage micrometer,EQUIPMENT
+E_001517,stain,stain,EQUIPMENT
+E_001518,stain solution,stain solution,EQUIPMENT
+E_001519,stained smears,stained smears,EQUIPMENT
+E_001520,staining bottle,staining bottle,EQUIPMENT
+E_001521,staining box,staining box,EQUIPMENT
+E_001522,staining surface,staining surface,EQUIPMENT
+E_001523,staining tank,staining tank,EQUIPMENT
+E_001524,staining trough,staining trough,EQUIPMENT
+E_001525,Staining troughs,staining troughs,EQUIPMENT
+E_001526,stand,stand,EQUIPMENT
+E_001527,standard chart,standard chart,EQUIPMENT
+E_001528,standard control chart,standard control chart,EQUIPMENT
+E_001529,standard curve,standard curve,EQUIPMENT
+E_001530,standard filter,standard filter,EQUIPMENT
+E_001531,standard tubes,standard tubes,EQUIPMENT
+E_001532,stapler,stapler,EQUIPMENT
+E_001533,stem,stem,EQUIPMENT
+E_001534,Sterile blood lancet,sterile blood lancet,EQUIPMENT
+E_001535,sterile centrifuge tube,sterile centrifuge tube,EQUIPMENT
+E_001536,sterile cotton wool swab,sterile cotton wool swab,EQUIPMENT
+E_001537,sterile cotton wool swabs,sterile cotton wool swabs,EQUIPMENT
+E_001538,sterile equipment,sterile equipment,EQUIPMENT
+E_001539,sterile flask,sterile flask,EQUIPMENT
+E_001540,sterile lancet,sterile lancet,EQUIPMENT
+E_001541,sterile needle,sterile needle,EQUIPMENT
+E_001542,sterile scalpel,sterile scalpel,EQUIPMENT
+E_001543,sterile test-tube,sterile test-tube,EQUIPMENT
+E_001544,sterile tube,sterile tube,EQUIPMENT
+E_001545,stick,stick,EQUIPMENT
+E_001546,still,still,EQUIPMENT
+E_001547,stirring rod,stirring rod,EQUIPMENT
+E_001548,Stirring rods,stirring rods,EQUIPMENT
+E_001549,stirrups,stirrups,EQUIPMENT
+E_001550,stock solutions,stock solutions,EQUIPMENT
+E_001551,stool or sputum boxes,stool or sputum boxes,EQUIPMENT
+E_001552,stopcock,stopcock,EQUIPMENT
+E_001553,stopper,stopper,EQUIPMENT
+E_001554,stoppered flask,stoppered flask,EQUIPMENT
+E_001555,Stopwatch,stopwatch,EQUIPMENT
+E_001556,strip of filter-paper,strip of filter-paper,EQUIPMENT
+E_001557,Stuart transport medium,stuart transport medium,EQUIPMENT
+E_001558,stylet,stylet,EQUIPMENT
+E_001559,Such bottles,such bottles,EQUIPMENT
+E_001560,such instruments,such instruments,EQUIPMENT
+E_001561,supernatant safety cabinet,supernatant safety cabinet,EQUIPMENT
+E_001562,supports,supports,EQUIPMENT
+E_001563,suspended pans,suspended pans,EQUIPMENT
+E_001564,swab,swab,EQUIPMENT
+E_001565,Swinnex-type filter holder,swinnex-type filter holder,EQUIPMENT
+E_001566,syringe,syringe,EQUIPMENT
+E_001567,syringes,syringes,EQUIPMENT
+E_001568,table used for taking blood,table used for taking blood,EQUIPMENT
+E_001569,tap,tap,EQUIPMENT
+E_001570,temperature gauge,temperature gauge,EQUIPMENT
+E_001571,template,template,EQUIPMENT
+E_001572,test and control sera,test and control sera,EQUIPMENT
+E_001573,test blank,test blank,EQUIPMENT
+E_001574,test card,test card,EQUIPMENT
+E_001575,test cards,test cards,EQUIPMENT
+E_001576,test kit,test kit,EQUIPMENT
+E_001577,Test plate,test plate,EQUIPMENT
+E_001578,test plates,test plates,EQUIPMENT
+E_001579,test strip,test strip,EQUIPMENT
+E_001580,test-tube,test-tube,EQUIPMENT
+E_001581,test-tube 4,test-tube 4,EQUIPMENT
+E_001582,test-tube B,test-tube b,EQUIPMENT
+E_001583,test-tube N,test-tube n,EQUIPMENT
+E_001584,test-tube or bottle,test-tube or bottle,EQUIPMENT
+E_001585,Test-tube rack,test-tube rack,EQUIPMENT
+E_001586,Test-tube racks,test-tube racks,EQUIPMENT
+E_001587,Test-tubes,test-tubes,EQUIPMENT
+E_001588,test-tubes C1 and C2,test-tubes c1 and c2,EQUIPMENT
+E_001589,The above items,the above items,EQUIPMENT
+E_001590,The albumin working standard,the albumin working standard,EQUIPMENT
+E_001591,The apparatus,the apparatus,EQUIPMENT
+E_001592,The bottle,the bottle,EQUIPMENT
+E_001593,the capillary tube,the capillary tube,EQUIPMENT
+E_001594,The clean dry glassware,the clean dry glassware,EQUIPMENT
+E_001595,The condenser,the condenser,EQUIPMENT
+E_001596,The container,the container,EQUIPMENT
+E_001597,The electricity meter,the electricity meter,EQUIPMENT
+E_001598,The fixed smear,the fixed smear,EQUIPMENT
+E_001599,The metal trays,the metal trays,EQUIPMENT
+E_001600,the microscope,the microscope,EQUIPMENT
+E_001601,The needle,the needle,EQUIPMENT
+E_001602,The plates,the plates,EQUIPMENT
+E_001603,The still,the still,EQUIPMENT
+E_001604,The stopcock and tap,the stopcock and tap,EQUIPMENT
+E_001605,The tube,the tube,EQUIPMENT
+E_001606,The ¥5 and ¥10 eyepieces,the ¥5 and ¥10 eyepieces,EQUIPMENT
+E_001607,thermometer,thermometer,EQUIPMENT
+E_001608,thermostat,thermostat,EQUIPMENT
+E_001609,Thick blood films,thick blood films,EQUIPMENT
+E_001610,thick film fields,thick film fields,EQUIPMENT
+E_001611,thin film,thin film,EQUIPMENT
+E_001612,third tube,third tube,EQUIPMENT
+E_001613,This balance,this balance,EQUIPMENT
+E_001614,this equipment,this equipment,EQUIPMENT
+E_001615,This system,this system,EQUIPMENT
+E_001616,three tubes,three tubes,EQUIPMENT
+E_001617,throat swabs,throat swabs,EQUIPMENT
+E_001618,tightly closed boxes,tightly closed boxes,EQUIPMENT
+E_001619,tiled surface,tiled surface,EQUIPMENT
+E_001620,Timer,timer,EQUIPMENT
+E_001621,Tools and materials,tools and materials,EQUIPMENT
+E_001622,tourniquet,tourniquet,EQUIPMENT
+E_001623,transformer,transformer,EQUIPMENT
+E_001624,transport medium,transport medium,EQUIPMENT
+E_001625,trap,trap,EQUIPMENT
+E_001626,tray,tray,EQUIPMENT
+E_001627,trichloroacetic pipette,trichloroacetic pipette,EQUIPMENT
+E_001628,trough,trough,EQUIPMENT
+E_001629,True fine granular casts,true fine granular casts,EQUIPMENT
+E_001630,True pus casts,true pus casts,EQUIPMENT
+E_001631,tube,tube,EQUIPMENT
+E_001632,tube 1,tube 1,EQUIPMENT
+E_001633,tube 13,tube 13,EQUIPMENT
+E_001634,tube 2,tube 2,EQUIPMENT
+E_001635,tube 3,tube 3,EQUIPMENT
+E_001636,tube 4,tube 4,EQUIPMENT
+E_001637,tube B,tube b,EQUIPMENT
+E_001638,tube holders,tube holders,EQUIPMENT
+E_001639,tube N,tube n,EQUIPMENT
+E_001640,tube of CSF,tube of csf,EQUIPMENT
+E_001641,tube or a small bottle,tube or a small bottle,EQUIPMENT
+E_001642,tube or well,tube or well,EQUIPMENT
+E_001643,tubes,tubes,EQUIPMENT
+E_001644,tubes and slides,tubes and slides,EQUIPMENT
+E_001645,tubes of CSF,tubes of csf,EQUIPMENT
+E_001646,tubes of pus,tubes of pus,EQUIPMENT
+E_001647,tubes or bottles,tubes or bottles,EQUIPMENT
+E_001648,tubing,tubing,EQUIPMENT
+E_001649,Tweezers,tweezers,EQUIPMENT
+E_001650,Two Pasteur pipettes,two pasteur pipettes,EQUIPMENT
+E_001651,two suspended pans,two suspended pans,EQUIPMENT
+E_001652,two-pan balance,two-pan balance,EQUIPMENT
+E_001653,type of cuvette,type of cuvette,EQUIPMENT
+E_001654,uncovered round flask,uncovered round flask,EQUIPMENT
+E_001655,urine centrifugate,urine centrifugate,EQUIPMENT
+E_001656,urine dipstick,urine dipstick,EQUIPMENT
+E_001657,Urine dipsticks,urine dipsticks,EQUIPMENT
+E_001658,Used coverslips,used coverslips,EQUIPMENT
+E_001659,used glassware,used glassware,EQUIPMENT
+E_001660,used syringe,used syringe,EQUIPMENT
+E_001661,vacuum pump,vacuum pump,EQUIPMENT
+E_001662,valve,valve,EQUIPMENT
+E_001663,vent,vent,EQUIPMENT
+E_001664,vial,vial,EQUIPMENT
+E_001665,vials,vials,EQUIPMENT
+E_001666,viewing device,viewing device,EQUIPMENT
+E_001667,volumetric flask,volumetric flask,EQUIPMENT
+E_001668,Volumetric flasks,volumetric flasks,EQUIPMENT
+E_001669,volumetric pipette,volumetric pipette,EQUIPMENT
+E_001670,Volumetric pipettes,volumetric pipettes,EQUIPMENT
+E_001671,warm bench,warm bench,EQUIPMENT
+E_001672,wash bottle,wash bottle,EQUIPMENT
+E_001673,washer,washer,EQUIPMENT
+E_001674,Washer or vacuum pump,washer or vacuum pump,EQUIPMENT
+E_001675,waste sink,waste sink,EQUIPMENT
+E_001676,watch glass,watch glass,EQUIPMENT
+E_001677,water still,water still,EQUIPMENT
+E_001678,water-bath,water-bath,EQUIPMENT
+E_001679,Water-baths,water-baths,EQUIPMENT
+E_001680,waxed cardboard box,waxed cardboard box,EQUIPMENT
+E_001681,weighing container,weighing container,EQUIPMENT
+E_001682,weight glass rod,weight glass rod,EQUIPMENT
+E_001683,weights,weights,EQUIPMENT
+E_001684,well,well,EQUIPMENT
+E_001685,well 1,well 1,EQUIPMENT
+E_001686,well 2,well 2,EQUIPMENT
+E_001687,wells,wells,EQUIPMENT
+E_001688,Westergren stand,westergren stand,EQUIPMENT
+E_001689,Westergren tube,westergren tube,EQUIPMENT
+E_001690,Westergren tube stand,westergren tube stand,EQUIPMENT
+E_001691,western blot,western blot,EQUIPMENT
+E_001692,wet preparation,wet preparation,EQUIPMENT
+E_001693,wet preparations,wet preparations,EQUIPMENT
+E_001694,white glass reagent bottle,white glass reagent bottle,EQUIPMENT
+E_001695,wide-mouth bottle,wide-mouth bottle,EQUIPMENT
+E_001696,"wide-mouthed, screw-topped jar","wide-mouthed, screw-topped jar",EQUIPMENT
+E_001697,"Wide-necked, leakproof containers","wide-necked, leakproof containers",EQUIPMENT
+E_001698,Wintrobe tubes,wintrobe tubes,EQUIPMENT
+E_001699,wire basket,wire basket,EQUIPMENT
+E_001700,wire baskets,wire baskets,EQUIPMENT
+E_001701,wooden applicator,wooden applicator,EQUIPMENT
+E_001702,wooden sticks,wooden sticks,EQUIPMENT
+E_001703,wooden tongue depressor,wooden tongue depressor,EQUIPMENT
+E_001704,workbench,workbench,EQUIPMENT
+E_001705,working reference,working reference,EQUIPMENT
+E_001706,working reference standard,working reference standard,EQUIPMENT
+E_001707,working standard,working standard,EQUIPMENT
+E_001708,¥ 10 objective,¥ 10 objective,EQUIPMENT
+E_001709,¥ 100 oil-immersion objective,¥ 100 oil-immersion objective,EQUIPMENT
+E_001710,¥ 40 objective,¥ 40 objective,EQUIPMENT
+E_001711,¥10 and ¥40 objectives,¥10 and ¥40 objectives,EQUIPMENT
+E_001712,¥10 objective,¥10 objective,EQUIPMENT
+E_001713,¥100 objective,¥100 objective,EQUIPMENT
+E_001714,¥100 oil-immersion objective,¥100 oil-immersion objective,EQUIPMENT
+E_001715,¥40 objective,¥40 objective,EQUIPMENT
+E_001716,¥5 eyepiece,¥5 eyepiece,EQUIPMENT
+E_001717,abnormal,abnormal,FINDING
+E_001718,Abnormalities,abnormalities,FINDING
+E_001719,air bubbles,air bubbles,FINDING
+E_001720,amastigote stage,amastigote stage,FINDING
+E_001721,appear distorted and indistinct,appear distorted and indistinct,FINDING
+E_001722,basophilic staining,basophilic staining,FINDING
+E_001723,bleeding,bleeding,FINDING
+E_001724,blister,blister,FINDING
+E_001725,blisters,blisters,FINDING
+E_001726,blood loss,blood loss,FINDING
+E_001727,bloodless area,bloodless area,FINDING
+E_001728,broken line,broken line,FINDING
+E_001729,Broken or folded tail,broken or folded tail,FINDING
+E_001730,brownish-black masses,brownish-black masses,FINDING
+E_001731,buboes,buboes,FINDING
+E_001732,Calabar swelling,calabar swelling,FINDING
+E_001733,cardiac insufficiency,cardiac insufficiency,FINDING
+E_001734,chagomas,chagomas,FINDING
+E_001735,Cholesterol crystals,cholesterol crystals,FINDING
+E_001736,circular lesions,circular lesions,FINDING
+E_001737,clinical picture,clinical picture,FINDING
+E_001738,clinical situation,clinical situation,FINDING
+E_001739,clinical symptoms,clinical symptoms,FINDING
+E_001740,clots,clots,FINDING
+E_001741,cloudy,cloudy,FINDING
+E_001742,cough,cough,FINDING
+E_001743,cratered,cratered,FINDING
+E_001744,crenated,crenated,FINDING
+E_001745,crystalline deposits,crystalline deposits,FINDING
+E_001746,crystals,crystals,FINDING
+E_001747,cutaneous lesions,cutaneous lesions,FINDING
+E_001748,cyst-like bodies,cyst-like bodies,FINDING
+E_001749,cysts,cysts,FINDING
+E_001750,dehydration,dehydration,FINDING
+E_001751,diarrhoea,diarrhoea,FINDING
+E_001752,dizziness,dizziness,FINDING
+E_001753,dried-up ring,dried-up ring,FINDING
+E_001754,Elevated protein levels,elevated protein levels,FINDING
+E_001755,Enlargement,enlargement,FINDING
+E_001756,enlargement of the lymph nodes,enlargement of the lymph nodes,FINDING
+E_001757,ESR,esr,FINDING
+E_001758,exudate,exudate,FINDING
+E_001759,Fatty casts,fatty casts,FINDING
+E_001760,fever,fever,FINDING
+E_001761,Fibril,fibril,FINDING
+E_001762,Flukes,flukes,FINDING
+E_001763,fluorescence,fluorescence,FINDING
+E_001764,furuncles,furuncles,FINDING
+E_001765,generalized enlargement,generalized enlargement,FINDING
+E_001766,Gram-positive thin hyphae,gram-positive thin hyphae,FINDING
+E_001767,granular papillomas,granular papillomas,FINDING
+E_001768,granules,granules,FINDING
+E_001769,haematuria,haematuria,FINDING
+E_001770,haemoglobin levels,haemoglobin levels,FINDING
+E_001771,haemolysis,haemolysis,FINDING
+E_001772,headache,headache,FINDING
+E_001773,Heart complications,heart complications,FINDING
+E_001774,heavy infection,heavy infection,FINDING
+E_001775,high parasite density,high parasite density,FINDING
+E_001776,hydatid cysts,hydatid cysts,FINDING
+E_001777,hydrocoele,hydrocoele,FINDING
+E_001778,Hypersegmented,hypersegmented,FINDING
+E_001779,irritability,irritability,FINDING
+E_001780,large clot,large clot,FINDING
+E_001781,lesion,lesion,FINDING
+E_001782,lesions,lesions,FINDING
+E_001783,Lymph nodes,lymph nodes,FINDING
+E_001784,lymphadenopathy,lymphadenopathy,FINDING
+E_001785,lymphangitis,lymphangitis,FINDING
+E_001786,macrocytosis,macrocytosis,FINDING
+E_001787,maculae,maculae,FINDING
+E_001788,malignant pustule,malignant pustule,FINDING
+E_001789,manifestations,manifestations,FINDING
+E_001790,mild fatigue,mild fatigue,FINDING
+E_001791,Motile microfilariae,motile microfilariae,FINDING
+E_001792,mucoid,mucoid,FINDING
+E_001793,mucopurulent,mucopurulent,FINDING
+E_001794,mucosalivary,mucosalivary,FINDING
+E_001795,nausea,nausea,FINDING
+E_001796,negative result,negative result,FINDING
+E_001797,nodules,nodules,FINDING
+E_001798,normal,normal,FINDING
+E_001799,normal erythrocyte morphology,normal erythrocyte morphology,FINDING
+E_001800,obstructive jaundice,obstructive jaundice,FINDING
+E_001801,occasional brownish streaks of blood,occasional brownish streaks of blood,FINDING
+E_001802,occult blood,occult blood,FINDING
+E_001803,painless genital ulcer,painless genital ulcer,FINDING
+E_001804,pains,pains,FINDING
+E_001805,pale and discoloured,pale and discoloured,FINDING
+E_001806,pallor,pallor,FINDING
+E_001807,papules,papules,FINDING
+E_001808,patches of pus,patches of pus,FINDING
+E_001809,patient’s clinical symptoms,patient’s clinical symptoms,FINDING
+E_001810,plaques,plaques,FINDING
+E_001811,positive findings,positive findings,FINDING
+E_001812,primary lesion,primary lesion,FINDING
+E_001813,proteinuria,proteinuria,FINDING
+E_001814,pruritus,pruritus,FINDING
+E_001815,purulent,purulent,FINDING
+E_001816,pus,pus,FINDING
+E_001817,Pus casts,pus casts,FINDING
+E_001818,raised edge,raised edge,FINDING
+E_001819,raised globulin level,raised globulin level,FINDING
+E_001820,Romaña’s sign,romaña’s sign,FINDING
+E_001821,round lump,round lump,FINDING
+E_001822,Schüffner’s dots,schüffner’s dots,FINDING
+E_001823,severe burns,severe burns,FINDING
+E_001824,shock,shock,FINDING
+E_001825,signs of inflammation,signs of inflammation,FINDING
+E_001826,single or numerous small fine clots,single or numerous small fine clots,FINDING
+E_001827,skin ulcers,skin ulcers,FINDING
+E_001828,small swellings,small swellings,FINDING
+E_001829,sterile abscesses,sterile abscesses,FINDING
+E_001830,surface crust,surface crust,FINDING
+E_001831,swelling,swelling,FINDING
+E_001832,swelling of one leg,swelling of one leg,FINDING
+E_001833,swollen,swollen,FINDING
+E_001834,thick mucus,thick mucus,FINDING
+E_001835,thickening,thickening,FINDING
+E_001836,threads of fibrin,threads of fibrin,FINDING
+E_001837,tubular damage,tubular damage,FINDING
+E_001838,typical findings,typical findings,FINDING
+E_001839,uncontrolled behaviour,uncontrolled behaviour,FINDING
+E_001840,Undulating membrane,undulating membrane,FINDING
+E_001841,unilateral swelling,unilateral swelling,FINDING
+E_001842,visible manifestations,visible manifestations,FINDING
+E_001843,vomiting,vomiting,FINDING
+E_001844,weight loss,weight loss,FINDING
+E_001845,yellowish-brown,yellowish-brown,FINDING
+E_001846,1cm,1 cm,MEASUREMENT
+E_001847,1 day,1 day,MEASUREMENT
+E_001848,1g,1 g,MEASUREMENT
+E_001849,1 hour,1 hour,MEASUREMENT
+E_001850,1 minute,1 minute,MEASUREMENT
+E_001851,1ml,1 ml,MEASUREMENT
+E_001852,1 mm,1 mm,MEASUREMENT
+E_001853,10g,10 g,MEASUREMENT
+E_001854,10 minutes,10 minutes,MEASUREMENT
+E_001855,10ml,10 ml,MEASUREMENT
+E_001856,100g,100 g,MEASUREMENT
+E_001857,100ml,100 ml,MEASUREMENT
+E_001858,1000g,1000 g,MEASUREMENT
+E_001859,1000ml,1000 ml,MEASUREMENT
+E_001860,1000 mm,1000 mm,MEASUREMENT
+E_001861,10000g,10000 g,MEASUREMENT
+E_001862,100–1000mg,100–1000 mg,MEASUREMENT
+E_001863,11ml,11 ml,MEASUREMENT
+E_001864,12 hours,12 hours,MEASUREMENT
+E_001865,120°C,120 °c,MEASUREMENT
+E_001866,125g,125 g,MEASUREMENT
+E_001867,12–20mm,12–20 mm,MEASUREMENT
+E_001868,15cm,15 cm,MEASUREMENT
+E_001869,15 minutes,15 minutes,MEASUREMENT
+E_001870,15ml,15 ml,MEASUREMENT
+E_001871,15 seconds,15 seconds,MEASUREMENT
+E_001872,1500g,1500 g,MEASUREMENT
+E_001873,15min,15min,MEASUREMENT
+E_001874,175°C,175 °c,MEASUREMENT
+E_001875,18ml,18 ml,MEASUREMENT
+E_001876,1–2 hours,1–2 hours,MEASUREMENT
+E_001877,1–2 minutes,1–2 minutes,MEASUREMENT
+E_001878,1–3 hours,1–3 hours,MEASUREMENT
+E_001879,2g,2 g,MEASUREMENT
+E_001880,2 hours,2 hours,MEASUREMENT
+E_001881,2 minutes,2 minutes,MEASUREMENT
+E_001882,2ml,2 ml,MEASUREMENT
+E_001883,20g,20 g,MEASUREMENT
+E_001884,20mg,20 mg,MEASUREMENT
+E_001885,20 minutes,20 minutes,MEASUREMENT
+E_001886,20ml,20 ml,MEASUREMENT
+E_001887,200g,200 g,MEASUREMENT
+E_001888,200ml,200 ml,MEASUREMENT
+E_001889,2000g,2000 g,MEASUREMENT
+E_001890,2000ml,2000 ml,MEASUREMENT
+E_001891,20–25°C,20–25 °c,MEASUREMENT
+E_001892,20–35mm,20–35 mm,MEASUREMENT
+E_001893,22mm ¥ 40mm,22 mm × 40 mm,MEASUREMENT
+E_001894,2300g,2300 g,MEASUREMENT
+E_001895,25ml,25 ml,MEASUREMENT
+E_001896,25mm,25 mm,MEASUREMENT
+E_001897,250ml,250 ml,MEASUREMENT
+E_001898,2–3 days,2–3 days,MEASUREMENT
+E_001899,2–3 minutes,2–3 minutes,MEASUREMENT
+E_001900,2–4mm,2–4 mm,MEASUREMENT
+E_001901,2–5ml,2–5 ml,MEASUREMENT
+E_001902,3 days,3 days,MEASUREMENT
+E_001903,3 hours,3 hours,MEASUREMENT
+E_001904,3 minutes,3 minutes,MEASUREMENT
+E_001905,3ml,3 ml,MEASUREMENT
+E_001906,3mm,3 mm,MEASUREMENT
+E_001907,3 seconds,3 seconds,MEASUREMENT
+E_001908,30 minutes,30 minutes,MEASUREMENT
+E_001909,30ml,30 ml,MEASUREMENT
+E_001910,30mm ¥ 150mm,30 mm × 150 mm,MEASUREMENT
+E_001911,30 seconds,30 seconds,MEASUREMENT
+E_001912,300ml,300 ml,MEASUREMENT
+E_001913,3000g,3000 g,MEASUREMENT
+E_001914,30–45 minutes,30–45 minutes,MEASUREMENT
+E_001915,35 minutes,35 minutes,MEASUREMENT
+E_001916,350mg,350 mg,MEASUREMENT
+E_001917,37°C,37 °c,MEASUREMENT
+E_001918,3–5 minutes,3–5 minutes,MEASUREMENT
+E_001919,3–5mm,3–5 mm,MEASUREMENT
+E_001920,4ml,4 ml,MEASUREMENT
+E_001921,40ml,40 ml,MEASUREMENT
+E_001922,40°C,40 °c,MEASUREMENT
+E_001923,400ml,400 ml,MEASUREMENT
+E_001924,425mm,425 mm,MEASUREMENT
+E_001925,45 minutes,45 minutes,MEASUREMENT
+E_001926,475ml,475 ml,MEASUREMENT
+E_001927,4–6mm,4–6 mm,MEASUREMENT
+E_001928,5cm,5 cm,MEASUREMENT
+E_001929,5g,5 g,MEASUREMENT
+E_001930,5 minutes,5 minutes,MEASUREMENT
+E_001931,5ml,5 ml,MEASUREMENT
+E_001932,5mm,5 mm,MEASUREMENT
+E_001933,5 seconds,5 seconds,MEASUREMENT
+E_001934,50g,50 g,MEASUREMENT
+E_001935,50mg,50 mg,MEASUREMENT
+E_001936,50ml,50 ml,MEASUREMENT
+E_001937,50 °C,50 °c,MEASUREMENT
+E_001938,500g,500 g,MEASUREMENT
+E_001939,500ml,500 ml,MEASUREMENT
+E_001940,5000g,5000 g,MEASUREMENT
+E_001941,56°C,56 °c,MEASUREMENT
+E_001942,5–10 minutes,5–10 minutes,MEASUREMENT
+E_001943,5–10 seconds,5–10 seconds,MEASUREMENT
+E_001944,6mm,6 mm,MEASUREMENT
+E_001945,60g,60 g,MEASUREMENT
+E_001946,60kg,60 kg,MEASUREMENT
+E_001947,60 minutes,60 minutes,MEASUREMENT
+E_001948,60 seconds,60 seconds,MEASUREMENT
+E_001949,60°C,60 °c,MEASUREMENT
+E_001950,600ml,600 ml,MEASUREMENT
+E_001951,7ml,7 ml,MEASUREMENT
+E_001952,70–75°C,70–75 °c,MEASUREMENT
+E_001953,75ml,75 ml,MEASUREMENT
+E_001954,75mm,75 mm,MEASUREMENT
+E_001955,75mm ¥ 12mm,75 mm × 12 mm,MEASUREMENT
+E_001956,7–10 minutes,7–10 minutes,MEASUREMENT
+E_001957,8ml,8 ml,MEASUREMENT
+E_001958,80ml,80 ml,MEASUREMENT
+E_001959,80°C,80 °c,MEASUREMENT
+E_001960,9ml,9 ml,MEASUREMENT
+E_001961,9mm,9 mm,MEASUREMENT
+E_001962,90ml,90 ml,MEASUREMENT
+E_001963,97ml,97 ml,MEASUREMENT
+E_001964,46 Tubercle bacilli,46 tubercle bacilli,ORGANISM
+E_001965,A small thin worm,a small thin worm,ORGANISM
+E_001966,acid-fast bacilli,acid-fast bacilli,ORGANISM
+E_001967,Actinomycetes,actinomycetes,ORGANISM
+E_001968,adult helminths,adult helminths,ORGANISM
+E_001969,adult worms,adult worms,ORGANISM
+E_001970,amastigotes,amastigotes,ORGANISM
+E_001971,amoeba,amoeba,ORGANISM
+E_001972,amoebae,amoebae,ORGANISM
+E_001973,Ancylostoma,ancylostoma,ORGANISM
+E_001974,Ancylostoma duodenale,ancylostoma duodenale,ORGANISM
+E_001975,animals,animals,ORGANISM
+E_001976,anthrax bacilli,anthrax bacilli,ORGANISM
+E_001977,arthrospores,arthrospores,ORGANISM
+E_001978,Ascaris,ascaris,ORGANISM
+E_001979,Ascaris lumbricoides,ascaris lumbricoides,ORGANISM
+E_001980,B: boss; flukes,b: boss; flukes,ORGANISM
+E_001981,bacilli,bacilli,ORGANISM
+E_001982,Bacillus anthracis,bacillus anthracis,ORGANISM
+E_001983,bacteria,bacteria,ORGANISM
+E_001984,bacterial species,bacterial species,ORGANISM
+E_001985,Balantidium coli,balantidium coli,ORGANISM
+E_001986,bat,bat,ORGANISM
+E_001987,beef tapeworm,beef tapeworm,ORGANISM
+E_001988,birds,birds,ORGANISM
+E_001989,Blastocystis hominis,blastocystis hominis,ORGANISM
+E_001990,blood flukes,blood flukes,ORGANISM
+E_001991,body,body,ORGANISM
+E_001992,Borrelia spp.,borrelia spp,ORGANISM
+E_001993,bovis,bovis,ORGANISM
+E_001994,Brugia malayi,brugia malayi,ORGANISM
+E_001995,Brugia timori,brugia timori,ORGANISM
+E_001996,bug,bug,ORGANISM
+E_001997,butschlii amoebae,butschlii amoebae,ORGANISM
+E_001998,Campylobacter spp.,campylobacter spp,ORGANISM
+E_001999,Candida albicans,candida albicans,ORGANISM
+E_002000,caninum,caninum,ORGANISM
+E_002001,Capillaria hepatica,capillaria hepatica,ORGANISM
+E_002002,Capillaria philippinensis,capillaria philippinensis,ORGANISM
+E_002003,carnivores,carnivores,ORGANISM
+E_002004,certain parasites,certain parasites,ORGANISM
+E_002005,certain pathogenic bacteria,certain pathogenic bacteria,ORGANISM
+E_002006,cestodes,cestodes,ORGANISM
+E_002007,Chilomastix mesnili,chilomastix mesnili,ORGANISM
+E_002008,Chilomastix mesnili trophozoites,chilomastix mesnili trophozoites,ORGANISM
+E_002009,cholera vibrio,cholera vibrio,ORGANISM
+E_002010,cholera vibrios,cholera vibrios,ORGANISM
+E_002011,ciliate,ciliate,ORGANISM
+E_002012,ciliates,ciliates,ORGANISM
+E_002013,Clonorchis sinensis,clonorchis sinensis,ORGANISM
+E_002014,coccidia,coccidia,ORGANISM
+E_002015,coccobacilli,coccobacilli,ORGANISM
+E_002016,coli,coli,ORGANISM
+E_002017,coliform bacilli,coliform bacilli,ORGANISM
+E_002018,Commensal bacteria,commensal bacteria,ORGANISM
+E_002019,Corynebacterium diphtheriae,corynebacterium diphtheriae,ORGANISM
+E_002020,cruzi,cruzi,ORGANISM
+E_002021,Cryptococcus,cryptococcus,ORGANISM
+E_002022,Cryptococcus neoformans,cryptococcus neoformans,ORGANISM
+E_002023,Cryptosporidium spp.,cryptosporidium spp,ORGANISM
+E_002024,cystic forms,cystic forms,ORGANISM
+E_002025,Dicrocoelium sp.,dicrocoelium sp,ORGANISM
+E_002026,Dicrocoelium spp.,dicrocoelium spp,ORGANISM
+E_002027,Dientamoeba,dientamoeba,ORGANISM
+E_002028,Dientamoeba fragilis,dientamoeba fragilis,ORGANISM
+E_002029,Dipetalonema perstans,dipetalonema perstans,ORGANISM
+E_002030,diphtheria bacilli,diphtheria bacilli,ORGANISM
+E_002031,Diphyllobothrium latum,diphyllobothrium latum,ORGANISM
+E_002032,Diplococci,diplococci,ORGANISM
+E_002033,Dipylidium caninum,dipylidium caninum,ORGANISM
+E_002034,dogs,dogs,ORGANISM
+E_002035,dysentery amoeba,dysentery amoeba,ORGANISM
+E_002036,Each species,each species,ORGANISM
+E_002037,Echinococcus granulosus,echinococcus granulosus,ORGANISM
+E_002038,Echinostoma sp.,echinostoma sp,ORGANISM
+E_002039,ectoparasite,ectoparasite,ORGANISM
+E_002040,ectothrix,ectothrix,ORGANISM
+E_002041,egg,egg,ORGANISM
+E_002042,embryo,embryo,ORGANISM
+E_002043,embryos,embryos,ORGANISM
+E_002044,Endolimax nanus,endolimax nanus,ORGANISM
+E_002045,endoparasite,endoparasite,ORGANISM
+E_002046,Endothrix,endothrix,ORGANISM
+E_002047,Entamoeba,entamoeba,ORGANISM
+E_002048,Entamoeba coli,entamoeba coli,ORGANISM
+E_002049,Entamoeba hartmanni,entamoeba hartmanni,ORGANISM
+E_002050,Entamoeba histolytica,entamoeba histolytica,ORGANISM
+E_002051,Entamoeba spp.,entamoeba spp,ORGANISM
+E_002052,enteric organisms,enteric organisms,ORGANISM
+E_002053,Enterobius vermicularis,enterobius vermicularis,ORGANISM
+E_002054,enterococci,enterococci,ORGANISM
+E_002055,faecal trophozoites,faecal trophozoites,ORGANISM
+E_002056,Fasciola hepatica,fasciola hepatica,ORGANISM
+E_002057,Fasciola spp.,fasciola spp,ORGANISM
+E_002058,Fasciolopsis buski,fasciolopsis buski,ORGANISM
+E_002059,fern,fern,ORGANISM
+E_002060,Fertilized egg,fertilized egg,ORGANISM
+E_002061,fetus,fetus,ORGANISM
+E_002062,Filariae,filariae,ORGANISM
+E_002063,filarial species,filarial species,ORGANISM
+E_002064,filarial worms,filarial worms,ORGANISM
+E_002065,fish,fish,ORGANISM
+E_002066,fish tapeworm,fish tapeworm,ORGANISM
+E_002067,flagellate,flagellate,ORGANISM
+E_002068,flagellates,flagellates,ORGANISM
+E_002069,flatworm,flatworm,ORGANISM
+E_002070,flies,flies,ORGANISM
+E_002071,flukes,flukes,ORGANISM
+E_002072,fungi,fungi,ORGANISM
+E_002073,future worm,future worm,ORGANISM
+E_002074,G Bacteria,g bacteria,ORGANISM
+E_002075,G Diplococci,g diplococci,ORGANISM
+E_002076,Giardia intestinalis,giardia intestinalis,ORGANISM
+E_002077,Glossina spp.,glossina spp,ORGANISM
+E_002078,gonococci,gonococci,ORGANISM
+E_002079,Gram-negative,gram-negative,ORGANISM
+E_002080,Gram-negative acid-fast bacilli,gram-negative acid-fast bacilli,ORGANISM
+E_002081,Gram-negative bacilli,gram-negative bacilli,ORGANISM
+E_002082,Gram-negative bacteria,gram-negative bacteria,ORGANISM
+E_002083,Gram-negative cocci,gram-negative cocci,ORGANISM
+E_002084,Gram-negative diplococci,gram-negative diplococci,ORGANISM
+E_002085,Gram-negative extracellular diplococci,gram-negative extracellular diplococci,ORGANISM
+E_002086,Gram-negative intracellular diplococci,gram-negative intracellular diplococci,ORGANISM
+E_002087,Gram-negative organisms,gram-negative organisms,ORGANISM
+E_002088,Gram-negative spirochaetes,gram-negative spirochaetes,ORGANISM
+E_002089,Gram-positive,gram-positive,ORGANISM
+E_002090,Gram-positive bacilli,gram-positive bacilli,ORGANISM
+E_002091,Gram-positive bacteria,gram-positive bacteria,ORGANISM
+E_002092,Gram-positive cocci,gram-positive cocci,ORGANISM
+E_002093,Gram-positive diphtheroid bacilli,gram-positive diphtheroid bacilli,ORGANISM
+E_002094,Gram-positive fungi,gram-positive fungi,ORGANISM
+E_002095,Gram-positive organisms,gram-positive organisms,ORGANISM
+E_002096,Gram-positive yeasts,gram-positive yeasts,ORGANISM
+E_002097,haemolytic streptococci,haemolytic streptococci,ORGANISM
+E_002098,haemoparasites,haemoparasites,ORGANISM
+E_002099,Haemophilus influenzae,haemophilus influenzae,ORGANISM
+E_002100,helminth,helminth,ORGANISM
+E_002101,helminth eggs,helminth eggs,ORGANISM
+E_002102,helminth species,helminth species,ORGANISM
+E_002103,helminthic ova,helminthic ova,ORGANISM
+E_002104,helminths,helminths,ORGANISM
+E_002105,Heterophyes,heterophyes,ORGANISM
+E_002106,Heterophyes heterophyes,heterophyes heterophyes,ORGANISM
+E_002107,histolytica,histolytica,ORGANISM
+E_002108,hominis,hominis,ORGANISM
+E_002109,hookworm,hookworm,ORGANISM
+E_002110,host,host,ORGANISM
+E_002111,human filarial parasites,human filarial parasites,ORGANISM
+E_002112,humans,humans,ORGANISM
+E_002113,Hymenolepis diminuta,hymenolepis diminuta,ORGANISM
+E_002114,Hymenolepis nana,hymenolepis nana,ORGANISM
+E_002115,hyphae,hyphae,ORGANISM
+E_002116,infant,infant,ORGANISM
+E_002117,infectious microorganism,infectious microorganism,ORGANISM
+E_002118,insect,insect,ORGANISM
+E_002119,intestinal amoebae,intestinal amoebae,ORGANISM
+E_002120,intestinal parasites,intestinal parasites,ORGANISM
+E_002121,intestinal protozoa,intestinal protozoa,ORGANISM
+E_002122,Iodamoeba,iodamoeba,ORGANISM
+E_002123,Iodamoeba butschlii,iodamoeba butschlii,ORGANISM
+E_002124,Isospora belli,isospora belli,ORGANISM
+E_002125,large tissue schizonts,large tissue schizonts,ORGANISM
+E_002126,larva,larva,ORGANISM
+E_002127,Leishmania spp.,leishmania spp,ORGANISM
+E_002128,lens tissue,lens tissue,ORGANISM
+E_002129,Listeria group,listeria group,ORGANISM
+E_002130,livestock,livestock,ORGANISM
+E_002131,Loa loa,loa loa,ORGANISM
+E_002132,lumbricoides,lumbricoides,ORGANISM
+E_002133,malaria parasite,malaria parasite,ORGANISM
+E_002134,malaria parasites,malaria parasites,ORGANISM
+E_002135,malayi,malayi,ORGANISM
+E_002136,Mammomonogamus laryngeus,mammomonogamus laryngeus,ORGANISM
+E_002137,Mansonella,mansonella,ORGANISM
+E_002138,Mansonella ozzardi,mansonella ozzardi,ORGANISM
+E_002139,Mansonella perstans,mansonella perstans,ORGANISM
+E_002140,Mansonella streptocerca,mansonella streptocerca,ORGANISM
+E_002141,meningococci,meningococci,ORGANISM
+E_002142,merozoites,merozoites,ORGANISM
+E_002143,Metagonimus,metagonimus,ORGANISM
+E_002144,Metagonimus yokogawai,metagonimus yokogawai,ORGANISM
+E_002145,mice,mice,ORGANISM
+E_002146,micrococci,micrococci,ORGANISM
+E_002147,microfilaria,microfilaria,ORGANISM
+E_002148,microfilariae,microfilariae,ORGANISM
+E_002149,microorganism,microorganism,ORGANISM
+E_002150,microorganisms,microorganisms,ORGANISM
+E_002151,miracidium,miracidium,ORGANISM
+E_002152,motile amoebae,motile amoebae,ORGANISM
+E_002153,motile organisms,motile organisms,ORGANISM
+E_002154,motile trophozoites,motile trophozoites,ORGANISM
+E_002155,Motile trypanosomes,motile trypanosomes,ORGANISM
+E_002156,mycobacteria,mycobacteria,ORGANISM
+E_002157,Mycobacterium leprae,mycobacterium leprae,ORGANISM
+E_002158,Mycobacterium spp.,mycobacterium spp,ORGANISM
+E_002159,Necator americanus,necator americanus,ORGANISM
+E_002160,Neisseria meningitidis,neisseria meningitidis,ORGANISM
+E_002161,nematodes,nematodes,ORGANISM
+E_002162,neoformans,neoformans,ORGANISM
+E_002163,Nichols strain,nichols strain,ORGANISM
+E_002164,non-venereal treponeme,non-venereal treponeme,ORGANISM
+E_002165,nonpathogenic treponemes,nonpathogenic treponemes,ORGANISM
+E_002166,normal bacterial flora,normal bacterial flora,ORGANISM
+E_002167,Onchocerca volvulus,onchocerca volvulus,ORGANISM
+E_002168,Onchocerca volvulus microfilaria,onchocerca volvulus microfilaria,ORGANISM
+E_002169,oocysts,oocysts,ORGANISM
+E_002170,Opisthorchis felineus,opisthorchis felineus,ORGANISM
+E_002171,organism,organism,ORGANISM
+E_002172,Other species of amoeba,other species of amoeba,ORGANISM
+E_002173,other vibrios,other vibrios,ORGANISM
+E_002174,ova,ova,ORGANISM
+E_002175,pallidum organisms,pallidum organisms,ORGANISM
+E_002176,Paragonimus westermani,paragonimus westermani,ORGANISM
+E_002177,parasite,parasite,ORGANISM
+E_002178,parasite species,parasite species,ORGANISM
+E_002179,parasites,parasites,ORGANISM
+E_002180,parasitic protozoa,parasitic protozoa,ORGANISM
+E_002181,parasitic trophozoites,parasitic trophozoites,ORGANISM
+E_002182,pathogenic microorganisms,pathogenic microorganisms,ORGANISM
+E_002183,pathogenic organisms,pathogenic organisms,ORGANISM
+E_002184,pathogens,pathogens,ORGANISM
+E_002185,Phlebotomus,phlebotomus,ORGANISM
+E_002186,pinworm,pinworm,ORGANISM
+E_002187,pinworm eggs,pinworm eggs,ORGANISM
+E_002188,Pityrosporum furfur,pityrosporum furfur,ORGANISM
+E_002189,plants,plants,ORGANISM
+E_002190,Plasmodium,plasmodium,ORGANISM
+E_002191,Plasmodium spp.,plasmodium spp,ORGANISM
+E_002192,pneumococci,pneumococci,ORGANISM
+E_002193,pork tapeworm,pork tapeworm,ORGANISM
+E_002194,protozoa,protozoa,ORGANISM
+E_002195,protozoal cysts,protozoal cysts,ORGANISM
+E_002196,pulmonary flukes,pulmonary flukes,ORGANISM
+E_002197,rabbit,rabbit,ORGANISM
+E_002198,rare parasites,rare parasites,ORGANISM
+E_002199,red bacilli,red bacilli,ORGANISM
+E_002200,Reiter treponemes,reiter treponemes,ORGANISM
+E_002201,rhodesiense,rhodesiense,ORGANISM
+E_002202,round budding spores,round budding spores,ORGANISM
+E_002203,roundworm,roundworm,ORGANISM
+E_002204,roundworms,roundworms,ORGANISM
+E_002205,saprophytes,saprophytes,ORGANISM
+E_002206,Schistosoma,schistosoma,ORGANISM
+E_002207,Schistosoma bovis,schistosoma bovis,ORGANISM
+E_002208,Schistosoma haematobium,schistosoma haematobium,ORGANISM
+E_002209,Schistosoma intercalatum,schistosoma intercalatum,ORGANISM
+E_002210,Schistosoma japonicum,schistosoma japonicum,ORGANISM
+E_002211,Schistosoma mansoni,schistosoma mansoni,ORGANISM
+E_002212,Schistosoma spp.,schistosoma spp,ORGANISM
+E_002213,schistosome,schistosome,ORGANISM
+E_002214,schistosome eggs,schistosome eggs,ORGANISM
+E_002215,schistosomes,schistosomes,ORGANISM
+E_002216,Shigella,shigella,ORGANISM
+E_002217,shigellae,shigellae,ORGANISM
+E_002218,sinensis,sinensis,ORGANISM
+E_002219,small larva,small larva,ORGANISM
+E_002220,small round embryo,small round embryo,ORGANISM
+E_002221,snake,snake,ORGANISM
+E_002222,some species,some species,ORGANISM
+E_002223,species of parasite,species of parasite,ORGANISM
+E_002224,Sperm,sperm,ORGANISM
+E_002225,Spermatozoan,spermatozoan,ORGANISM
+E_002226,spirochaetes,spirochaetes,ORGANISM
+E_002227,spores,spores,ORGANISM
+E_002228,sporozoites,sporozoites,ORGANISM
+E_002229,staphylococci,staphylococci,ORGANISM
+E_002230,stercoralis,stercoralis,ORGANISM
+E_002231,Streptococcus pneumoniae,streptococcus pneumoniae,ORGANISM
+E_002232,Strongyloides stercoralis,strongyloides stercoralis,ORGANISM
+E_002233,Taenia saginata,taenia saginata,ORGANISM
+E_002234,Taenia spp.,taenia spp,ORGANISM
+E_002235,tapeworm,tapeworm,ORGANISM
+E_002236,tapeworms,tapeworms,ORGANISM
+E_002237,The eggs,the eggs,ORGANISM
+E_002238,The parasite,the parasite,ORGANISM
+E_002239,The vector,the vector,ORGANISM
+E_002240,The worms,the worms,ORGANISM
+E_002241,These organisms,these organisms,ORGANISM
+E_002242,tick,tick,ORGANISM
+E_002243,Toxoplasma gondii,toxoplasma gondii,ORGANISM
+E_002244,trematodes,trematodes,ORGANISM
+E_002245,Treponema pallidum,treponema pallidum,ORGANISM
+E_002246,Treponema pertenue,treponema pertenue,ORGANISM
+E_002247,treponemes,treponemes,ORGANISM
+E_002248,triatomine,triatomine,ORGANISM
+E_002249,triatomine bug,triatomine bug,ORGANISM
+E_002250,Trichomonas hominis,trichomonas hominis,ORGANISM
+E_002251,Trichomonas vaginalis,trichomonas vaginalis,ORGANISM
+E_002252,Trichostrongylus,trichostrongylus,ORGANISM
+E_002253,Trichostrongylus spp.,trichostrongylus spp,ORGANISM
+E_002254,Trichuris trichiura,trichuris trichiura,ORGANISM
+E_002255,trophozoite,trophozoite,ORGANISM
+E_002256,trophozoite forms,trophozoite forms,ORGANISM
+E_002257,trophozoites,trophozoites,ORGANISM
+E_002258,Trypanosoma,trypanosoma,ORGANISM
+E_002259,Trypanosoma brucei,trypanosoma brucei,ORGANISM
+E_002260,Trypanosoma brucei gambiense,trypanosoma brucei gambiense,ORGANISM
+E_002261,Trypanosoma cruzi,trypanosoma cruzi,ORGANISM
+E_002262,Trypanosoma rangeli,trypanosoma rangeli,ORGANISM
+E_002263,Trypanosoma spp.,trypanosoma spp,ORGANISM
+E_002264,trypanosomes,trypanosomes,ORGANISM
+E_002265,tubercle bacilli,tubercle bacilli,ORGANISM
+E_002266,Type B,type b,ORGANISM
+E_002267,vermicularis eggs,vermicularis eggs,ORGANISM
+E_002268,viable bacilli,viable bacilli,ORGANISM
+E_002269,viable ova,viable ova,ORGANISM
+E_002270,Vibrio cholerae,vibrio cholerae,ORGANISM
+E_002271,Vincent’s bacilli,vincent’s bacilli,ORGANISM
+E_002272,virulent organisms,virulent organisms,ORGANISM
+E_002273,viruses,viruses,ORGANISM
+E_002274,whipworm,whipworm,ORGANISM
+E_002275,wild animals,wild animals,ORGANISM
+E_002276,wild rodents,wild rodents,ORGANISM
+E_002277,worm,worm,ORGANISM
+E_002278,Wuchereria bancrofti,wuchereria bancrofti,ORGANISM
+E_002279,yeast,yeast,ORGANISM
+E_002280,yeasts,yeasts,ORGANISM
+E_002281,Yersinia pestis,yersinia pestis,ORGANISM
+E_002282,24-hour collection,24-hour collection,PROCEDURE
+E_002283,A small cut,a small cut,PROCEDURE
+E_002284,Accurate measurement,accurate measurement,PROCEDURE
+E_002285,Accurate methods,accurate methods,PROCEDURE
+E_002286,Active agglutination,active agglutination,PROCEDURE
+E_002287,Adequate drying,adequate drying,PROCEDURE
+E_002288,agglutination,agglutination,PROCEDURE
+E_002289,agglutination and precipitation methods,agglutination and precipitation methods,PROCEDURE
+E_002290,Agglutination inhibition,agglutination inhibition,PROCEDURE
+E_002291,"agglutination inhibition
+technique",agglutination inhibition technique,PROCEDURE
+E_002292,agglutination inhibition test,agglutination inhibition test,PROCEDURE
+E_002293,agglutination tests,agglutination tests,PROCEDURE
+E_002294,Agitate,agitate,PROCEDURE
+E_002295,AHD method,ahd method,PROCEDURE
+E_002296,allow it to clot,allow it to clot,PROCEDURE
+E_002297,Alternative method,alternative method,PROCEDURE
+E_002298,Alternative technique,alternative technique,PROCEDURE
+E_002299,analytical work,analytical work,PROCEDURE
+E_002300,antimicrobial susceptibility testing,antimicrobial susceptibility testing,PROCEDURE
+E_002301,Applying,applying,PROCEDURE
+E_002302,appropriate staining,appropriate staining,PROCEDURE
+E_002303,artificial respiration,artificial respiration,PROCEDURE
+E_002304,ASOT,asot,PROCEDURE
+E_002305,Aspirate the liquid,aspirate the liquid,PROCEDURE
+E_002306,assay,assay,PROCEDURE
+E_002307,assays,assays,PROCEDURE
+E_002308,autoclave method,autoclave method,PROCEDURE
+E_002309,autoclaved,autoclaved,PROCEDURE
+E_002310,autoclaving,autoclaving,PROCEDURE
+E_002311,"avoid
+crushing",avoid crushing,PROCEDURE
+E_002312,bacterial culture,bacterial culture,PROCEDURE
+E_002313,bacteriological examination,bacteriological examination,PROCEDURE
+E_002314,bacteriological tests,bacteriological tests,PROCEDURE
+E_002315,bacteriology,bacteriology,PROCEDURE
+E_002316,Badly made smears,badly made smears,PROCEDURE
+E_002317,basic laboratory techniques,basic laboratory techniques,PROCEDURE
+E_002318,Bathe,bathe,PROCEDURE
+E_002319,Benedict method,benedict method,PROCEDURE
+E_002320,biochemical testing,biochemical testing,PROCEDURE
+E_002321,biochemical tests,biochemical tests,PROCEDURE
+E_002322,biopsy,biopsy,PROCEDURE
+E_002323,blood cell count,blood cell count,PROCEDURE
+E_002324,blood cell counts,blood cell counts,PROCEDURE
+E_002325,blood chemistry,blood chemistry,PROCEDURE
+E_002326,blood chemistry tests,blood chemistry tests,PROCEDURE
+E_002327,blood films,blood films,PROCEDURE
+E_002328,blood glucose estimation,blood glucose estimation,PROCEDURE
+E_002329,blood grouping,blood grouping,PROCEDURE
+E_002330,blood transfusion,blood transfusion,PROCEDURE
+E_002331,blood urea estimation,blood urea estimation,PROCEDURE
+E_002332,blood-grouping,blood-grouping,PROCEDURE
+E_002333,Boil,boil,PROCEDURE
+E_002334,boiling,boiling,PROCEDURE
+E_002335,Calibration,calibration,PROCEDURE
+E_002336,calibration procedure,calibration procedure,PROCEDURE
+E_002337,calibration purposes,calibration purposes,PROCEDURE
+E_002338,card agglutination trypanosomiasis test (CATT),card agglutination trypanosomiasis test (catt,PROCEDURE
+E_002339,Carefully aspirate,carefully aspirate,PROCEDURE
+E_002340,Cellophane faecal thick-smear technique,cellophane faecal thick-smear technique,PROCEDURE
+E_002341,centrifugation,centrifugation,PROCEDURE
+E_002342,Centrifuge,centrifuge,PROCEDURE
+E_002343,centrifuged,centrifuged,PROCEDURE
+E_002344,centrifuging,centrifuging,PROCEDURE
+E_002345,"chemical
+analysis",chemical analysis,PROCEDURE
+E_002346,Chemical disinfection,chemical disinfection,PROCEDURE
+E_002347,Clean,clean,PROCEDURE
+E_002348,cleaning,cleaning,PROCEDURE
+E_002349,Cleaning and maintenance,cleaning and maintenance,PROCEDURE
+E_002350,"Cleaning, disinfection and sterilization","cleaning, disinfection and sterilization",PROCEDURE
+E_002351,clot retraction,clot retraction,PROCEDURE
+E_002352,coagulation assays,coagulation assays,PROCEDURE
+E_002353,Collecting,collecting,PROCEDURE
+E_002354,Collecting a sample of fluid,collecting a sample of fluid,PROCEDURE
+E_002355,collecting the specimen,collecting the specimen,PROCEDURE
+E_002356,collection,collection,PROCEDURE
+E_002357,collection of blood,collection of blood,PROCEDURE
+E_002358,Collection of specimens,collection of specimens,PROCEDURE
+E_002359,"collection of the
+blood",collection of the blood,PROCEDURE
+E_002360,Collection of urine,collection of urine,PROCEDURE
+E_002361,complement-dependent reactions,complement-dependent reactions,PROCEDURE
+E_002362,concentration,concentration,PROCEDURE
+E_002363,Concentration techniques,concentration techniques,PROCEDURE
+E_002364,confirmation,confirmation,PROCEDURE
+E_002365,confirmation of pregnancy,confirmation of pregnancy,PROCEDURE
+E_002366,control,control,PROCEDURE
+E_002367,control of methods and reagents,control of methods and reagents,PROCEDURE
+E_002368,cool,cool,PROCEDURE
+E_002369,correct handling and disposal,correct handling and disposal,PROCEDURE
+E_002370,correct identification,correct identification,PROCEDURE
+E_002371,count,count,PROCEDURE
+E_002372,Counterstain,counterstain,PROCEDURE
+E_002373,counting,counting,PROCEDURE
+E_002374,cover,cover,PROCEDURE
+E_002375,crystal violet fixation,crystal violet fixation,PROCEDURE
+E_002376,CSF examination,csf examination,PROCEDURE
+E_002377,culture,culture,PROCEDURE
+E_002378,culture of stools,culture of stools,PROCEDURE
+E_002379,dark-field microscopy,dark-field microscopy,PROCEDURE
+E_002380,dehaemoglobinization,dehaemoglobinization,PROCEDURE
+E_002381,Determination,determination,PROCEDURE
+E_002382,determination of blood glucose concentrations,determination of blood glucose concentrations,PROCEDURE
+E_002383,Determination of rheumatoid factors,determination of rheumatoid factors,PROCEDURE
+E_002384,Determination of the pH of urine,determination of the ph of urine,PROCEDURE
+E_002385,"Determination of the thrombocyte number
+concentration",determination of the thrombocyte number concentration,PROCEDURE
+E_002386,diagnostic techniques,diagnostic techniques,PROCEDURE
+E_002387,differential diagnosis,differential diagnosis,PROCEDURE
+E_002388,dipstick test,dipstick test,PROCEDURE
+E_002389,Dipstick tests,dipstick tests,PROCEDURE
+E_002390,direct examination,direct examination,PROCEDURE
+E_002391,Direct immunofluorescence,direct immunofluorescence,PROCEDURE
+E_002392,"direct
+method",direct method,PROCEDURE
+E_002393,Direct microscopic examination,direct microscopic examination,PROCEDURE
+E_002394,disinfection,disinfection,PROCEDURE
+E_002395,Dispatching,dispatching,PROCEDURE
+E_002396,Dispense,dispense,PROCEDURE
+E_002397,distillation method,distillation method,PROCEDURE
+E_002398,distillation process,distillation process,PROCEDURE
+E_002399,"do not
+centrifuge",do not centrifuge,PROCEDURE
+E_002400,Drain and wash,drain and wash,PROCEDURE
+E_002401,dry,dry,PROCEDURE
+E_002402,Dry and fix,dry and fix,PROCEDURE
+E_002403,Dry and re-stain,dry and re-stain,PROCEDURE
+E_002404,dry heat,dry heat,PROCEDURE
+E_002405,Duke method,duke method,PROCEDURE
+E_002406,duodenal aspiration,duodenal aspiration,PROCEDURE
+E_002407,early detection,early detection,PROCEDURE
+E_002408,electrocardiogram,electrocardiogram,PROCEDURE
+E_002409,electrophoresis,electrophoresis,PROCEDURE
+E_002410,ELISA,elisa,PROCEDURE
+E_002411,ELISA method,elisa method,PROCEDURE
+E_002412,ELISA technique,elisa technique,PROCEDURE
+E_002413,ELISAs,elisas,PROCEDURE
+E_002414,Enzyme immunoassay,enzyme immunoassay,PROCEDURE
+E_002415,enzyme immunoassays,enzyme immunoassays,PROCEDURE
+E_002416,epidemiological surveys,epidemiological surveys,PROCEDURE
+E_002417,Epithelial casts,epithelial casts,PROCEDURE
+E_002418,estimation,estimation,PROCEDURE
+E_002419,estimation of glucose concentration,estimation of glucose concentration,PROCEDURE
+E_002420,evaluate visually,evaluate visually,PROCEDURE
+E_002421,examination of CSF,examination of csf,PROCEDURE
+E_002422,Examination of urine,examination of urine,PROCEDURE
+E_002423,examinations required,examinations required,PROCEDURE
+E_002424,examine,examine,PROCEDURE
+E_002425,examine it immediately,examine it immediately,PROCEDURE
+E_002426,Expel,expel,PROCEDURE
+E_002427,extraction,extraction,PROCEDURE
+E_002428,fanning,fanning,PROCEDURE
+E_002429,faulty technique,faulty technique,PROCEDURE
+E_002430,Field stain,field stain,PROCEDURE
+E_002431,"field
+survey",field survey,PROCEDURE
+E_002432,filter,filter,PROCEDURE
+E_002433,filtering,filtering,PROCEDURE
+E_002434,filtration,filtration,PROCEDURE
+E_002435,filtration method,filtration method,PROCEDURE
+E_002436,filtration technique,filtration technique,PROCEDURE
+E_002437,fine adjustment,fine adjustment,PROCEDURE
+E_002438,firm strokes,firm strokes,PROCEDURE
+E_002439,fixation,fixation,PROCEDURE
+E_002440,Flame,flame,PROCEDURE
+E_002441,flaming,flaming,PROCEDURE
+E_002442,flotation technique,flotation technique,PROCEDURE
+E_002443,follow-up,follow-up,PROCEDURE
+E_002444,following technique,following technique,PROCEDURE
+E_002445,formaldehyde–detergent sedimentation technique,formaldehyde–detergent sedimentation technique,PROCEDURE
+E_002446,formaldehyde–ether sedimentation technique,formaldehyde–ether sedimentation technique,PROCEDURE
+E_002447,Formol gel test,formol gel test,PROCEDURE
+E_002448,fresh smear,fresh smear,PROCEDURE
+E_002449,FTA-Abs test,fta-abs test,PROCEDURE
+E_002450,Gently clean,gently clean,PROCEDURE
+E_002451,good-quality staining,good-quality staining,PROCEDURE
+E_002452,Gram stain,gram stain,PROCEDURE
+E_002453,Gram staining,gram staining,PROCEDURE
+E_002454,haemagglutination reactions,haemagglutination reactions,PROCEDURE
+E_002455,haematology,haematology,PROCEDURE
+E_002456,haemoglobin cyanide method,haemoglobin cyanide method,PROCEDURE
+E_002457,haemoglobin estimation,haemoglobin estimation,PROCEDURE
+E_002458,handling and dispatch of the specimen,handling and dispatch of the specimen,PROCEDURE
+E_002459,heat,heat,PROCEDURE
+E_002460,Heat inactivation,heat inactivation,PROCEDURE
+E_002461,"histological
+examination",histological examination,PROCEDURE
+E_002462,histopathological examination,histopathological examination,PROCEDURE
+E_002463,histopathology,histopathology,PROCEDURE
+E_002464,hospital sterilization service,hospital sterilization service,PROCEDURE
+E_002465,identification,identification,PROCEDURE
+E_002466,Immediate laboratory investigation,immediate laboratory investigation,PROCEDURE
+E_002467,immediate treatment,immediate treatment,PROCEDURE
+E_002468,immunoelectrophoresis techniques,immunoelectrophoresis techniques,PROCEDURE
+E_002469,immunofluorescence assays,immunofluorescence assays,PROCEDURE
+E_002470,immunofluorescence technique,immunofluorescence technique,PROCEDURE
+E_002471,immunological methods,immunological methods,PROCEDURE
+E_002472,immunological procedure,immunological procedure,PROCEDURE
+E_002473,immunological test,immunological test,PROCEDURE
+E_002474,immunological tests,immunological tests,PROCEDURE
+E_002475,immunology tests,immunology tests,PROCEDURE
+E_002476,in vitro culture,in vitro culture,PROCEDURE
+E_002477,in-house control,in-house control,PROCEDURE
+E_002478,incineration,incineration,PROCEDURE
+E_002479,incision,incision,PROCEDURE
+E_002480,incubate,incubate,PROCEDURE
+E_002481,incubated,incubated,PROCEDURE
+E_002482,Incubating,incubating,PROCEDURE
+E_002483,incubation,incubation,PROCEDURE
+E_002484,Indirect immunofluorescence,indirect immunofluorescence,PROCEDURE
+E_002485,indirect method,indirect method,PROCEDURE
+E_002486,initial diagnosis,initial diagnosis,PROCEDURE
+E_002487,injection,injection,PROCEDURE
+E_002488,inoculation,inoculation,PROCEDURE
+E_002489,internal quality control,internal quality control,PROCEDURE
+E_002490,intramuscular injections,intramuscular injections,PROCEDURE
+E_002491,investigation,investigation,PROCEDURE
+E_002492,isolating and identifying,isolating and identifying,PROCEDURE
+E_002493,isolation,isolation,PROCEDURE
+E_002494,Kato–Katz technique,kato–katz technique,PROCEDURE
+E_002495,laboratory investigations,laboratory investigations,PROCEDURE
+E_002496,latex-agglutination technique,latex-agglutination technique,PROCEDURE
+E_002497,leukocyte count,leukocyte count,PROCEDURE
+E_002498,long examinations,long examinations,PROCEDURE
+E_002499,Lubrication,lubrication,PROCEDURE
+E_002500,lumbar puncture,lumbar puncture,PROCEDURE
+E_002501,lysis,lysis,PROCEDURE
+E_002502,Mancini technique,mancini technique,PROCEDURE
+E_002503,massage,massage,PROCEDURE
+E_002504,measurement and dispensing,measurement and dispensing,PROCEDURE
+E_002505,Measurement of the ESR,measurement of the esr,PROCEDURE
+E_002506,measurement procedure,measurement procedure,PROCEDURE
+E_002507,"Method
+
+1",method 1,PROCEDURE
+E_002508,method for haemoglobin measurement,method for haemoglobin measurement,PROCEDURE
+E_002509,"method of
+collection and examination",method of collection and examination,PROCEDURE
+E_002510,microbial culture,microbial culture,PROCEDURE
+E_002511,microscopic,microscopic,PROCEDURE
+E_002512,Microscopic examination,microscopic examination,PROCEDURE
+E_002513,microscopy,microscopy,PROCEDURE
+E_002514,Mix and incubate,mix and incubate,PROCEDURE
+E_002515,mix by inversion,mix by inversion,PROCEDURE
+E_002516,mix the solution well,mix the solution well,PROCEDURE
+E_002517,"modified Ziehl–
+Neelsen technique",modified ziehl– neelsen technique,PROCEDURE
+E_002518,modified Ziehl–Neelsen method,modified ziehl–neelsen method,PROCEDURE
+E_002519,Modified Ziehl–Neelsen technique,modified ziehl–neelsen technique,PROCEDURE
+E_002520,moist heat,moist heat,PROCEDURE
+E_002521,morphological index,morphological index,PROCEDURE
+E_002522,Nasal smears,nasal smears,PROCEDURE
+E_002523,nephelometry,nephelometry,PROCEDURE
+E_002524,Nephelometry and turbidimetry,nephelometry and turbidimetry,PROCEDURE
+E_002525,neutralization methods,neutralization methods,PROCEDURE
+E_002526,non-treponemal tests,non-treponemal tests,PROCEDURE
+E_002527,nose blow,nose blow,PROCEDURE
+E_002528,observe for haemolysis,observe for haemolysis,PROCEDURE
+E_002529,operation,operation,PROCEDURE
+E_002530,orthotoluidine method,orthotoluidine method,PROCEDURE
+E_002531,overlaid,overlaid,PROCEDURE
+E_002532,Pandy test,pandy test,PROCEDURE
+E_002533,parasitology,parasitology,PROCEDURE
+E_002534,Passive agglutination,passive agglutination,PROCEDURE
+E_002535,Perform the test,perform the test,PROCEDURE
+E_002536,Pipette,pipette,PROCEDURE
+E_002537,pipetting,pipetting,PROCEDURE
+E_002538,plumbing operation,plumbing operation,PROCEDURE
+E_002539,plus system,plus system,PROCEDURE
+E_002540,precipitation,precipitation,PROCEDURE
+E_002541,Precipitation methods,precipitation methods,PROCEDURE
+E_002542,precipitation reactions,precipitation reactions,PROCEDURE
+E_002543,precise identification,precise identification,PROCEDURE
+E_002544,pregnancy tests,pregnancy tests,PROCEDURE
+E_002545,Preliminary rinsing,preliminary rinsing,PROCEDURE
+E_002546,Preparation,preparation,PROCEDURE
+E_002547,Preparation and fixation of smears,preparation and fixation of smears,PROCEDURE
+E_002548,Preparation and staining of thin blood films,preparation and staining of thin blood films,PROCEDURE
+E_002549,Preparation of controls,preparation of controls,PROCEDURE
+E_002550,Preparation of smears,preparation of smears,PROCEDURE
+E_002551,preparation of stains,preparation of stains,PROCEDURE
+E_002552,"preparation
+technique",preparation technique,PROCEDURE
+E_002553,preparing the patient,preparing the patient,PROCEDURE
+E_002554,presumptive diagnosis,presumptive diagnosis,PROCEDURE
+E_002555,prick,prick,PROCEDURE
+E_002556,Primary binding tests,primary binding tests,PROCEDURE
+E_002557,prognosis,prognosis,PROCEDURE
+E_002558,proper identification,proper identification,PROCEDURE
+E_002559,puncture,puncture,PROCEDURE
+E_002560,Puncturing,puncturing,PROCEDURE
+E_002561,quality control,quality control,PROCEDURE
+E_002562,quantitative chemical tests,quantitative chemical tests,PROCEDURE
+E_002563,radial immunodiffusion,radial immunodiffusion,PROCEDURE
+E_002564,Radioimmunoassay,radioimmunoassay,PROCEDURE
+E_002565,"radioimmunoassay
+methods",radioimmunoassay methods,PROCEDURE
+E_002566,radioimmunoassays,radioimmunoassays,PROCEDURE
+E_002567,Random collection,random collection,PROCEDURE
+E_002568,Recommended procedures,recommended procedures,PROCEDURE
+E_002569,"rectal
+swab",rectal swab,PROCEDURE
+E_002570,Registration of specimens,registration of specimens,PROCEDURE
+E_002571,reliable parasite counting,reliable parasite counting,PROCEDURE
+E_002572,repair and maintenance,repair and maintenance,PROCEDURE
+E_002573,repair and maintenance procedures,repair and maintenance procedures,PROCEDURE
+E_002574,"repeat the entire
+test",repeat the entire test,PROCEDURE
+E_002575,repeated centrifuging,repeated centrifuging,PROCEDURE
+E_002576,resterilized,resterilized,PROCEDURE
+E_002577,rinse thoroughly with water,rinse thoroughly with water,PROCEDURE
+E_002578,rinse throughly with water,rinse throughly with water,PROCEDURE
+E_002579,Rinsing,rinsing,PROCEDURE
+E_002580,"routine
+diagnosis",routine diagnosis,PROCEDURE
+E_002581,routine investigation,routine investigation,PROCEDURE
+E_002582,Routine method,routine method,PROCEDURE
+E_002583,Routine tests,routine tests,PROCEDURE
+E_002584,RPR test,rpr test,PROCEDURE
+E_002585,saline preparation,saline preparation,PROCEDURE
+E_002586,Sampling,sampling,PROCEDURE
+E_002587,sandwich technique,sandwich technique,PROCEDURE
+E_002588,scraping,scraping,PROCEDURE
+E_002589,screening,screening,PROCEDURE
+E_002590,search,search,PROCEDURE
+E_002591,Secondary binding tests,secondary binding tests,PROCEDURE
+E_002592,sedimentation method,sedimentation method,PROCEDURE
+E_002593,sedimentation technique,sedimentation technique,PROCEDURE
+E_002594,Semi-quantitative analysis,semi-quantitative analysis,PROCEDURE
+E_002595,"semi-quantitative
+culture",semi-quantitative culture,PROCEDURE
+E_002596,semi-quantitative test,semi-quantitative test,PROCEDURE
+E_002597,Semi-quantitative titrations,semi-quantitative titrations,PROCEDURE
+E_002598,serological examinations,serological examinations,PROCEDURE
+E_002599,Serological techniques,serological techniques,PROCEDURE
+E_002600,serological tests,serological tests,PROCEDURE
+E_002601,serology,serology,PROCEDURE
+E_002602,serum-based control,serum-based control,PROCEDURE
+E_002603,shake,shake,PROCEDURE
+E_002604,sickle-cell slide test,sickle-cell slide test,PROCEDURE
+E_002605,sickling,sickling,PROCEDURE
+E_002606,skin biopsies,skin biopsies,PROCEDURE
+E_002607,skin disinfection,skin disinfection,PROCEDURE
+E_002608,Slit skin smears,slit skin smears,PROCEDURE
+E_002609,smear,smear,PROCEDURE
+E_002610,soaking and rinsing,soaking and rinsing,PROCEDURE
+E_002611,specimen collection,specimen collection,PROCEDURE
+E_002612,splenectomy,splenectomy,PROCEDURE
+E_002613,sputum collection,sputum collection,PROCEDURE
+E_002614,squeeze hard,squeeze hard,PROCEDURE
+E_002615,Stain,stain,PROCEDURE
+E_002616,stained skin smear,stained skin smear,PROCEDURE
+E_002617,"stained thick blood
+film",stained thick blood film,PROCEDURE
+E_002618,Staining,staining,PROCEDURE
+E_002619,staining procedure,staining procedure,PROCEDURE
+E_002620,standard light microscopy,standard light microscopy,PROCEDURE
+E_002621,step 2,step 2,PROCEDURE
+E_002622,steps,steps,PROCEDURE
+E_002623,steps 2 and 3,steps 2 and 3,PROCEDURE
+E_002624,steps 6 and 7,steps 6 and 7,PROCEDURE
+E_002625,sterilization,sterilization,PROCEDURE
+E_002626,Sterilization by boiling,sterilization by boiling,PROCEDURE
+E_002627,Sterilization procedure,sterilization procedure,PROCEDURE
+E_002628,sterilized by flaming,sterilized by flaming,PROCEDURE
+E_002629,Sterilizing,sterilizing,PROCEDURE
+E_002630,sterilizing cycle,sterilizing cycle,PROCEDURE
+E_002631,stool collection,stool collection,PROCEDURE
+E_002632,superficial incision,superficial incision,PROCEDURE
+E_002633,surgical operation,surgical operation,PROCEDURE
+E_002634,surgical operations,surgical operations,PROCEDURE
+E_002635,swallowing,swallowing,PROCEDURE
+E_002636,swirl to mix,swirl to mix,PROCEDURE
+E_002637,swirling frequently,swirling frequently,PROCEDURE
+E_002638,Taking a capillary blood sample,taking a capillary blood sample,PROCEDURE
+E_002639,technique,technique,PROCEDURE
+E_002640,test on blood,test on blood,PROCEDURE
+E_002641,test run,test run,PROCEDURE
+E_002642,testing,testing,PROCEDURE
+E_002643,tests,tests,PROCEDURE
+E_002644,The procedure,the procedure,PROCEDURE
+E_002645,therapy,therapy,PROCEDURE
+E_002646,thick blood smear,thick blood smear,PROCEDURE
+E_002647,This procedure,this procedure,PROCEDURE
+E_002648,tourniquet,tourniquet,PROCEDURE
+E_002649,TPHA test,tpha test,PROCEDURE
+E_002650,Transferring,transferring,PROCEDURE
+E_002651,Transferring the blood,transferring the blood,PROCEDURE
+E_002652,transfusion,transfusion,PROCEDURE
+E_002653,treatment,treatment,PROCEDURE
+E_002654,Turbidimetric measurement,turbidimetric measurement,PROCEDURE
+E_002655,turbidimetry,turbidimetry,PROCEDURE
+E_002656,Unblocking,unblocking,PROCEDURE
+E_002657,urine analysis,urine analysis,PROCEDURE
+E_002658,Urine cultures,urine cultures,PROCEDURE
+E_002659,urine examination,urine examination,PROCEDURE
+E_002660,venepuncture,venepuncture,PROCEDURE
+E_002661,visual inspection,visual inspection,PROCEDURE
+E_002662,Wash,wash,PROCEDURE
+E_002663,Wash your hands well,wash your hands well,PROCEDURE
+E_002664,washed,washed,PROCEDURE
+E_002665,washing,washing,PROCEDURE
+E_002666,"washing
 and sterilization",washing and sterilization,PROCEDURE
-E_000285,water test,water test,PROCEDURE
-E_000286,zero test,zero test,PROCEDURE
-E_000287,2% solution,2% solution,REAGENT
-E_000288,Acetic acid,acetic acid,REAGENT
-E_000289,acetic acid solution,acetic acid solution,REAGENT
-E_000290,AgNO3,agno3,REAGENT
-E_000291,"buffer
+E_002667,water analysis,water analysis,PROCEDURE
+E_002668,water test,water test,PROCEDURE
+E_002669,weighing,weighing,PROCEDURE
+E_002670,western blot,western blot,PROCEDURE
+E_002671,wet mounting,wet mounting,PROCEDURE
+E_002672,Wet preparation,wet preparation,PROCEDURE
+E_002673,"Wiping, drying and wrapping up","wiping, drying and wrapping up",PROCEDURE
+E_002674,zero test,zero test,PROCEDURE
+E_002675,Ziehl–Neelsen stain,ziehl–neelsen stain,PROCEDURE
+E_002676,Ziehl–Neelsen technique,ziehl–neelsen technique,PROCEDURE
+E_002677,1% agarose,1% agarose,REAGENT
+E_002678,1% boric acid,1% boric acid,REAGENT
+E_002679,1% eosin solution,1% eosin solution,REAGENT
+E_002680,1% solution,1% solution,REAGENT
+E_002681,10% acetic acid,10% acetic acid,REAGENT
+E_002682,10% acetic acid solution,10% acetic acid solution,REAGENT
+E_002683,10% formaldehyde solution,10% formaldehyde solution,REAGENT
+E_002684,10% solution,10% solution,REAGENT
+E_002685,2% solution,2% solution,REAGENT
+E_002686,"2% trisodium
+citrate solution",2% trisodium citrate solution,REAGENT
+E_002687,37% formaldehyde solution,37% formaldehyde solution,REAGENT
+E_002688,5% solution,5% solution,REAGENT
+E_002689,"50% acetic acid
+solution",50% acetic acid solution,REAGENT
+E_002690,70% ethanol,70% ethanol,REAGENT
+E_002691,70% methanol,70% methanol,REAGENT
+E_002692,85% solution,85% solution,REAGENT
+E_002693,95% ethanol,95% ethanol,REAGENT
+E_002694,absorbing diluent,absorbing diluent,REAGENT
+E_002695,Acetic acid,acetic acid,REAGENT
+E_002696,acetic acid solution,acetic acid solution,REAGENT
+E_002697,Acetone,acetone,REAGENT
+E_002698,Acetone–ethanol decolorizer,acetone–ethanol decolorizer,REAGENT
+E_002699,acid,acid,REAGENT
+E_002700,acid reagent,acid reagent,REAGENT
+E_002701,Acid–ethanol,acid–ethanol,REAGENT
+E_002702,agar,agar,REAGENT
+E_002703,agarose gel,agarose gel,REAGENT
+E_002704,AgNO3,agno3,REAGENT
+E_002705,AHD reagent,ahd reagent,REAGENT
+E_002706,AHD standard,ahd standard,REAGENT
+E_002707,air,air,REAGENT
+E_002708,Albert stain,albert stain,REAGENT
+E_002709,albumin,albumin,REAGENT
+E_002710,Alkaline haematin D (AHD),alkaline haematin d (ahd,REAGENT
+E_002711,Alkaline haematin D reagent,alkaline haematin d reagent,REAGENT
+E_002712,Amies transport medium,amies transport medium,REAGENT
+E_002713,aminopyrine,aminopyrine,REAGENT
+E_002714,aminopyrine solution,aminopyrine solution,REAGENT
+E_002715,Ammonia,ammonia,REAGENT
+E_002716,ammonium alum,ammonium alum,REAGENT
+E_002717,anti-b-hCG antibody,anti-b-hcg antibody,REAGENT
+E_002718,Anti-b-human chorionic gonadotropin (anti-b-hCG),anti-b-human chorionic gonadotropin (anti-b-hcg,REAGENT
+E_002719,Anti-streptolysin O,anti-streptolysin o,REAGENT
+E_002720,anti-streptolysin O latex reagent,anti-streptolysin o latex reagent,REAGENT
+E_002721,"anti-streptolysin
+O reagents",anti-streptolysin o reagents,REAGENT
+E_002722,anticoagulant,anticoagulant,REAGENT
+E_002723,Benedict solution,benedict solution,REAGENT
+E_002724,benzoic acid,benzoic acid,REAGENT
+E_002725,Blank reagent,blank reagent,REAGENT
+E_002726,Boric acid,boric acid,REAGENT
+E_002727,brilliant cresyl blue,brilliant cresyl blue,REAGENT
+E_002728,"buffer
 solution",buffer solution,REAGENT
-E_000292,butane gas,butane gas,REAGENT
-E_000293,"crystal violet, modified
-Hucker","crystal violet, modified hucker",REAGENT
-E_000294,Demineralized water,demineralized water,REAGENT
-E_000295,Disodium hydrogen phosphate,disodium hydrogen phosphate,REAGENT
-E_000296,Distilled water,distilled water,REAGENT
-E_000297,Indicator paper,indicator paper,REAGENT
-E_000298,laboratory reagents,laboratory reagents,REAGENT
-E_000299,Na2HPO4·2H2O,na2hpo4·2h2o,REAGENT
-E_000300,Phenol red,phenol red,REAGENT
-E_000301,phenol red solution,phenol red solution,REAGENT
-E_000302,silver nitrate,silver nitrate,REAGENT
-E_000303,sodium carbonate solution,sodium carbonate solution,REAGENT
-E_000304,stains,stains,REAGENT
-E_000305,Universal indicator paper,universal indicator paper,REAGENT
-E_000306,blood,blood,SPECIMEN
-E_000307,positive specimens,positive specimens,SPECIMEN
-E_000308,samples or materials,samples or materials,SPECIMEN
-E_000309,sputum specimens,sputum,SPECIMEN
-E_000310,stools,stools,SPECIMEN
-E_000311,urine,urine,SPECIMEN
+E_002729,Buffer to reconstitute reagents,buffer to reconstitute reagents,REAGENT
+E_002730,buffered glycerol saline,buffered glycerol saline,REAGENT
+E_002731,buffered water,buffered water,REAGENT
+E_002732,cadmium sulfate,cadmium sulfate,REAGENT
+E_002733,"carbol
+a",carbol a,REAGENT
+E_002734,carbol fuchsin,carbol fuchsin,REAGENT
+E_002735,Carbol fuchsin solution,carbol fuchsin solution,REAGENT
+E_002736,cardiolipin,cardiolipin,REAGENT
+E_002737,Cary–Blair transport medium,cary–blair transport medium,REAGENT
+E_002738,chemical,chemical,REAGENT
+E_002739,chemicals,chemicals,REAGENT
+E_002740,Chemicals and reagents,chemicals and reagents,REAGENT
+E_002741,chromogen solution,chromogen solution,REAGENT
+E_002742,colour reagent,colour reagent,REAGENT
+E_002743,commercial detergent,commercial detergent,REAGENT
+E_002744,conjugate,conjugate,REAGENT
+E_002745,copper sulfate solution,copper sulfate solution,REAGENT
+E_002746,cotton blue,cotton blue,REAGENT
+E_002747,cresol,cresol,REAGENT
+E_002748,cresyl blue solution,cresyl blue solution,REAGENT
+E_002749,crystal violet stain,crystal violet stain,REAGENT
+E_002750,"Crystal violet, modified Hucker","crystal violet, modified hucker",REAGENT
+E_002751,CSF,csf,REAGENT
+E_002752,CSF deposit,csf deposit,REAGENT
+E_002753,dangerous reagents,dangerous reagents,REAGENT
+E_002754,Delafield’s haematoxylin stain,delafield’s haematoxylin stain,REAGENT
+E_002755,Demineralized water,demineralized water,REAGENT
+E_002756,detection reagent,detection reagent,REAGENT
+E_002757,detergent,detergent,REAGENT
+E_002758,Diacetyl monoxime,diacetyl monoxime,REAGENT
+E_002759,Diacetyl monoxime reagent,diacetyl monoxime reagent,REAGENT
+E_002760,diacetyl monoxime stock solution,diacetyl monoxime stock solution,REAGENT
+E_002761,diluted stain,diluted stain,REAGENT
+E_002762,disinfectant,disinfectant,REAGENT
+E_002763,Disodium hydrogen phosphate,disodium hydrogen phosphate,REAGENT
+E_002764,distilled water,distilled water,REAGENT
+E_002765,Drabkin,drabkin,REAGENT
+E_002766,Drabkin diluting fluid,drabkin diluting fluid,REAGENT
+E_002767,"dried
+heparin",dried heparin,REAGENT
+E_002768,EDTA,edta,REAGENT
+E_002769,EDTA dipotassium salt,edta dipotassium salt,REAGENT
+E_002770,EDTA dipotassium salt solution,edta dipotassium salt solution,REAGENT
+E_002771,enzyme-linked anti-HBs,enzyme-linked anti-hbs,REAGENT
+E_002772,Eosin,eosin,REAGENT
+E_002773,eosin part,eosin part,REAGENT
+E_002774,eosin stain,eosin stain,REAGENT
+E_002775,ethanol,ethanol,REAGENT
+E_002776,ether,ether,REAGENT
+E_002777,ethyl acetate,ethyl acetate,REAGENT
+E_002778,Evan’s blue,evan’s blue,REAGENT
+E_002779,Field stain,field stain,REAGENT
+E_002780,Field stain A,field stain a,REAGENT
+E_002781,Field stain A solution,field stain a solution,REAGENT
+E_002782,Field stain B,field stain b,REAGENT
+E_002783,Field stain B solution,field stain b solution,REAGENT
+E_002784,filtered carbol fuchsin stain,filtered carbol fuchsin stain,REAGENT
+E_002785,fluoride oxalate,fluoride oxalate,REAGENT
+E_002786,formaldehyde,formaldehyde,REAGENT
+E_002787,formaldehyde saline,formaldehyde saline,REAGENT
+E_002788,"formaldehyde–detergent
+solution",formaldehyde–detergent solution,REAGENT
+E_002789,formalin,formalin,REAGENT
+E_002790,Fresh sodium metabisulfite,fresh sodium metabisulfite,REAGENT
+E_002791,fuchsin,fuchsin,REAGENT
+E_002792,G 70% Methanol,g 70% methanol,REAGENT
+E_002793,G Acid reagent,g acid reagent,REAGENT
+E_002794,G Carbol fuchsin solution,g carbol fuchsin solution,REAGENT
+E_002795,G Delafield’s haematoxylin stain,g delafield’s haematoxylin stain,REAGENT
+E_002796,G Drabkin,g drabkin,REAGENT
+E_002797,G Field stain,g field stain,REAGENT
+E_002798,G Giemsa stain,g giemsa stain,REAGENT
+E_002799,G Leishman stain,g leishman stain,REAGENT
+E_002800,G May–Grünwald stain,g may–grünwald stain,REAGENT
+E_002801,G Mix,g mix,REAGENT
+E_002802,G Pandy reagent,g pandy reagent,REAGENT
+E_002803,G Reagents,g reagents,REAGENT
+E_002804,G Romanowsky stain,g romanowsky stain,REAGENT
+E_002805,Giemsa,giemsa,REAGENT
+E_002806,Giemsa mixture,giemsa mixture,REAGENT
+E_002807,Giemsa solution,giemsa solution,REAGENT
+E_002808,Giemsa stain,giemsa stain,REAGENT
+E_002809,"Giemsa stain
+
+Principle",giemsa stain principle,REAGENT
+E_002810,Giemsa stain solution,giemsa stain solution,REAGENT
+E_002811,"glacial acetic
+acid",glacial acetic acid,REAGENT
+E_002812,globulin,globulin,REAGENT
+E_002813,Glucose reagents,glucose reagents,REAGENT
+E_002814,glucose working reference solution,glucose working reference solution,REAGENT
+E_002815,glucose working reference standard,glucose working reference standard,REAGENT
+E_002816,glycerol,glycerol,REAGENT
+E_002817,Glycerol–malachite green solution,glycerol–malachite green solution,REAGENT
+E_002818,Gram stain,gram stain,REAGENT
+E_002819,Grünwald stain,grünwald stain,REAGENT
+E_002820,haemiglobincyanide,haemiglobincyanide,REAGENT
+E_002821,haemiglobincyanide solution,haemiglobincyanide solution,REAGENT
+E_002822,haemoglobin S,haemoglobin s,REAGENT
+E_002823,household detergent,household detergent,REAGENT
+E_002824,HRP-II,hrp-ii,REAGENT
+E_002825,HRP-II antigen,hrp-ii antigen,REAGENT
+E_002826,hydrochloric acid,hydrochloric acid,REAGENT
+E_002827,"hypochlorite
+solution",hypochlorite solution,REAGENT
+E_002828,IgM,igm,REAGENT
+E_002829,Indicator paper,indicator paper,REAGENT
+E_002830,iodide,iodide,REAGENT
+E_002831,iodine,iodine,REAGENT
+E_002832,iodine solution,iodine solution,REAGENT
+E_002833,iodine–acetic acid solution,iodine–acetic acid solution,REAGENT
+E_002834,"Jenner
+stain",jenner stain,REAGENT
+E_002835,laboratory reagents,laboratory reagents,REAGENT
+E_002836,lactic acid,lactic acid,REAGENT
+E_002837,lactophenol,lactophenol,REAGENT
+E_002838,Lactophenol cotton blue mounting solution,lactophenol cotton blue mounting solution,REAGENT
+E_002839,Latex hCG reagent,latex hcg reagent,REAGENT
+E_002840,latex hCG reagent suspension,latex hcg reagent suspension,REAGENT
+E_002841,latex reagent,latex reagent,REAGENT
+E_002842,latex RF reagent,latex rf reagent,REAGENT
+E_002843,Latex rheumatoid factor (RF),latex rheumatoid factor (rf,REAGENT
+E_002844,Leishman,leishman,REAGENT
+E_002845,Leishman stain,leishman stain,REAGENT
+E_002846,leukocyte esterase,leukocyte esterase,REAGENT
+E_002847,liquid detergent,liquid detergent,REAGENT
+E_002848,Loeffler methylene blue,loeffler methylene blue,REAGENT
+E_002849,Lugol iodine,lugol iodine,REAGENT
+E_002850,Lugol iodine solution,lugol iodine solution,REAGENT
+E_002851,Lyophilized antigen,lyophilized antigen,REAGENT
+E_002852,Lyophilized negative control serum,lyophilized negative control serum,REAGENT
+E_002853,Lyophilized positive control serum,lyophilized positive control serum,REAGENT
+E_002854,lysing reagent,lysing reagent,REAGENT
+E_002855,malachite green,malachite green,REAGENT
+E_002856,MAY-GRÜNWALD STAIN,may-grünwald stain,REAGENT
+E_002857,May–Grünwald,may–grünwald,REAGENT
+E_002858,May–Grünwald stain,may–grünwald stain,REAGENT
+E_002859,methanol,methanol,REAGENT
+E_002860,methylene blue,methylene blue,REAGENT
+E_002861,methylene blue solution,methylene blue solution,REAGENT
+E_002862,"modified
+Schaudinn fixative solution",modified schaudinn fixative solution,REAGENT
+E_002863,monoclonal antibody,monoclonal antibody,REAGENT
+E_002864,Na2HPO4·2H2O,na2hpo4·2h2o,REAGENT
+E_002865,neutral charcoal powder,neutral charcoal powder,REAGENT
+E_002866,neutral red,neutral red,REAGENT
+E_002867,neutral water,neutral water,REAGENT
+E_002868,nitrite,nitrite,REAGENT
+E_002869,non-specific reagin,non-specific reagin,REAGENT
+E_002870,o-phenylenediamine,o-phenylenediamine,REAGENT
+E_002871,o-toluidine,o-toluidine,REAGENT
+E_002872,o-toluidine reagent,o-toluidine reagent,REAGENT
+E_002873,orthophosphoric acid,orthophosphoric acid,REAGENT
+E_002874,outdated reagents,outdated reagents,REAGENT
+E_002875,oxidizing reagent,oxidizing reagent,REAGENT
+E_002876,Pandy reagent,pandy reagent,REAGENT
+E_002877,Petroleum jelly,petroleum jelly,REAGENT
+E_002878,phenol,phenol,REAGENT
+E_002879,Phenol or formalin,phenol or formalin,REAGENT
+E_002880,Phenol red,phenol red,REAGENT
+E_002881,phenol red solution,phenol red solution,REAGENT
+E_002882,phosphate buffer,phosphate buffer,REAGENT
+E_002883,phosphate-buffered water,phosphate-buffered water,REAGENT
+E_002884,polyvinyl alcohol,polyvinyl alcohol,REAGENT
+E_002885,potassium cyanide,potassium cyanide,REAGENT
+E_002886,Potassium hydroxide,potassium hydroxide,REAGENT
+E_002887,Potassium permanganate,potassium permanganate,REAGENT
+E_002888,Powdered Giemsa stain,powdered giemsa stain,REAGENT
+E_002889,pre-prepared diluted stains,pre-prepared diluted stains,REAGENT
+E_002890,PVA,pva,REAGENT
+E_002891,PVA fixative,pva fixative,REAGENT
+E_002892,PVA fixative solutions,pva fixative solutions,REAGENT
+E_002893,PVA powder,pva powder,REAGENT
+E_002894,quicklime,quicklime,REAGENT
+E_002895,reagent blank,reagent blank,REAGENT
+E_002896,reagent control,reagent control,REAGENT
+E_002897,reconstituted reagents,reconstituted reagents,REAGENT
+E_002898,Reduced streptolysin O,reduced streptolysin o,REAGENT
+E_002899,reducing reagent,reducing reagent,REAGENT
+E_002900,reference solution,reference solution,REAGENT
+E_002901,Romanowsky stain,romanowsky stain,REAGENT
+E_002902,"Romanowsky
+stains",romanowsky stains,REAGENT
+E_002903,RPR antigen,rpr antigen,REAGENT
+E_002904,"safer
+reagents",safer reagents,REAGENT
+E_002905,safranine,safranine,REAGENT
+E_002906,Safranine O 2,safranine o 2,REAGENT
+E_002907,"safranine
+solution",safranine solution,REAGENT
+E_002908,saline,saline,REAGENT
+E_002909,"saline
+solution",saline solution,REAGENT
+E_002910,salts,salts,REAGENT
+E_002911,saponin,saponin,REAGENT
+E_002912,saponin lysing solution,saponin lysing solution,REAGENT
+E_002913,"semen diluting
+fluid",semen diluting fluid,REAGENT
+E_002914,serum,serum,REAGENT
+E_002915,silver nitrate,silver nitrate,REAGENT
+E_002916,Sodium bicarbonate,sodium bicarbonate,REAGENT
+E_002917,Sodium carbonate,sodium carbonate,REAGENT
+E_002918,sodium carbonate solution,sodium carbonate solution,REAGENT
+E_002919,"sodium carbonate/
+trisodium citrate solution",sodium carbonate/ trisodium citrate solution,REAGENT
+E_002920,Sodium chloride,sodium chloride,REAGENT
+E_002921,sodium chloride solution,sodium chloride solution,REAGENT
+E_002922,sodium dihydrogen phosphate,sodium dihydrogen phosphate,REAGENT
+E_002923,SODIUM HYDROXIDE,sodium hydroxide,REAGENT
+E_002924,"sodium
+metabisulfite",sodium metabisulfite,REAGENT
+E_002925,sodium metabisulfite reagent,sodium metabisulfite reagent,REAGENT
+E_002926,"sodium metabisulfite
+solution",sodium metabisulfite solution,REAGENT
+E_002927,Sodium nitroprusside crystals,sodium nitroprusside crystals,REAGENT
+E_002928,sodium nitroprusside solution,sodium nitroprusside solution,REAGENT
+E_002929,solution,solution,REAGENT
+E_002930,solution A,solution a,REAGENT
+E_002931,solution B,solution b,REAGENT
+E_002932,special stain,special stain,REAGENT
+E_002933,stain,stain,REAGENT
+E_002934,stain powders,stain powders,REAGENT
+E_002935,stain solution,stain solution,REAGENT
+E_002936,staining powder,staining powder,REAGENT
+E_002937,staining solution,staining solution,REAGENT
+E_002938,staining solutions,staining solutions,REAGENT
+E_002939,stains,stains,REAGENT
+E_002940,Stock thiomersal solution,stock thiomersal solution,REAGENT
+E_002941,stopping solution,stopping solution,REAGENT
+E_002942,substrate,substrate,REAGENT
+E_002943,sulfo-rhodamine B,sulfo-rhodamine b,REAGENT
+E_002944,Sulfosalicylic acid,sulfosalicylic acid,REAGENT
+E_002945,sulfuric acid,sulfuric acid,REAGENT
+E_002946,supernatant,supernatant,REAGENT
+E_002947,The above reagents,the above reagents,REAGENT
+E_002948,The above-mentioned reagents,the above-mentioned reagents,REAGENT
+E_002949,The reagent,the reagent,REAGENT
+E_002950,The stain,the stain,REAGENT
+E_002951,thiosemicarbazide,thiosemicarbazide,REAGENT
+E_002952,Thiourea,thiourea,REAGENT
+E_002953,This reagent,this reagent,REAGENT
+E_002954,This stain,this stain,REAGENT
+E_002955,TIF,tif,REAGENT
+E_002956,Tincture of iodine,tincture of iodine,REAGENT
+E_002957,Tincture of thiomersal,tincture of thiomersal,REAGENT
+E_002958,titrated chemical reagents,titrated chemical reagents,REAGENT
+E_002959,toluidine blue,toluidine blue,REAGENT
+E_002960,trichloroacetic acid,trichloroacetic acid,REAGENT
+E_002961,trichloroacetic acid solution,trichloroacetic acid solution,REAGENT
+E_002962,trisodium citrate,trisodium citrate,REAGENT
+E_002963,Triton X-100,triton x-100,REAGENT
+E_002964,Türk solution,türk solution,REAGENT
+E_002965,Universal indicator paper,universal indicator paper,REAGENT
+E_002966,Urea reagents,urea reagents,REAGENT
+E_002967,urea stock reference solution,urea stock reference solution,REAGENT
+E_002968,urea working reference solution,urea working reference solution,REAGENT
+E_002969,vital stains,vital stains,REAGENT
+E_002970,washing powder,washing powder,REAGENT
+E_002971,washing reagent,washing reagent,REAGENT
+E_002972,water,water,REAGENT
+E_002973,Wayson stain,wayson stain,REAGENT
+E_002974,Weak-positive in-house control serum,weak-positive in-house control serum,REAGENT
+E_002975,Willis solution,willis solution,REAGENT
+E_002976,Wintrobe solution,wintrobe solution,REAGENT
+E_002977,Wright stain,wright stain,REAGENT
+E_002978,Zenker fixative,zenker fixative,REAGENT
+E_002979,Zenker solution,zenker solution,REAGENT
+E_002980,Ziehl–Neelsen stain,ziehl–neelsen stain,REAGENT
+E_002981,1 Collection of specimens,1 collection of specimens,SPECIMEN
+E_002982,10-ml specimen,10-ml specimen,SPECIMEN
+E_002983,24-Hour urine specimen,24-hour urine specimen,SPECIMEN
+E_002984,24-hour urine specimens,24-hour urine specimens,SPECIMEN
+E_002985,A midstream urine specimen,a midstream urine specimen,SPECIMEN
+E_002986,A random urine sample,a random urine sample,SPECIMEN
+E_002987,A very small piece of the patient’s skin,a very small piece of the patient’s skin,SPECIMEN
+E_002988,aggregations of translucent mucus,aggregations of translucent mucus,SPECIMEN
+E_002989,Any clinical material,any clinical material,SPECIMEN
+E_002990,Aspirated cavity fluid,aspirated cavity fluid,SPECIMEN
+E_002991,aspirates,aspirates,SPECIMEN
+E_002992,"Aspirates, exudates and effusions","aspirates, exudates and effusions",SPECIMEN
+E_002993,beef heart,beef heart,SPECIMEN
+E_002994,biological tissues and fluids,biological tissues and fluids,SPECIMEN
+E_002995,biopsy material,biopsy material,SPECIMEN
+E_002996,biopsy specimen,biopsy specimen,SPECIMEN
+E_002997,biopsy specimens,biopsy specimens,SPECIMEN
+E_002998,biopsy tissue,biopsy tissue,SPECIMEN
+E_002999,blank,blank,SPECIMEN
+E_003000,blanks,blanks,SPECIMEN
+E_003001,blood,blood,SPECIMEN
+E_003002,blood films,blood films,SPECIMEN
+E_003003,blood sample,blood sample,SPECIMEN
+E_003004,blood samples,blood samples,SPECIMEN
+E_003005,blood smears,blood smears,SPECIMEN
+E_003006,blood specimen,blood specimen,SPECIMEN
+E_003007,blood specimens,blood specimens,SPECIMEN
+E_003008,broad ciliated embryo,broad ciliated embryo,SPECIMEN
+E_003009,bubo aspirates,bubo aspirates,SPECIMEN
+E_003010,Cactus-shaped crystals,cactus-shaped crystals,SPECIMEN
+E_003011,capillary blood sample,capillary blood sample,SPECIMEN
+E_003012,Capillary blood specimens,capillary blood specimens,SPECIMEN
+E_003013,casts,casts,SPECIMEN
+E_003014,centrifuged blood samples,centrifuged blood samples,SPECIMEN
+E_003015,Centrifuged capillary blood sample,centrifuged capillary blood sample,SPECIMEN
+E_003016,centrifuged sediment,centrifuged sediment,SPECIMEN
+E_003017,chancre specimen,chancre specimen,SPECIMEN
+E_003018,ciliated embryo,ciliated embryo,SPECIMEN
+E_003019,cleared specimen,cleared specimen,SPECIMEN
+E_003020,Clinical samples,clinical samples,SPECIMEN
+E_003021,clot,clot,SPECIMEN
+E_003022,clumps of phosphate crystals,clumps of phosphate crystals,SPECIMEN
+E_003023,coagulated specimens,coagulated specimens,SPECIMEN
+E_003024,collected blood,collected blood,SPECIMEN
+E_003025,Collected specimens,collected specimens,SPECIMEN
+E_003026,Collection of specimens,collection of specimens,SPECIMEN
+E_003027,Collection of urine specimens,collection of urine specimens,SPECIMEN
+E_003028,control samples,control samples,SPECIMEN
+E_003029,controls,controls,SPECIMEN
+E_003030,coverslip,coverslip,SPECIMEN
+E_003031,crystals,crystals,SPECIMEN
+E_003032,CSF,csf,SPECIMEN
+E_003033,CSF deposit,csf deposit,SPECIMEN
+E_003034,CSF samples,csf samples,SPECIMEN
+E_003035,CSF specimen,csf specimen,SPECIMEN
+E_003036,CSF specimens,csf specimens,SPECIMEN
+E_003037,cysts,cysts,SPECIMEN
+E_003038,day blood,day blood,SPECIMEN
+E_003039,deposit,deposit,SPECIMEN
+E_003040,diphtheriae rods,diphtheriae rods,SPECIMEN
+E_003041,Direct finger-prick samples,direct finger-prick samples,SPECIMEN
+E_003042,dried blood,dried blood,SPECIMEN
+E_003043,dried blood samples,dried blood samples,SPECIMEN
+E_003044,dried drops of blood,dried drops of blood,SPECIMEN
+E_003045,Early morning urine,early morning urine,SPECIMEN
+E_003046,Early morning urine specimen,early morning urine specimen,SPECIMEN
+E_003047,egg,egg,SPECIMEN
+E_003048,embryo,embryo,SPECIMEN
+E_003049,Envelope-shaped crystals,envelope-shaped crystals,SPECIMEN
+E_003050,faecal sample,faecal sample,SPECIMEN
+E_003051,Faecal samples,faecal samples,SPECIMEN
+E_003052,faecal specimen,faecal specimen,SPECIMEN
+E_003053,faeces,faeces,SPECIMEN
+E_003054,Fatty casts,fatty casts,SPECIMEN
+E_003055,Fig.,fig,SPECIMEN
+E_003056,film,film,SPECIMEN
+E_003057,finger-prick sample,finger-prick sample,SPECIMEN
+E_003058,first preparation,first preparation,SPECIMEN
+E_003059,first slide,first slide,SPECIMEN
+E_003060,flagellate cysts,flagellate cysts,SPECIMEN
+E_003061,For each specimen,for each specimen,SPECIMEN
+E_003062,fragment of skin,fragment of skin,SPECIMEN
+E_003063,fresh blood specimen,fresh blood specimen,SPECIMEN
+E_003064,fresh samples,fresh samples,SPECIMEN
+E_003065,fresh stool specimens,fresh stool specimens,SPECIMEN
+E_003066,fungus spores,fungus spores,SPECIMEN
+E_003067,G pus,g pus,SPECIMEN
+E_003068,G Specimens,g specimens,SPECIMEN
+E_003069,genital specimens,genital specimens,SPECIMEN
+E_003070,Gram-positive threads,gram-positive threads,SPECIMEN
+E_003071,Gram-stained slide,gram-stained slide,SPECIMEN
+E_003072,Gram-stained smear,gram-stained smear,SPECIMEN
+E_003073,hairs,hairs,SPECIMEN
+E_003074,heat-inactivated patient’s serum,heat-inactivated patient’s serum,SPECIMEN
+E_003075,heparinized blood samples,heparinized blood samples,SPECIMEN
+E_003076,infected material,infected material,SPECIMEN
+E_003077,infected specimens,infected specimens,SPECIMEN
+E_003078,japonicum egg,japonicum egg,SPECIMEN
+E_003079,laboratory specimen,laboratory specimen,SPECIMEN
+E_003080,last portion of urine,last portion of urine,SPECIMEN
+E_003081,Loa loa,loa loa,SPECIMEN
+E_003082,lymph node aspirates,lymph node aspirates,SPECIMEN
+E_003083,lymph node sample,lymph node sample,SPECIMEN
+E_003084,lysed blood sample,lysed blood sample,SPECIMEN
+E_003085,Midstream urine specimen,midstream urine specimen,SPECIMEN
+E_003086,nasal scrapings,nasal scrapings,SPECIMEN
+E_003087,nature of the specimen,nature of the specimen,SPECIMEN
+E_003088,night blood,night blood,SPECIMEN
+E_003089,oil droplets,oil droplets,SPECIMEN
+E_003090,one per sample,one per sample,SPECIMEN
+E_003091,oocysts,oocysts,SPECIMEN
+E_003092,parasite eggs and larvae,parasite eggs and larvae,SPECIMEN
+E_003093,Patient’s blood,patient’s blood,SPECIMEN
+E_003094,patient’s specimen,patient’s specimen,SPECIMEN
+E_003095,pertenue,pertenue,SPECIMEN
+E_003096,piece of skin,piece of skin,SPECIMEN
+E_003097,piece of tissue,piece of tissue,SPECIMEN
+E_003098,Pollen grains,pollen grains,SPECIMEN
+E_003099,portion of stool,portion of stool,SPECIMEN
+E_003100,positive specimens,positive specimens,SPECIMEN
+E_003101,positive urine samples,positive urine samples,SPECIMEN
+E_003102,preparation,preparation,SPECIMEN
+E_003103,preparations,preparations,SPECIMEN
+E_003104,prepared slide,prepared slide,SPECIMEN
+E_003105,pus,pus,SPECIMEN
+E_003106,pus or CSF specimens,pus or csf specimens,SPECIMEN
+E_003107,pus specimen,pus specimen,SPECIMEN
+E_003108,Random urine specimen,random urine specimen,SPECIMEN
+E_003109,rectal swab,rectal swab,SPECIMEN
+E_003110,Rectangular-shaped crystals,rectangular-shaped crystals,SPECIMEN
+E_003111,resulting deposit,resulting deposit,SPECIMEN
+E_003112,round granular mass,round granular mass,SPECIMEN
+E_003113,rounded embryo,rounded embryo,SPECIMEN
+E_003114,saline preparation,saline preparation,SPECIMEN
+E_003115,sample of blood,sample of blood,SPECIMEN
+E_003116,samples,samples,SPECIMEN
+E_003117,samples or materials,samples or materials,SPECIMEN
+E_003118,second slide,second slide,SPECIMEN
+E_003119,sediment,sediment,SPECIMEN
+E_003120,semen,semen,SPECIMEN
+E_003121,semen specimen,semen specimen,SPECIMEN
+E_003122,semen specimens,semen specimens,SPECIMEN
+E_003123,separate pieces,separate pieces,SPECIMEN
+E_003124,sieved faecal sample,sieved faecal sample,SPECIMEN
+E_003125,single mature segments,single mature segments,SPECIMEN
+E_003126,single segment,single segment,SPECIMEN
+E_003127,single terminal urine specimen,single terminal urine specimen,SPECIMEN
+E_003128,six specimens,six specimens,SPECIMEN
+E_003129,skin specimen,skin specimen,SPECIMEN
+E_003130,skin specimens,skin specimens,SPECIMEN
+E_003131,slender rods,slender rods,SPECIMEN
+E_003132,slide and coverslip,slide and coverslip,SPECIMEN
+E_003133,slit skin smears,slit skin smears,SPECIMEN
+E_003134,slit skin specimen,slit skin specimen,SPECIMEN
+E_003135,Slit skin specimens,slit skin specimens,SPECIMEN
+E_003136,small sample of discharge,small sample of discharge,SPECIMEN
+E_003137,smear,smear,SPECIMEN
+E_003138,specimen collection,specimen collection,SPECIMEN
+E_003139,specimen under investigation,specimen under investigation,SPECIMEN
+E_003140,specimens from females,specimens from females,SPECIMEN
+E_003141,specimens from other sources,specimens from other sources,SPECIMEN
+E_003142,sputum,sputum,SPECIMEN
+E_003143,sputum sample,sputum sample,SPECIMEN
+E_003144,sputum smear,sputum smear,SPECIMEN
+E_003145,stained blood specimens,stained blood specimens,SPECIMEN
+E_003146,stained preparation,stained preparation,SPECIMEN
+E_003147,stained preparations,stained preparations,SPECIMEN
+E_003148,stained specimen,stained specimen,SPECIMEN
+E_003149,starch granules,starch granules,SPECIMEN
+E_003150,stool,stool,SPECIMEN
+E_003151,stool specimen,stool specimen,SPECIMEN
+E_003152,stool specimens,stool specimens,SPECIMEN
+E_003153,stool swab,stool swab,SPECIMEN
+E_003154,stools,stools,SPECIMEN
+E_003155,swab,swab,SPECIMEN
+E_003156,Terminal urine specimen,terminal urine specimen,SPECIMEN
+E_003157,test (serum) sample,test (serum) sample,SPECIMEN
+E_003158,test (serum) samples,test (serum) samples,SPECIMEN
+E_003159,test blanks,test blanks,SPECIMEN
+E_003160,test sample,test sample,SPECIMEN
+E_003161,test samples,test samples,SPECIMEN
+E_003162,test specimen,test specimen,SPECIMEN
+E_003163,The flat male,the flat male,SPECIMEN
+E_003164,The piece of tissue,the piece of tissue,SPECIMEN
+E_003165,The sample,the sample,SPECIMEN
+E_003166,The semen,the semen,SPECIMEN
+E_003167,The specimen,the specimen,SPECIMEN
+E_003168,The stool sample,the stool sample,SPECIMEN
+E_003169,The tissue specimen,the tissue specimen,SPECIMEN
+E_003170,The urine specimen,the urine specimen,SPECIMEN
+E_003171,The whole specimen,the whole specimen,SPECIMEN
+E_003172,thick film,thick film,SPECIMEN
+E_003173,thick films,thick films,SPECIMEN
+E_003174,thin section,thin section,SPECIMEN
+E_003175,This piece of tissue,this piece of tissue,SPECIMEN
+E_003176,Throat specimens,throat specimens,SPECIMEN
+E_003177,tissue,tissue,SPECIMEN
+E_003178,tissue specimen,tissue specimen,SPECIMEN
+E_003179,Tissues,tissues,SPECIMEN
+E_003180,Trophozoites,trophozoites,SPECIMEN
+E_003181,unfertilized egg,unfertilized egg,SPECIMEN
+E_003182,unknown samples,unknown samples,SPECIMEN
+E_003183,unstained preparations,unstained preparations,SPECIMEN
+E_003184,Urate crystals,urate crystals,SPECIMEN
+E_003185,urethral pus,urethral pus,SPECIMEN
+E_003186,urinary deposits,urinary deposits,SPECIMEN
+E_003187,urine,urine,SPECIMEN
+E_003188,urine deposit,urine deposit,SPECIMEN
+E_003189,urine sample,urine sample,SPECIMEN
+E_003190,urine samples,urine samples,SPECIMEN
+E_003191,urine specimen,urine specimen,SPECIMEN
+E_003192,urogenital specimen,urogenital specimen,SPECIMEN
+E_003193,urogenital specimens,urogenital specimens,SPECIMEN
+E_003194,vaginal discharge,vaginal discharge,SPECIMEN
+E_003195,venous blood,venous blood,SPECIMEN
+E_003196,venous blood specimen,venous blood specimen,SPECIMEN
+E_003197,Venous blood specimens,venous blood specimens,SPECIMEN
+E_003198,watery stool specimens,watery stool specimens,SPECIMEN
+E_003199,wet preparation,wet preparation,SPECIMEN
+E_003200,whole worm,whole worm,SPECIMEN
+E_003201,Ziehl–Neelsen-stained smear,ziehl–neelsen-stained smear,SPECIMEN
+E_003202,¥40,¥40,SPECIMEN
+E_003203,adult trophozoites,adult trophozoites,VECTOR
+E_003204,Brugia,brugia,VECTOR
+E_003205,Brugia malayi,brugia malayi,VECTOR
+E_003206,Dirofilaria,dirofilaria,VECTOR
+E_003207,dogs,dogs,VECTOR
+E_003208,female Anopheles mosquitoes,female anopheles mosquitoes,VECTOR
+E_003209,filariae,filariae,VECTOR
+E_003210,flies,flies,VECTOR
+E_003211,hepatitis B virus,hepatitis b virus,VECTOR
+E_003212,Leishmania,leishmania,VECTOR
+E_003213,Loa,loa,VECTOR
+E_003214,Lutzomyia longipalpis,lutzomyia longipalpis,VECTOR
+E_003215,Mansonella,mansonella,VECTOR
+E_003216,Meningonema,meningonema,VECTOR
+E_003217,midges,midges,VECTOR
+E_003218,mosquitoes,mosquitoes,VECTOR
+E_003219,motile trypanosomes,motile trypanosomes,VECTOR
+E_003220,Necator americanus,necator americanus,VECTOR
+E_003221,Onchocerca,onchocerca,VECTOR
+E_003222,Onchocerca volvulus,onchocerca volvulus,VECTOR
+E_003223,parasitic protozoa,parasitic protozoa,VECTOR
+E_003224,Pigs,pigs,VECTOR
+E_003225,Plasmodium falciparum,plasmodium falciparum,VECTOR
+E_003226,Trypanosoma rangeli,trypanosoma rangeli,VECTOR
+E_003227,trypanosomes,trypanosomes,VECTOR
+E_003228,tsetse flies,tsetse flies,VECTOR
+E_003229,tsetse fly,tsetse fly,VECTOR
+E_003230,virus,virus,VECTOR
+E_003231,vivax,vivax,VECTOR
+E_003232,Wuchereria,wuchereria,VECTOR
+E_003233,Wuchereria bancrofti,wuchereria bancrofti,VECTOR

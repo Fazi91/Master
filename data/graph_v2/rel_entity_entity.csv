@@ -1,170 +1,114 @@
 ﻿relation_id,source_entity_id,relation_type,target_entity_id,source_chunk_id,source_page_id,pdf_page,printed_page,evidence_text,extraction_method,confidence
-R_0000001,E_000267,USES_REAGENT,E_000293,C_0013_002,P_0013,13,1,"For example, one of the reagents needed for Gram staining is crystal violet, modified
-Hucker (reagent no.",explicit_sentence_rule,0.9
-R_0000002,E_000275,USES_EQUIPMENT,E_000128,C_0030_002,P_0030,30,18,"This can be done by scraping with a knife but take care not to
-damage the wire inside.",explicit_sentence_rule,0.88
-R_0000003,E_000282,USES_EQUIPMENT,E_000164,C_0035_001,P_0035,35,23,"25 Unblocking a sink with a plungerternatively, use 250g of sodium hydroxide pellets.",explicit_sentence_rule,0.88
-R_0000004,E_000279,USES_EQUIPMENT,E_000039,C_0045_001,P_0045,45,33,"Hot-air oven
-
-If the laboratory is fairly large, a small hot-air oven is useful for drying glassware
-and for sterilization in conjunction with the autoclave (see section 3.",explicit_sentence_rule,0.88
-R_0000005,E_000277,HAS_MEASUREMENT,E_000227,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000006,E_000277,HAS_MEASUREMENT,E_000232,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000007,E_000277,USES_EQUIPMENT,E_000038,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000008,E_000277,USES_EQUIPMENT,E_000045,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000009,E_000277,USES_EQUIPMENT,E_000046,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000010,E_000277,USES_EQUIPMENT,E_000079,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000011,E_000280,HAS_MEASUREMENT,E_000227,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000012,E_000280,HAS_MEASUREMENT,E_000232,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000013,E_000280,USES_EQUIPMENT,E_000038,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
-R_0000014,E_000280,USES_EQUIPMENT,E_000045,C_0048_001,P_0048,48,36,"for as many as
-injection (5, 10, 20ml) possible
-
-Additional equipment
-
-Scalpel with disposable blades for taking slit skin smear 1
-specimens (for leprosy)
-
-Curved clamp forceps without teeth for taking slit skin smear 1
-specimens (for leprosy)
-
-Boxes, plastic or cardboard, disposable, for stool collection 50
-
-Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
-
-Bottles, 2.",explicit_sentence_rule,0.88
+R_0000001,E_002453,USES_REAGENT,E_002750,C_0013_002,P_0013,13,1,"For example, one of the reagents needed for Gram staining is crystal violet, modified Hucker (reagent no.",explicit_sentence_rule,0.9
+R_0000002,E_002588,USES_EQUIPMENT,E_001197,C_0030_002,P_0030,30,18,This can be done by scraping with a knife but take care not to damage the wire inside.,explicit_sentence_rule,0.88
+R_0000003,E_002625,USES_EQUIPMENT,E_000799,C_0045_001,P_0045,45,33,"Hot-air oven If the laboratory is fairly large, a small hot-air oven is useful for drying glassware and for sterilization in conjunction with the autoclave (see section 3.",explicit_sentence_rule,0.88
+R_0000004,E_002631,USES_EQUIPMENT,E_001508,C_0054_001,P_0054,54,42,"53 Components of a wash bottle — light plastic box — glass jar specially designed for stool collection, with a spoon at- tached to the stopper.",explicit_sentence_rule,0.88
+R_0000005,E_002459,HAS_MEASUREMENT,E_001874,C_0101_003,P_0101,101,89,"If the object to be sterilized is heavy or bulky or if it includes powders, oils or petroleum jelly, heat at 175°C for 2 hours.",explicit_sentence_rule,0.88
+R_0000006,E_002459,HAS_MEASUREMENT,E_001880,C_0101_003,P_0101,101,89,"If the object to be sterilized is heavy or bulky or if it includes powders, oils or petroleum jelly, heat at 175°C for 2 hours.",explicit_sentence_rule,0.88
+R_0000007,E_002378,DETECTS,E_002009,C_0103_002,P_0103,103,91,"For example, serological examinations for treponemal infection or typhoid; culture of stools for detection of cholera vibrio; and histological examination of biopsy material.",explicit_sentence_rule,0.93
+R_0000008,E_002463,DETECTS,E_000513,C_0107_001,P_0107,107,95,"This type of examination is called histopathology and can be most important, particularly for the diagnosis of cancer.",explicit_sentence_rule,0.93
+R_0000009,E_002318,USES_EQUIPMENT,E_000968,C_0110_002,P_0110,110,98,G Bathe the affected skin with cotton wool soaked in a 5% solution of sodium carbonate.,explicit_sentence_rule,0.88
+R_0000010,E_001983,CAUSES,E_000548,C_0119_001,P_0119,119,107,"for culture of cholera and other bacteria that cause dysentery), see section 5.",explicit_sentence_rule,0.94
+R_0000011,E_002512,EXAMINES,E_003053,C_0119_002,P_0119,119,107,3 Microscopic examination Direct microscopic examination of faeces in saline or iodine suspension is useful Fig.,explicit_sentence_rule,0.92
+R_0000012,E_002585,USES_EQUIPMENT,E_001711,C_0120_002,P_0120,120,108,For the saline preparation use the ¥10 and ¥40 objectives and a ¥5 eyepiece.,explicit_sentence_rule,0.88
+R_0000013,E_002585,USES_EQUIPMENT,E_001716,C_0120_002,P_0120,120,108,For the saline preparation use the ¥10 and ¥40 objectives and a ¥5 eyepiece.,explicit_sentence_rule,0.88
+R_0000014,E_000574,HAS_FINDING,E_001726,C_0137_001,P_0137,137,125,"4 Intestinal helminths Helminth infections cause a variety of clinical symptoms including abdominal cramps, fever, weight loss, vomiting, appendicitis, blood loss, anaemia and eosino- philia.",explicit_sentence_rule,0.89
+R_0000015,E_000574,HAS_FINDING,E_001760,C_0137_001,P_0137,137,125,"4 Intestinal helminths Helminth infections cause a variety of clinical symptoms including abdominal cramps, fever, weight loss, vomiting, appendicitis, blood loss, anaemia and eosino- philia.",explicit_sentence_rule,0.89
+R_0000016,E_000574,HAS_FINDING,E_001843,C_0137_001,P_0137,137,125,"4 Intestinal helminths Helminth infections cause a variety of clinical symptoms including abdominal cramps, fever, weight loss, vomiting, appendicitis, blood loss, anaemia and eosino- philia.",explicit_sentence_rule,0.89
+R_0000017,E_000574,HAS_FINDING,E_001844,C_0137_001,P_0137,137,125,"4 Intestinal helminths Helminth infections cause a variety of clinical symptoms including abdominal cramps, fever, weight loss, vomiting, appendicitis, blood loss, anaemia and eosino- philia.",explicit_sentence_rule,0.89
+R_0000018,E_002340,DETECTS,E_002206,C_0153_001,P_0153,153,141,Cellophane faecal thick-smear technique for diagnosis of Schistosoma Fig.,explicit_sentence_rule,0.93
+R_0000019,E_002442,DETECTS,E_001974,C_0164_001,P_0164,164,152,"1 Flotation technique using sodium chloride solution (Willis) This method is recommended for the detection of eggs of Ancylostoma duodenale and Necator americanus (best method), Ascaris lumbricoides, Hymenolepis nana, Taenia spp.",explicit_sentence_rule,0.93
+R_0000020,E_002442,DETECTS,E_001979,C_0164_001,P_0164,164,152,"1 Flotation technique using sodium chloride solution (Willis) This method is recommended for the detection of eggs of Ancylostoma duodenale and Necator americanus (best method), Ascaris lumbricoides, Hymenolepis nana, Taenia spp.",explicit_sentence_rule,0.93
+R_0000021,E_002442,DETECTS,E_002114,C_0164_001,P_0164,164,152,"1 Flotation technique using sodium chloride solution (Willis) This method is recommended for the detection of eggs of Ancylostoma duodenale and Necator americanus (best method), Ascaris lumbricoides, Hymenolepis nana, Taenia spp.",explicit_sentence_rule,0.93
+R_0000022,E_002442,DETECTS,E_002159,C_0164_001,P_0164,164,152,"1 Flotation technique using sodium chloride solution (Willis) This method is recommended for the detection of eggs of Ancylostoma duodenale and Necator americanus (best method), Ascaris lumbricoides, Hymenolepis nana, Taenia spp.",explicit_sentence_rule,0.93
+R_0000023,E_002424,USES_EQUIPMENT,E_001265,C_0168_002,P_0168,168,156,"Stain with iodine solution for 1 minute and then examine under the microscope, using the ¥10 objective.",explicit_sentence_rule,0.88
+R_0000024,E_002424,USES_EQUIPMENT,E_001712,C_0168_002,P_0168,168,156,"Stain with iodine solution for 1 minute and then examine under the microscope, using the ¥10 objective.",explicit_sentence_rule,0.88
+R_0000025,E_002148,TRANSMITTED_BY,E_003210,C_0172_001,P_0172,172,160,"Microfilariae are transmitted by mosquitoes, flies and midges, which feed on the blood of infected humans.",explicit_sentence_rule,0.96
+R_0000026,E_002148,TRANSMITTED_BY,E_003217,C_0172_001,P_0172,172,160,"Microfilariae are transmitted by mosquitoes, flies and midges, which feed on the blood of infected humans.",explicit_sentence_rule,0.96
+R_0000027,E_002148,TRANSMITTED_BY,E_003218,C_0172_001,P_0172,172,160,"Microfilariae are transmitted by mosquitoes, flies and midges, which feed on the blood of infected humans.",explicit_sentence_rule,0.96
+R_0000028,E_002342,HAS_MEASUREMENT,E_001889,C_0174_002,P_0174,174,162,Centrifuge the liquid (after removing the piece of skin) at medium speed (2000g) for 5 minutes.,explicit_sentence_rule,0.88
+R_0000029,E_002342,HAS_MEASUREMENT,E_001930,C_0174_002,P_0174,174,162,Centrifuge the liquid (after removing the piece of skin) at medium speed (2000g) for 5 minutes.,explicit_sentence_rule,0.88
+R_0000030,E_002512,EXAMINES,E_003199,C_0174_002,P_0174,174,162,Microscopic examination Examine the wet preparation under the microscope using the ¥10 ob- jective.,explicit_sentence_rule,0.92
+R_0000031,E_002512,USES_EQUIPMENT,E_001265,C_0174_002,P_0174,174,162,Microscopic examination Examine the wet preparation under the microscope using the ¥10 ob- jective.,explicit_sentence_rule,0.88
+R_0000032,E_002140,CAUSES,E_000604,C_0175_001,P_0175,175,163,Other microfilariae found in skin biopsies Mansonella streptocerca causes an itchy dermatitis of the infected area.,explicit_sentence_rule,0.94
+R_0000033,E_002148,FOUND_IN,E_000253,C_0175_001,P_0175,175,163,Its microfilariae are found in the skin and differ from Onchocerca volvulus in the following ways (Fig.,explicit_sentence_rule,0.92
+R_0000034,E_002618,DETECTS,E_002148,C_0178_001,P_0178,178,166,Staining is generally required to identify microfilariae in blood smears.,explicit_sentence_rule,0.93
+R_0000035,E_002512,USES_EQUIPMENT,E_001265,C_0190_001,P_0190,190,178,178 Manual of basic techniques for a health laboratory Microscopic examination Examine the slide under the microscope using the ¥100 objective.,explicit_sentence_rule,0.88
+R_0000036,E_002512,USES_EQUIPMENT,E_001713,C_0190_001,P_0190,190,178,178 Manual of basic techniques for a health laboratory Microscopic examination Examine the slide under the microscope using the ¥100 objective.,explicit_sentence_rule,0.88
+R_0000037,E_002558,USES_EQUIPMENT,E_000918,C_0194_002,P_0194,194,182,"Remember: For proper identification and reliable parasite counting, use clean slides and well-made and well-stained thick films.",explicit_sentence_rule,0.88
+R_0000038,E_002571,USES_EQUIPMENT,E_000918,C_0194_002,P_0194,194,182,"Remember: For proper identification and reliable parasite counting, use clean slides and well-made and well-stained thick films.",explicit_sentence_rule,0.88
+R_0000039,E_000492,TRANSMITTED_BY,E_003228,C_0195_002,P_0195,195,183,Sources of infection and modes of transmission African trypanosomiasis is transmitted by tsetse flies (Glossina spp.,explicit_sentence_rule,0.96
+R_0000040,E_002555,USES_EQUIPMENT,E_000830,C_0198_001,P_0198,198,186,Sterilize the pad of the third finger then prick with the blood lancet.,explicit_sentence_rule,0.88
+R_0000041,E_002512,USES_EQUIPMENT,E_001329,C_0199_001,P_0199,199,187,"Microscopic examination of venous blood concentrated by centrifugation Materials and reagents G Microscope G Microscope slides G Coverslips G Centrifuge or microhaematocrit centrifuge G Conical centrifuge tubes with a mark at 10ml or microhaematocrit capillary tubes G Pasteur pipette G Trisodium citrate, 3.",explicit_sentence_rule,0.88
+R_0000042,E_002338,DETECTS,E_000492,C_0200_002,P_0200,200,188,Card agglutination trypanosomiasis test (CATT) for African trypanosomiasis The card agglutination trypanosomiasis test (CATT) is a serological test that is used for the diagnosis of African trypanosomiasis.,explicit_sentence_rule,0.93
+R_0000043,E_000741,HAS_FINDING,E_001723,C_0206_001,P_0206,206,194,"Clinically, the early phases of visceral leishmaniasis are characterized by chronic irregular fever, cough, diarrhoea and bleeding of the",explicit_sentence_rule,0.89
+R_0000044,E_000741,HAS_FINDING,E_001742,C_0206_001,P_0206,206,194,"Clinically, the early phases of visceral leishmaniasis are characterized by chronic irregular fever, cough, diarrhoea and bleeding of the",explicit_sentence_rule,0.89
+R_0000045,E_000741,HAS_FINDING,E_001751,C_0206_001,P_0206,206,194,"Clinically, the early phases of visceral leishmaniasis are characterized by chronic irregular fever, cough, diarrhoea and bleeding of the",explicit_sentence_rule,0.89
+R_0000046,E_000534,HAS_FINDING,E_001827,C_0206_002,P_0206,206,194,"Cutaneous leishmaniasis is characterized by skin ulcers, which may be single or multiple.",explicit_sentence_rule,0.89
+R_0000047,E_002512,USES_EQUIPMENT,E_001265,C_0207_002,P_0207,207,195,Microscopic examination Examine the slide under the microscope using the ¥100 oil-immersion objective.,explicit_sentence_rule,0.88
+R_0000048,E_002512,USES_EQUIPMENT,E_001714,C_0207_002,P_0207,207,195,Microscopic examination Examine the slide under the microscope using the ¥100 oil-immersion objective.,explicit_sentence_rule,0.88
+R_0000049,E_001983,CAUSES,E_000631,C_0209_001,P_0209,209,197,G Microscopic examination of CSF is used in identifying the bacteria or fungi that cause meningitis (see section 8.,explicit_sentence_rule,0.94
+R_0000050,E_002072,CAUSES,E_000631,C_0209_001,P_0209,209,197,G Microscopic examination of CSF is used in identifying the bacteria or fungi that cause meningitis (see section 8.,explicit_sentence_rule,0.94
+R_0000051,E_002512,DETECTS,E_000723,C_0209_001,P_0209,209,197,G Microscopic examination of sputum smears is a practical and effective tech- nique for the detection of infectious cases of tuberculosis.,explicit_sentence_rule,0.93
+R_0000052,E_002375,USES_REAGENT,E_002831,C_0211_002,P_0211,211,199,8 Gram staining reaction: staining with crystal violet fixation using iodine a: Gram-negative bacteria; a: Gram-negative bacteria; b: Gram-positive bacteria.,explicit_sentence_rule,0.9
+R_0000053,E_002512,EXAMINES,E_003137,C_0214_001,P_0214,214,202,202 Manual of basic techniques for a health laboratory Microscopic examination First examine the slide using the ¥40 objective to see how the smear is distributed and then use the ¥100 oil-immersion objective.,explicit_sentence_rule,0.92
+R_0000054,E_002512,USES_EQUIPMENT,E_001714,C_0214_001,P_0214,214,202,202 Manual of basic techniques for a health laboratory Microscopic examination First examine the slide using the ¥40 objective to see how the smear is distributed and then use the ¥100 oil-immersion objective.,explicit_sentence_rule,0.88
+R_0000055,E_002512,USES_EQUIPMENT,E_001715,C_0214_001,P_0214,214,202,202 Manual of basic techniques for a health laboratory Microscopic examination First examine the slide using the ¥40 objective to see how the smear is distributed and then use the ¥100 oil-immersion objective.,explicit_sentence_rule,0.88
+R_0000056,E_002512,USES_EQUIPMENT,E_001265,C_0215_001,P_0215,215,203,Microscopic examination Examine the slide under the microscope; first use the ¥40 objective to see how the smear is distributed.,explicit_sentence_rule,0.88
+R_0000057,E_001982,CAUSES,E_000498,C_0216_001,P_0216,216,204,"5 Staining with Loeffler methylene blue (for the detection of Bacillus anthracis) Loeffler methylene blue is used to stain Bacillus anthracis, which causes anthrax (see section 5.",explicit_sentence_rule,0.94
+R_0000058,E_002512,USES_EQUIPMENT,E_001715,C_0216_002,P_0216,216,204,17 Bacillus anthracis Microscopic examination First examine the slide using the ¥40 objective and then use the ¥100 oil-immersion objective.,explicit_sentence_rule,0.88
+R_0000059,E_002512,EXAMINES,E_003142,C_0218_001,P_0218,218,206,3 Microscopic examination Examine the sputum with the naked eye and then by microscopy.,explicit_sentence_rule,0.92
+R_0000060,E_002377,DETECTS,E_002078,C_0220_001,P_0220,220,208,Culture is therefore necessary to isolate and identify the gonococci in specimens from females.,explicit_sentence_rule,0.93
+R_0000061,E_002512,DETECTS,E_000563,C_0220_001,P_0220,220,208,3 Microscopic examination Microscopic examination is of great value in the diagnosis of gonorrhoea in males: it is much less so in females.,explicit_sentence_rule,0.93
+R_0000062,E_002512,USES_EQUIPMENT,E_000986,C_0223_001,P_0223,223,211,3 Microscopic examination Examine the slide using the dark-field microscope.,explicit_sentence_rule,0.88
+R_0000063,E_002512,EXAMINES,E_003071,C_0227_002,P_0227,227,215,3 Microscopic examination Examine the Gram-stained slide using the ¥ 40 objective and the ¥ 100 oil- immersion objective.,explicit_sentence_rule,0.92
+R_0000064,E_002512,USES_EQUIPMENT,E_001710,C_0227_002,P_0227,227,215,3 Microscopic examination Examine the Gram-stained slide using the ¥ 40 objective and the ¥ 100 oil- immersion objective.,explicit_sentence_rule,0.88
+R_0000065,E_002377,DETECTS,E_002010,C_0228_001,P_0228,228,216,4 Dispatch of specimens for culture1 It is often necessary to send stool specimens to a bacteriology laboratory for culture: — for the detection of cholera vibrios — for the detection,explicit_sentence_rule,0.93
+R_0000066,E_002512,USES_EQUIPMENT,E_001712,C_0228_001,P_0228,228,216,3 Microscopic examination Use the ¥10 objective for focusing.,explicit_sentence_rule,0.88
+R_0000067,E_002281,CAUSES,E_000510,C_0230_001,P_0230,230,218,"Bubo aspirates are examined for Yersinia pestis, which causes bubonic plague.",explicit_sentence_rule,0.94
+R_0000068,E_001981,FOUND_IN,E_000158,C_0232_001,P_0232,232,220,The bacilli can be present in large numbers in lepromatous lesions (multibacillary leprosy) and are usually sparse or absent in tuberculoid lesions (paucibacillary leprosy).,explicit_sentence_rule,0.92
+R_0000069,E_002512,USES_EQUIPMENT,E_001714,C_0235_001,P_0235,235,223,3 Microscopic examination Examine the slide using the ¥100 oil-immersion objective.,explicit_sentence_rule,0.88
+R_0000070,E_002512,EXAMINES,E_003019,C_0238_001,P_0238,238,226,Microscopic examination Examine the cleared specimen using the ¥10 and ¥40 objectives.,explicit_sentence_rule,0.92
+R_0000071,E_002512,USES_EQUIPMENT,E_001711,C_0238_001,P_0238,238,226,Microscopic examination Examine the cleared specimen using the ¥10 and ¥40 objectives.,explicit_sentence_rule,0.88
+R_0000072,E_002512,USES_EQUIPMENT,E_001265,C_0241_001,P_0241,241,229,9 Pityrosporum furfur (¥40) Microscopic examination Examine the whole slide under the microscope using the ¥40 objective until a cluster of large granules (the spores) is seen (Fig.,explicit_sentence_rule,0.88
+R_0000073,E_002512,USES_EQUIPMENT,E_001715,C_0241_001,P_0241,241,229,9 Pityrosporum furfur (¥40) Microscopic examination Examine the whole slide under the microscope using the ¥40 objective until a cluster of large granules (the spores) is seen (Fig.,explicit_sentence_rule,0.88
+R_0000074,E_002360,USES_EQUIPMENT,E_000889,C_0245_002,P_0245,245,233,Urine specimens collected using a catheter Collection of urine using a catheter must be carried out by a qualified physician or nurse.,explicit_sentence_rule,0.88
+R_0000075,E_002342,HAS_MEASUREMENT,E_001854,C_0250_001,P_0250,250,238,Centrifuge the test blanks at 2000g for 10 minutes.,explicit_sentence_rule,0.88
+R_0000076,E_002342,HAS_MEASUREMENT,E_001889,C_0250_001,P_0250,250,238,Centrifuge the test blanks at 2000g for 10 minutes.,explicit_sentence_rule,0.88
+R_0000077,E_002342,HAS_MEASUREMENT,E_001889,C_0253_001,P_0253,253,241,Centrifuge the specimen at medium speed (2000g) for 5 minutes.,explicit_sentence_rule,0.88
+R_0000078,E_002342,HAS_MEASUREMENT,E_001930,C_0253_001,P_0253,253,241,Centrifuge the specimen at medium speed (2000g) for 5 minutes.,explicit_sentence_rule,0.88
+R_0000079,E_002512,USES_REAGENT,E_002786,C_0253_001,P_0253,253,241,"The specimen can be preserved for microscopic examination of the deposit by adding 8–10 drops of formaldehyde, 10% solution (reagent no.",explicit_sentence_rule,0.9
+R_0000080,E_001983,FOUND_IN,E_000309,C_0263_002,P_0263,263,251,Bacteria may be found in patients who have an infection of some part of the urinary tract (e.,explicit_sentence_rule,0.92
+R_0000081,E_002342,HAS_MEASUREMENT,E_001854,C_0264_001,P_0264,264,252,Centrifuge the specimen at 1500g for 10 minutes.,explicit_sentence_rule,0.88
+R_0000082,E_002342,HAS_MEASUREMENT,E_001872,C_0264_001,P_0264,264,252,Centrifuge the specimen at 1500g for 10 minutes.,explicit_sentence_rule,0.88
+R_0000083,E_002342,HAS_MEASUREMENT,E_001885,C_0264_001,P_0264,264,252,"If tuberculosis is suspected, centrifuge a further 10-ml specimen at 5000g for 20 minutes.",explicit_sentence_rule,0.88
+R_0000084,E_002342,HAS_MEASUREMENT,E_001940,C_0264_001,P_0264,264,252,"If tuberculosis is suspected, centrifuge a further 10-ml specimen at 5000g for 20 minutes.",explicit_sentence_rule,0.88
+R_0000085,E_002371,USES_EQUIPMENT,E_001715,C_0270_002,P_0270,270,258,"If erythrocytes are present, make the count using the ¥40 objective.",explicit_sentence_rule,0.88
+R_0000086,E_002342,HAS_MEASUREMENT,E_001854,C_0271_001,P_0271,271,259,Centrifuge the CSF at 3000g for 10 minutes.,explicit_sentence_rule,0.88
+R_0000087,E_002342,HAS_MEASUREMENT,E_001913,C_0271_001,P_0271,271,259,Centrifuge the CSF at 3000g for 10 minutes.,explicit_sentence_rule,0.88
+R_0000088,E_001999,FOUND_IN,E_003033,C_0273_002,P_0273,273,261,Candida albicans may be found in an unstained wet preparation of CSF deposit.,explicit_sentence_rule,0.92
+R_0000089,E_002342,HAS_MEASUREMENT,E_001889,C_0274_001,P_0274,274,262,18) G CSF: centrifuge the CSF at 2000g for 5 minutes and use the supernatant fluid G Graduated pipettes G Dropping pipettes G Test-tubes G Test-tube rack Fig.,explicit_sentence_rule,0.88
+R_0000090,E_002342,HAS_MEASUREMENT,E_001930,C_0274_001,P_0274,274,262,18) G CSF: centrifuge the CSF at 2000g for 5 minutes and use the supernatant fluid G Graduated pipettes G Dropping pipettes G Test-tubes G Test-tube rack Fig.,explicit_sentence_rule,0.88
+R_0000091,E_002342,HAS_MEASUREMENT,E_001889,C_0287_001,P_0287,287,275,Centrifuge the diluted blood at 2000g for 5 minutes before taking a reading.,explicit_sentence_rule,0.88
+R_0000092,E_002342,HAS_MEASUREMENT,E_001930,C_0287_001,P_0287,287,275,Centrifuge the diluted blood at 2000g for 5 minutes before taking a reading.,explicit_sentence_rule,0.88
+R_0000093,E_002295,USES_EQUIPMENT,E_000927,C_0290_002,P_0290,290,278,Method using a colorimeter The AHD method is also applicable using a colorimeter.,explicit_sentence_rule,0.88
+R_0000094,E_002505,HAS_MEASUREMENT,E_001880,C_0305_001,P_0305,305,293,Measurement of the ESR should begin within 2 hours of collection of the blood.,explicit_sentence_rule,0.88
+R_0000095,E_002283,USES_EQUIPMENT,E_001199,C_0307_001,P_0307,307,295,1 Principle A small cut is made with a lancet in the lobe of the ear.,explicit_sentence_rule,0.88
+R_0000096,E_002403,USES_REAGENT,E_002858,C_0317_001,P_0317,317,305,Dry and re-stain using fresh or filtered May–Grünwald stain.,explicit_sentence_rule,0.9
+R_0000097,E_002512,USES_EQUIPMENT,E_001461,C_0317_002,P_0317,317,305,"4 Microscopic examination Using the ¥40 objective, examine the slides.",explicit_sentence_rule,0.88
+R_0000098,E_002512,USES_EQUIPMENT,E_001715,C_0317_002,P_0317,317,305,"4 Microscopic examination Using the ¥40 objective, examine the slides.",explicit_sentence_rule,0.88
+R_0000099,E_002482,USES_EQUIPMENT,E_000973,C_0327_001,P_0327,327,315,"105 Incubating the slide in a Petri dish with a coverslip, making sure that no air bubbles form.",explicit_sentence_rule,0.88
+R_0000100,E_002512,USES_EQUIPMENT,E_001265,C_0327_001,P_0327,327,315,4 Microscopic examination Examine the slide under the microscope using the ¥ 40 objective.,explicit_sentence_rule,0.88
+R_0000101,E_002409,DETECTS,E_000698,C_0328_001,P_0328,328,316,"Whenever possible, electrophoresis of the haemoglobin should be carried out to confirm a diagnosis of sickle-cell disease.",explicit_sentence_rule,0.93
+R_0000102,E_002512,EXAMINES,E_003137,C_0329_001,P_0329,329,317,4 Microscopic examination Examine the smear using the ¥ 100 oil-immersion objective (Fig.,explicit_sentence_rule,0.92
+R_0000103,E_002512,USES_EQUIPMENT,E_001709,C_0329_001,P_0329,329,317,4 Microscopic examination Examine the smear using the ¥ 100 oil-immersion objective (Fig.,explicit_sentence_rule,0.88
+R_0000104,E_002512,USES_EQUIPMENT,E_001709,C_0331_001,P_0331,331,319,"3 Microscopic examination Using the ¥ 100 oil-immersion objective, check that the leukocytes are evenly distributed.",explicit_sentence_rule,0.88
+R_0000105,E_002342,HAS_MEASUREMENT,E_001913,C_0335_001,P_0335,335,323,Centrifuge the three tubes at 3000g for 5 minutes.,explicit_sentence_rule,0.88
+R_0000106,E_002342,HAS_MEASUREMENT,E_001930,C_0335_001,P_0335,335,323,Centrifuge the three tubes at 3000g for 5 minutes.,explicit_sentence_rule,0.88
+R_0000107,E_002563,USES_REAGENT,E_002703,C_0347_002,P_0347,347,335,Radial immunodiffusion (Mancini technique) Radial immunodiffusion is based on the principle that a quantitative relationship exists between the amount of antigen placed in a well cut in an agarose gel containing antibody and the diameter of the resulting ring of pre- precipitate cipitate.,explicit_sentence_rule,0.9
+R_0000108,E_002483,HAS_MEASUREMENT,E_001925,C_0349_001,P_0349,349,337,A freshly prepared suspension of 5% sheep erythrocytes is then added to all the tubes and incubation is continued for a further 45 minutes.,explicit_sentence_rule,0.88
+R_0000109,E_002342,HAS_MEASUREMENT,E_001904,C_0349_002,P_0349,349,337,Centrifuge the tubes gently at 500g for 3 minutes and observe,explicit_sentence_rule,0.88
+R_0000110,E_002342,HAS_MEASUREMENT,E_001938,C_0349_002,P_0349,349,337,Centrifuge the tubes gently at 500g for 3 minutes and observe,explicit_sentence_rule,0.88
+R_0000111,E_002514,HAS_MEASUREMENT,E_001917,C_0349_002,P_0349,349,337,Mix and incubate in a water-bath at 37°C for 15 minutes.,explicit_sentence_rule,0.88
+R_0000112,E_002514,HAS_MEASUREMENT,E_001917,C_0349_002,P_0349,349,337,"Mix and incubate in a water-bath at 37°C for 45 minutes, mixing again after the first 15 minutes of incubation.",explicit_sentence_rule,0.88
+R_0000113,E_002514,HAS_MEASUREMENT,E_001925,C_0349_002,P_0349,349,337,"Mix and incubate in a water-bath at 37°C for 45 minutes, mixing again after the first 15 minutes of incubation.",explicit_sentence_rule,0.88

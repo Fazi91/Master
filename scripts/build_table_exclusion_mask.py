@@ -1,6 +1,6 @@
 import argparse
+import collections
 import csv
-import difflib
 import hashlib
 import os
 import re
@@ -8,6 +8,14 @@ import unicodedata
 from pathlib import Path
 
 import pymupdf
+
+try:
+    import pymupdf.layout  # noqa: F401 - activates Page.get_layout()
+except ImportError as error:
+    raise RuntimeError(
+        "Missing table-layout dependency. Install it with: "
+        "python -m pip install pymupdf-layout==1.26.6"
+    ) from error
 
 
 EXPECTED_PAGE_COUNT = 398
@@ -149,78 +157,222 @@ def rect_union(first, second):
     )
 
 
-def overlap_ratio(first, second):
-    intersection = first & second
-    if intersection.is_empty:
-        return 0.0
-    intersection_area = intersection.get_area()
-    smaller_area = min(first.get_area(), second.get_area())
-    if smaller_area <= 0:
-        return 0.0
-    return intersection_area / smaller_area
+def box_text(page, bbox):
+    return re.sub(
+        r"\s+",
+        " ",
+        page.get_text("text", clip=bbox, sort=True),
+    ).strip()
 
 
-def detect_table_candidates(page):
-    candidates = []
-    for strategy in ("lines_strict", "text"):
-        finder = page.find_tables(strategy=strategy)
-        for table in finder.tables:
-            if table.row_count < 2 or table.col_count < 2:
-                continue
-            bbox = pymupdf.Rect(table.bbox)
-            if table.header is not None and table.header.external:
-                bbox = rect_union(bbox, pymupdf.Rect(table.header.bbox))
-            candidates.append(
-                {
-                    "bbox": bbox,
-                    "row_count": table.row_count,
-                    "col_count": table.col_count,
-                    "methods": {strategy},
-                }
-            )
-
-    merged = []
-    for candidate in sorted(
-        candidates,
-        key=lambda item: (
-            item["bbox"].y0,
-            item["bbox"].x0,
-            item["bbox"].y1,
-            item["bbox"].x1,
-        ),
-    ):
-        matching = None
-        for existing in merged:
-            if overlap_ratio(candidate["bbox"], existing["bbox"]) >= 0.80:
-                matching = existing
-                break
-        if matching is None:
-            merged.append(candidate)
-        else:
-            matching["bbox"] = rect_union(
-                matching["bbox"], candidate["bbox"]
-            )
-            matching["row_count"] = max(
-                matching["row_count"], candidate["row_count"]
-            )
-            matching["col_count"] = max(
-                matching["col_count"], candidate["col_count"]
-            )
-            matching["methods"].update(candidate["methods"])
-    return merged
+def horizontal_overlap(first, second):
+    overlap = min(first.x1, second.x1) - max(first.x0, second.x0)
+    return max(0.0, overlap)
 
 
-def words_inside(page_words, bbox):
-    selected = []
-    for word in page_words:
+def trim_picture_to_table_words(page, picture_bbox):
+    """Stop a table-like picture before a following figure or text block."""
+    words = []
+    for word in page.get_text("words", clip=picture_bbox, sort=True):
         word_rect = pymupdf.Rect(word[:4])
         center = pymupdf.Point(
             (word_rect.x0 + word_rect.x1) / 2,
             (word_rect.y0 + word_rect.y1) / 2,
         )
-        if bbox.contains(center):
-            selected.append(word)
-    return selected
+        if picture_bbox.contains(center):
+            words.append(word)
+    if len(words) < 4:
+        return picture_bbox
+
+    line_ranges = []
+    for word in sorted(words, key=lambda item: (item[1], item[0])):
+        if not line_ranges or word[1] - line_ranges[-1][0] > 2.0:
+            line_ranges.append([word[1], word[3]])
+        else:
+            line_ranges[-1][1] = max(line_ranges[-1][1], word[3])
+    if len(line_ranges) < 3:
+        return picture_bbox
+
+    gaps = [
+        line_ranges[index + 1][0] - line_ranges[index][1]
+        for index in range(len(line_ranges) - 1)
+    ]
+    for index, gap in enumerate(gaps):
+        if index >= 1 and gap >= 30.0:
+            return pymupdf.Rect(
+                picture_bbox.x0,
+                picture_bbox.y0,
+                picture_bbox.x1,
+                line_ranges[index][1] + 1.0,
+            )
+    return picture_bbox
+
+
+def detect_table_candidates(page):
+    page.get_layout()
+    layout_boxes = [
+        {
+            "bbox": pymupdf.Rect(item[:4]),
+            "class": item[4],
+        }
+        for item in page.layout_information
+    ]
+    for item in layout_boxes:
+        item["text"] = box_text(page, item["bbox"])
+
+    candidates = []
+
+    for item in layout_boxes:
+        if item["class"] != "table":
+            continue
+        bbox = item["bbox"]
+        has_table_label = bool(
+            re.search(r"\btable\b", item["text"], re.IGNORECASE)
+        )
+        labels_to_merge = []
+        for label in layout_boxes:
+            label_words = label["text"].split()
+            is_table_label = (
+                label["class"] == "caption"
+                or len(label_words) <= 12
+            ) and bool(
+                re.search(r"\btable\b", label["text"], re.IGNORECASE)
+            )
+            if not is_table_label:
+                continue
+            label_bbox = label["bbox"]
+            close_above = (
+                0 <= item["bbox"].y0 - label_bbox.y1 <= 30
+                and horizontal_overlap(item["bbox"], label_bbox) > 0
+            )
+            close_side = (
+                0 <= item["bbox"].x0 - label_bbox.x1 <= 30
+                and max(item["bbox"].y0, label_bbox.y0)
+                < min(item["bbox"].y1, label_bbox.y1)
+            )
+            if close_above or close_side:
+                has_table_label = True
+                labels_to_merge.append(label_bbox)
+        if not has_table_label:
+            continue
+        for label_bbox in labels_to_merge:
+            bbox = rect_union(bbox, label_bbox)
+        candidates.append(
+            {
+                "bbox": bbox,
+                "row_count": 0,
+                "col_count": 0,
+                "methods": {"pymupdf_layout"},
+            }
+        )
+
+    # Some complex tables are classified as a picture.  Accept that fallback
+    # only when an explicit numbered Table caption immediately precedes it.
+    captions = [
+        item
+        for item in layout_boxes
+        if item["class"] == "caption"
+        and re.match(r"(?i)^Table\s*\d", item["text"])
+    ]
+    for caption in captions:
+        if any(
+            0 <= candidate["bbox"].y0 - caption["bbox"].y1 <= 35
+            for candidate in candidates
+        ):
+            continue
+        pictures = [
+            item
+            for item in layout_boxes
+            if item["class"] == "picture"
+            and 0 <= item["bbox"].y0 - caption["bbox"].y1 <= 35
+            and horizontal_overlap(item["bbox"], caption["bbox"]) > 0
+        ]
+        if not pictures:
+            continue
+        picture = min(pictures, key=lambda item: item["bbox"].y0)
+        table_bbox = trim_picture_to_table_words(page, picture["bbox"])
+        candidates.append(
+            {
+                "bbox": rect_union(caption["bbox"], table_bbox),
+                "row_count": 0,
+                "col_count": 0,
+                "methods": {"pymupdf_layout_caption_fallback"},
+            }
+        )
+
+    # A small number of tables near figures are emitted as a picture or as a
+    # numbered section-header followed by one text block.  The explicit table
+    # number keeps this fallback from masking ordinary images or prose.
+    for label in layout_boxes:
+        if not re.match(r"(?i)^Table\s*\d", label["text"]):
+            continue
+        if label["class"] == "picture":
+            fallback_bbox = label["bbox"]
+        elif label["class"] == "section-header":
+            following = [
+                item
+                for item in layout_boxes
+                if item["class"] == "text"
+                and 0 <= item["bbox"].y0 - label["bbox"].y1 <= 20
+                and horizontal_overlap(item["bbox"], label["bbox"]) > 0
+            ]
+            if not following:
+                continue
+            fallback_bbox = rect_union(
+                label["bbox"],
+                min(following, key=lambda item: item["bbox"].y0)["bbox"],
+            )
+        else:
+            continue
+        if any(
+            candidate["bbox"].intersects(fallback_bbox)
+            for candidate in candidates
+        ):
+            continue
+        candidates.append(
+            {
+                "bbox": fallback_bbox,
+                "row_count": 0,
+                "col_count": 0,
+                "methods": {"pymupdf_layout_numbered_fallback"},
+            }
+        )
+
+    return candidates
+
+
+def best_token_window(page_keys, target_keys):
+    target_count = collections.Counter(target_keys)
+    target_length = len(target_keys)
+    minimum_length = max(4, int(target_length * 0.75))
+    maximum_length = min(
+        len(page_keys),
+        int(target_length * 1.15) + 8,
+    )
+    best = None
+    for start in range(len(page_keys)):
+        window_count = collections.Counter()
+        overlap = 0
+        stop_limit = min(len(page_keys), start + maximum_length)
+        for end in range(start, stop_limit):
+            key = page_keys[end]
+            if window_count[key] < target_count.get(key, 0):
+                overlap += 1
+            window_count[key] += 1
+            window_length = end - start + 1
+            if window_length < minimum_length:
+                continue
+            recall = overlap / target_length
+            precision = overlap / window_length
+            f1 = (
+                2 * recall * precision / (recall + precision)
+                if recall + precision
+                else 0.0
+            )
+            score = (f1, recall, -abs(window_length - target_length))
+            if best is None or score > best[0]:
+                best = (score, start, end + 1, recall, precision)
+    return best
 
 
 def map_candidate_to_offsets(page_text, page_words, candidate):
@@ -241,35 +393,20 @@ def map_candidate_to_offsets(page_text, page_words, candidate):
     word_keys = [canonical_token(word[4]) for word in page_words]
     page_keys = [token["key"] for token in page_token_rows]
 
-    matcher = difflib.SequenceMatcher(
-        None,
-        word_keys,
-        page_keys,
-        autojunk=False,
-    )
-    word_to_page = {}
-    for block in matcher.get_matching_blocks():
-        for offset in range(block.size):
-            word_to_page[block.a + offset] = block.b + offset
-
-    mapped_indexes = [
-        word_to_page[index]
-        for index in selected_indexes
-        if index in word_to_page
-    ]
-    coverage = len(mapped_indexes) / len(selected_indexes)
-
-    if coverage < 0.80:
+    target_keys = [word_keys[index] for index in selected_indexes]
+    best = best_token_window(page_keys, target_keys)
+    if best is None:
+        raise RuntimeError("No character-offset window was found for table.")
+    _, start_token, end_token_exclusive, recall, precision = best
+    if recall < 0.70 or precision < 0.70:
         raise RuntimeError(
             "Table words could not be aligned reliably with pages.csv "
-            f"(selected={len(selected_indexes)}, mapped={len(mapped_indexes)}, "
-            f"coverage={coverage:.3f})."
+            f"(selected={len(selected_indexes)}, recall={recall:.3f}, "
+            f"precision={precision:.3f})."
         )
 
-    start_token = min(mapped_indexes)
-    end_token = max(mapped_indexes)
     start_char = page_token_rows[start_token]["start"]
-    end_char = page_token_rows[end_token]["end"]
+    end_char = page_token_rows[end_token_exclusive - 1]["end"]
     region_text = page_text[start_char:end_char]
     return start_char, end_char, region_text, len(selected_indexes)
 
