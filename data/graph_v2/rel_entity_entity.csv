@@ -1,0 +1,170 @@
+﻿relation_id,source_entity_id,relation_type,target_entity_id,source_chunk_id,source_page_id,pdf_page,printed_page,evidence_text,extraction_method,confidence
+R_0000001,E_000267,USES_REAGENT,E_000293,C_0013_002,P_0013,13,1,"For example, one of the reagents needed for Gram staining is crystal violet, modified
+Hucker (reagent no.",explicit_sentence_rule,0.9
+R_0000002,E_000275,USES_EQUIPMENT,E_000128,C_0030_002,P_0030,30,18,"This can be done by scraping with a knife but take care not to
+damage the wire inside.",explicit_sentence_rule,0.88
+R_0000003,E_000282,USES_EQUIPMENT,E_000164,C_0035_001,P_0035,35,23,"25 Unblocking a sink with a plungerternatively, use 250g of sodium hydroxide pellets.",explicit_sentence_rule,0.88
+R_0000004,E_000279,USES_EQUIPMENT,E_000039,C_0045_001,P_0045,45,33,"Hot-air oven
+
+If the laboratory is fairly large, a small hot-air oven is useful for drying glassware
+and for sterilization in conjunction with the autoclave (see section 3.",explicit_sentence_rule,0.88
+R_0000005,E_000277,HAS_MEASUREMENT,E_000227,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000006,E_000277,HAS_MEASUREMENT,E_000232,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000007,E_000277,USES_EQUIPMENT,E_000038,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000008,E_000277,USES_EQUIPMENT,E_000045,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000009,E_000277,USES_EQUIPMENT,E_000046,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000010,E_000277,USES_EQUIPMENT,E_000079,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000011,E_000280,HAS_MEASUREMENT,E_000227,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000012,E_000280,HAS_MEASUREMENT,E_000232,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000013,E_000280,USES_EQUIPMENT,E_000038,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88
+R_0000014,E_000280,USES_EQUIPMENT,E_000045,C_0048_001,P_0048,48,36,"for as many as
+injection (5, 10, 20ml) possible
+
+Additional equipment
+
+Scalpel with disposable blades for taking slit skin smear 1
+specimens (for leprosy)
+
+Curved clamp forceps without teeth for taking slit skin smear 1
+specimens (for leprosy)
+
+Boxes, plastic or cardboard, disposable, for stool collection 50
+
+Applicators, wooden (12cm ¥ 1mm) (can be made locally) 50
+
+Bottles, 2.",explicit_sentence_rule,0.88

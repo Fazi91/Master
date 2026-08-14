@@ -1,0 +1,2 @@
+doc_id,file_name,pdf_sha256,pdf_page_count,main_printed_page_offset,extraction_library,extraction_mode
+DOC_WHO_2003,who.pdf,005ff66f9f3445a3bd5c1e4d17a92b7b54b35c909feafb1fc7ae77cd45bcb8a2,398,12,PyMuPDF,text_sort_true

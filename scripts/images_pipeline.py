@@ -3,7 +3,7 @@ from pathlib import Path
 from io import BytesIO
 from typing import List
 
-import fitz  # PyMuPDF
+import pymupdf
 from PIL import Image
 
 def _lazy_import_sentence_transformers():
@@ -80,7 +80,7 @@ def cmd_extract(pdf: str, outdir: str, min_wh: int, max_per_page: int, dpi: int,
     files_dir = out_dir / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
 
-    doc = fitz.open(str(pdf_path))
+    doc = pymupdf.open(str(pdf_path))
     saved = skipped = failed = 0
 
     with open(manifest_path, "w", encoding="utf-8") as mf:

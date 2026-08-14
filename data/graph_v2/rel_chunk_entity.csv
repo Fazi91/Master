@@ -1,0 +1,468 @@
+﻿mention_id,chunk_id,entity_id,page_id,pdf_page,printed_page,mention_text,start_char,end_char_exclusive,extraction_method,confidence
+M_0000001,C_0013_001,E_000310,P_0013,13,1,stools,704,710,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5648
+M_0000002,C_0013_001,E_000257,P_0013,13,1,helminth eggs,715,728,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3609
+M_0000003,C_0013_001,E_000306,P_0013,13,1,blood,752,757,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5457
+M_0000004,C_0013_001,E_000258,P_0013,13,1,malaria parasites,762,779,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5366
+M_0000005,C_0013_001,E_000309,P_0013,13,1,sputum,803,809,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4241
+M_0000006,C_0013_001,E_000259,P_0013,13,1,tubercle bacilli,814,830,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5346
+M_0000007,C_0013_001,E_000311,P_0013,13,1,urine,854,859,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4156
+M_0000008,C_0013_001,E_000306,P_0013,13,1,blood,901,906,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5853
+M_0000009,C_0013_001,E_000022,P_0013,13,1,white cell,932,942,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4379
+M_0000010,C_0013_001,E_000022,P_0013,13,1,leukocyte,944,953,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8088
+M_0000011,C_0013_001,E_000022,P_0013,13,1,leukocyte,990,999,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6074
+M_0000012,C_0013_001,E_000306,P_0013,13,1,blood,1029,1034,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.526
+M_0000013,C_0013_001,E_000261,P_0013,13,1,basic laboratory techniques,1126,1153,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4314
+M_0000014,C_0013_002,E_000262,P_0013,13,1,blood chemistry,241,256,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6715
+M_0000015,C_0013_002,E_000276,P_0013,13,1,serological tests,260,277,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7491
+M_0000016,C_0013_002,E_000267,P_0013,13,1,Gram staining,694,707,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8377
+M_0000017,C_0013_002,E_000293,P_0013,13,1,"crystal violet, modified
+Hucker",711,742,explicit_reagent_rule,1.0
+M_0000018,C_0013_002,E_000094,P_0013,13,1,empty bottles,1266,1279,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.584
+M_0000019,C_0013_002,E_000156,P_0013,13,1,penicillin bottles,1334,1352,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.868
+M_0000020,C_0013_003,E_000085,P_0013,13,1,drug containers,275,290,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4392
+M_0000021,C_0014_001,E_000205,P_0014,14,2,tubes and slides,57,73,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8615
+M_0000022,C_0014_001,E_000095,P_0014,14,2,empty tins,99,109,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7972
+M_0000023,C_0016_001,E_000021,P_0016,16,4,red blood cell,596,610,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.711
+M_0000024,C_0016_001,E_000021,P_0016,16,4,erythrocyte,612,623,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9224
+M_0000025,C_0016_004,E_000120,P_0016,16,4,graduated glassware,253,272,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9534
+M_0000026,C_0017_004,E_000022,P_0017,17,5,leukocyte,378,387,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9232
+M_0000027,C_0017_004,E_000306,P_0017,17,5,blood,401,406,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5543
+M_0000028,C_0018_001,E_000021,P_0018,18,6,erythrocytes,761,773,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.947
+M_0000029,C_0018_001,E_000021,P_0018,18,6,erythrocyte,869,880,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.525
+M_0000030,C_0018_003,E_000022,P_0018,18,6,Leukocyte,134,143,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.678
+M_0000031,C_0018_003,E_000022,P_0018,18,6,Leukocyte,296,305,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5041
+M_0000032,C_0018_003,E_000023,P_0018,18,6,Lymphocytes,345,356,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8737
+M_0000033,C_0018_003,E_000023,P_0018,18,6,lymphocytes,463,474,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3975
+M_0000034,C_0018_003,E_000023,P_0018,18,6,lymphocytes,544,555,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9366
+M_0000035,C_0018_003,E_000025,P_0018,18,6,Reticulocyte,572,584,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6839
+M_0000036,C_0018_003,E_000025,P_0018,18,6,Reticulocyte,731,743,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6868
+M_0000037,C_0024_001,E_000151,P_0024,24,12,outpatient’s table,114,132,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6175
+M_0000038,C_0024_001,E_000122,P_0024,24,12,hand-operated centrifuge,137,161,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6642
+M_0000039,C_0024_001,E_000142,P_0024,24,12,microscopes,166,177,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6425
+M_0000040,C_0024_001,E_000065,P_0024,24,12,colorimeter,203,214,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.572
+M_0000041,C_0024_001,E_000089,P_0024,24,12,electric centrifuge,235,254,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5729
+M_0000042,C_0024_001,E_000169,P_0024,24,12,reagent refrigerator,303,323,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8212
+M_0000043,C_0024_001,E_000170,P_0024,24,12,reagent shelf,329,342,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7358
+M_0000044,C_0024_001,E_000119,P_0024,24,12,glassware shelf,348,363,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6944
+M_0000045,C_0024_001,E_000040,P_0024,24,12,balance,369,376,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5539
+M_0000046,C_0024_001,E_000187,P_0024,24,12,staining box,382,394,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5995
+M_0000047,C_0024_001,E_000309,P_0024,24,12,sputum specimens,424,440,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8028
+M_0000048,C_0024_001,E_000210,P_0024,24,12,waste sink,476,486,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6123
+M_0000049,C_0024_001,E_000311,P_0024,24,12,urine specimens,608,623,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7015
+M_0000050,C_0024_001,E_000108,P_0024,24,12,gas bottle,666,676,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6205
+M_0000051,C_0024_001,E_000284,P_0024,24,12,"washing
+and sterilization",783,808,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6693
+M_0000052,C_0025_001,E_000109,P_0025,25,13,generators,82,92,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7797
+M_0000053,C_0025_001,E_000182,P_0025,25,13,solar energy supply system,96,122,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4396
+M_0000054,C_0025_001,E_000133,P_0025,25,13,local generator,267,282,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8444
+M_0000055,C_0025_001,E_000182,P_0025,25,13,solar energy supply system,288,314,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7597
+M_0000056,C_0025_001,E_000041,P_0025,25,13,batteries,933,942,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9355
+M_0000057,C_0025_001,E_000202,P_0025,25,13,transformer,978,989,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8661
+M_0000058,C_0025_001,E_000070,P_0025,25,13,converter,1031,1040,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8503
+M_0000059,C_0025_001,E_000202,P_0025,25,13,transformer,1302,1313,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5155
+M_0000060,C_0025_002,E_000125,P_0025,25,13,Inverters,385,394,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7565
+M_0000061,C_0025_002,E_000109,P_0025,25,13,generator,1090,1099,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.731
+M_0000062,C_0025_003,E_000020,P_0025,25,13,cells of crystalline silicon,254,282,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.568
+M_0000063,C_0025_003,E_000024,P_0025,25,13,panels with cells of amorphous silicon,286,324,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.563
+M_0000064,C_0026_001,E_000183,P_0026,26,14,Solar panels,58,70,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8774
+M_0000065,C_0026_001,E_000152,P_0026,26,14,panel,253,258,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4992
+M_0000066,C_0026_001,E_000240,P_0026,26,14,5cm,403,406,contextual_measurement_rule,1.0
+M_0000067,C_0026_002,E_000061,P_0026,26,14,charge regulator,174,190,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4261
+M_0000068,C_0026_001,E_000256,P_0026,26,14,bat,1354,1357,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8116
+M_0000069,C_0027_002,E_000149,P_0027,27,15,Ni–Cd battery,1030,1043,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3533
+M_0000070,C_0027_002,E_000091,P_0027,27,15,electric lamp,1320,1333,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5821
+M_0000071,C_0027_002,E_000142,P_0027,27,15,microscope,1342,1352,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6175
+M_0000072,C_0027_003,E_000089,P_0027,27,15,electric centrifuge,286,305,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6783
+M_0000073,C_0027_003,E_000135,P_0027,27,15,manually operated type,328,350,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.356
+M_0000074,C_0027_003,E_000139,P_0027,27,15,microhaematocrit centrifuge,358,385,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7949
+M_0000075,C_0027_003,E_000026,P_0027,27,15,anaemia,404,411,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7837
+M_0000076,C_0027_003,E_000186,P_0027,27,15,spectrophotometer,419,436,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5809
+M_0000077,C_0027_003,E_000065,P_0027,27,15,colorimeter,440,451,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4625
+M_0000078,C_0027_003,E_000213,P_0027,27,15,water-bath,504,514,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6527
+M_0000079,C_0027_003,E_000171,P_0027,27,15,refrigerator,516,528,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5868
+M_0000080,C_0027_003,E_000200,P_0027,27,15,this equipment,589,603,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7451
+M_0000081,C_0028_001,E_000195,P_0028,28,16,The electricity meter,58,79,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8448
+M_0000082,C_0028_001,E_000196,P_0028,28,16,The instrument,1199,1213,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7656
+M_0000083,C_0028_002,E_000086,P_0028,28,16,Dual-voltage equipment,318,340,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3911
+M_0000084,C_0028_002,E_000087,P_0028,28,16,Dual-voltage instruments,342,366,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5591
+M_0000085,C_0029_001,E_000162,P_0029,29,17,plate,159,164,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3783
+M_0000086,C_0029_001,E_000088,P_0029,29,17,Each piece of electrical equipment,216,250,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5434
+M_0000087,C_0029_001,E_000138,P_0029,29,17,meter,467,472,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5003
+M_0000088,C_0029_001,E_000202,P_0029,29,17,transformer,659,670,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6644
+M_0000089,C_0029_001,E_000202,P_0029,29,17,transformer,806,817,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6515
+M_0000090,C_0029_001,E_000033,P_0029,29,17,110–220V transformer,942,962,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3886
+M_0000091,C_0029_001,E_000055,P_0029,29,17,centrifuge,994,1004,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5457
+M_0000092,C_0029_001,E_000055,P_0029,29,17,centrifuge,1015,1025,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8688
+M_0000093,C_0029_001,E_000202,P_0029,29,17,transformer,1058,1069,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6804
+M_0000094,C_0029_001,E_000202,P_0029,29,17,transformer,1113,1124,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5933
+M_0000095,C_0030_001,E_000106,P_0030,30,18,fuse box,103,111,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8133
+M_0000096,C_0030_002,E_000275,P_0030,30,18,scraping,531,539,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3974
+M_0000097,C_0030_002,E_000128,P_0030,30,18,knife,547,552,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4354
+M_0000098,C_0031_002,E_000092,P_0031,31,19,electrical equipment,339,359,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4404
+M_0000099,C_0032_001,E_000147,P_0032,32,20,new piece of equipment,73,95,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3524
+M_0000100,C_0032_001,E_000093,P_0032,32,20,electricity supply,105,123,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3809
+M_0000101,C_0032_001,E_000201,P_0032,32,20,Tools and materials,620,639,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4354
+M_0000102,C_0032_001,E_000272,P_0032,32,20,plumbing operation,998,1016,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5648
+M_0000103,C_0032_001,E_000004,P_0032,32,20,body,1114,1118,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5434
+M_0000104,C_0032_001,E_000007,P_0032,32,20,head,1161,1165,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5948
+M_0000105,C_0032_001,E_000007,P_0032,32,20,head,1250,1254,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6649
+M_0000106,C_0032_001,E_000004,P_0032,32,20,body,1263,1267,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6566
+M_0000107,C_0032_002,E_000012,P_0032,32,20,joint,207,212,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5581
+M_0000108,C_0032_002,E_000008,P_0032,32,20,J,214,215,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.444
+M_0000109,C_0032_002,E_000007,P_0032,32,20,head,293,297,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5741
+M_0000110,C_0032_002,E_000001,P_0032,32,20,B,307,308,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.373
+M_0000111,C_0032_002,E_000004,P_0032,32,20,body,310,314,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7168
+M_0000112,C_0032_002,E_000006,P_0032,32,20,H,316,317,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4851
+M_0000113,C_0032_002,E_000007,P_0032,32,20,head,319,323,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6905
+M_0000114,C_0032_002,E_000008,P_0032,32,20,J,325,326,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4309
+M_0000115,C_0032_002,E_000012,P_0032,32,20,joint,328,333,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7453
+M_0000116,C_0033_001,E_000209,P_0033,33,21,washer,165,171,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8513
+M_0000117,C_0033_001,E_000002,P_0033,33,21,base of the head,339,355,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4688
+M_0000118,C_0033_001,E_000001,P_0033,33,21,B,357,358,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5799
+M_0000119,C_0033_001,E_000209,P_0033,33,21,washer,368,374,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8611
+M_0000120,C_0033_001,E_000003,P_0033,33,21,base of the head of the tap,723,750,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5655
+M_0000121,C_0033_001,E_000012,P_0033,33,21,joint,1035,1040,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5509
+M_0000122,C_0033_002,E_000012,P_0033,33,21,joint,226,231,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4714
+M_0000123,C_0033_002,E_000015,P_0033,33,21,screw thread,287,299,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4693
+M_0000124,C_0033_002,E_000017,P_0033,33,21,top,392,395,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4635
+M_0000125,C_0033_002,E_000004,P_0033,33,21,body,539,543,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6556
+M_0000126,C_0033_002,E_000004,P_0033,33,21,body,739,743,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3536
+M_0000127,C_0034_001,E_000018,P_0034,34,22,tow,146,149,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5641
+M_0000128,C_0034_001,E_000019,P_0034,34,22,wall,238,242,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3593
+M_0000129,C_0034_001,E_000004,P_0034,34,22,body,401,405,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5392
+M_0000130,C_0034_001,E_000012,P_0034,34,22,joint,438,443,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3872
+M_0000131,C_0034_001,E_000004,P_0034,34,22,body,502,506,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5496
+M_0000132,C_0034_001,E_000012,P_0034,34,22,joint,512,517,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4743
+M_0000133,C_0034_001,E_000012,P_0034,34,22,joint,575,580,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3741
+M_0000134,C_0034_001,E_000011,P_0034,34,22,J3,582,584,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7319
+M_0000135,C_0034_001,E_000203,P_0034,34,22,trap,618,622,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.449
+M_0000136,C_0034_001,E_000009,P_0034,34,22,J1,845,847,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4679
+M_0000137,C_0034_001,E_000010,P_0034,34,22,J2,849,851,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5757
+M_0000138,C_0034_001,E_000011,P_0034,34,22,J3,853,855,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6013
+M_0000139,C_0034_001,E_000014,P_0034,34,22,joints,857,863,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.602
+M_0000140,C_0035_001,E_000163,P_0035,35,23,plunger,70,77,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8722
+M_0000141,C_0035_001,E_000163,P_0035,35,23,plunger,89,96,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8856
+M_0000142,C_0035_001,E_000163,P_0035,35,23,plunger,217,224,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8192
+M_0000143,C_0035_001,E_000282,P_0035,35,23,Unblocking,498,508,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3989
+M_0000144,C_0035_001,E_000164,P_0035,35,23,plungerternatively,523,541,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6236
+M_0000145,C_0035_001,E_000155,P_0035,35,23,pellets,695,702,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4128
+M_0000146,C_0035_001,E_000016,P_0035,35,23,skin,923,927,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4921
+M_0000147,C_0035_001,E_000005,P_0035,35,23,eyes,938,942,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.499
+M_0000148,C_0035_001,E_000047,P_0035,35,23,bucket,1060,1066,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7174
+M_0000149,C_0035_001,E_000010,P_0035,35,23,J2,1099,1101,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5249
+M_0000150,C_0035_001,E_000029,P_0035,35,23,limescale,1257,1266,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5152
+M_0000151,C_0035_002,E_000203,P_0035,35,23,trap,234,238,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8068
+M_0000152,C_0035_002,E_000232,P_0035,35,23,20ml,310,314,contextual_measurement_rule,1.0
+M_0000153,C_0035_002,E_000013,P_0035,35,23,joint J2,581,589,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8491
+M_0000154,C_0035_002,E_000178,P_0035,35,23,sink,706,710,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4627
+M_0000155,C_0036_001,E_000044,P_0036,36,24,bottle,127,133,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5537
+M_0000156,C_0036_001,E_000044,P_0036,36,24,bottle,201,207,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6219
+M_0000157,C_0036_001,E_000068,P_0036,36,24,container,427,436,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7948
+M_0000158,C_0036_001,E_000102,P_0036,36,24,Filters,490,497,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6819
+M_0000159,C_0036_001,E_000174,P_0036,36,24,sand filter,591,602,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8273
+M_0000160,C_0036_001,E_000174,P_0036,36,24,sand filter,606,617,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7837
+M_0000161,C_0036_001,E_000101,P_0036,36,24,filter reservoir,699,715,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5627
+M_0000162,C_0036_001,E_000137,P_0036,36,24,metal drum,745,755,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4829
+M_0000163,C_0036_001,E_000157,P_0036,36,24,perforated bucket,784,801,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4637
+M_0000164,C_0036_001,E_000174,P_0036,36,24,sand filter,959,970,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9216
+M_0000165,C_0036_001,E_000255,P_0036,36,24,bacteria,1058,1066,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8667
+M_0000166,C_0036_002,E_000084,P_0036,36,24,distributor,337,348,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9279
+M_0000167,C_0036_002,E_000069,P_0036,36,24,container of water,391,409,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7028
+M_0000168,C_0036_002,E_000123,P_0036,36,24,high shelf,415,425,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4639
+M_0000169,C_0036_002,E_000068,P_0036,36,24,container,471,480,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7966
+M_0000170,C_0036_002,E_000145,P_0036,36,24,Mohr clip,614,623,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3574
+M_0000171,C_0036_002,E_000190,P_0036,36,24,still,840,845,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.952
+M_0000172,C_0036_002,E_000035,P_0036,36,24,A water distributor,948,967,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5289
+M_0000173,C_0036_002,E_000072,P_0036,36,24,cooling tube,985,997,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5948
+M_0000174,C_0037_001,E_000074,P_0037,37,25,copper or stainless steel stills,99,131,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.653
+M_0000175,C_0037_001,E_000036,P_0037,37,25,alembics,133,141,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7866
+M_0000176,C_0037_001,E_000116,P_0037,37,25,glass stills,146,158,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8966
+M_0000177,C_0037_001,E_000184,P_0037,37,25,solar stills,162,174,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9099
+M_0000178,C_0037_001,E_000190,P_0037,37,25,still,265,270,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6525
+M_0000179,C_0037_001,E_000073,P_0037,37,25,Copper or stainless steel alembics,274,308,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8296
+M_0000180,C_0037_001,E_000172,P_0037,37,25,reservoir,334,343,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6115
+M_0000181,C_0037_001,E_000049,P_0037,37,25,Bunsen burner (B),456,473,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7266
+M_0000182,C_0037_001,E_000127,P_0037,37,25,kerosene heater,477,492,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8751
+M_0000183,C_0037_001,E_000198,P_0037,37,25,The still,495,504,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7901
+M_0000184,C_0037_001,E_000048,P_0037,37,25,Bunsen burner,679,692,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8453
+M_0000185,C_0037_001,E_000071,P_0037,37,25,cooling column,697,711,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7437
+M_0000186,C_0037_001,E_000172,P_0037,37,25,reservoir,716,725,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7338
+M_0000187,C_0037_001,E_000064,P_0037,37,25,cold-water tube,730,745,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6941
+M_0000188,C_0037_001,E_000116,P_0037,37,25,Glass stills,749,761,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4138
+M_0000189,C_0037_001,E_000116,P_0037,37,25,Glass stills,775,787,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8436
+M_0000190,C_0037_001,E_000264,P_0037,37,25,distillation method,867,886,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3503
+M_0000191,C_0037_001,E_000067,P_0037,37,25,condenser,963,972,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8187
+M_0000192,C_0037_001,E_000103,P_0037,37,25,flask,1009,1014,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9096
+M_0000193,C_0037_001,E_000090,P_0037,37,25,electric element,1022,1038,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6475
+M_0000194,C_0038_001,E_000115,P_0038,38,26,glass still,85,96,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4227
+M_0000195,C_0038_001,E_000067,P_0038,38,26,condenser,100,109,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5633
+M_0000196,C_0038_001,E_000090,P_0038,38,26,electric element,129,145,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.426
+M_0000197,C_0038_001,E_000184,P_0038,38,26,Solar stills,192,204,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3927
+M_0000198,C_0038_001,E_000062,P_0038,38,26,clean plastic container,349,372,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4966
+M_0000199,C_0038_001,E_000111,P_0038,38,26,glass cover,470,481,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5835
+M_0000200,C_0038_001,E_000131,P_0038,38,26,large compartment,535,552,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3982
+M_0000201,C_0038_001,E_000111,P_0038,38,26,glass cover,613,624,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9294
+M_0000202,C_0038_001,E_000180,P_0038,38,26,small compartment,644,661,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8384
+M_0000203,C_0038_001,E_000110,P_0038,38,26,glass bottle,763,775,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4957
+M_0000204,C_0039_001,E_000113,P_0039,39,27,glass or plastic container,220,246,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8151
+M_0000205,C_0039_001,E_000302,P_0039,39,27,silver nitrate,445,459,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.408
+M_0000206,C_0039_001,E_000290,P_0039,39,27,AgNO3,461,466,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.628
+M_0000207,C_0039_001,E_000042,P_0039,39,27,beaker,567,573,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9888
+M_0000208,C_0039_001,E_000265,P_0039,39,27,distillation process,751,771,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5818
+M_0000209,C_0039_001,E_000296,P_0039,39,27,Distilled water,800,815,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6326
+M_0000210,C_0039_001,E_000118,P_0039,39,27,glassware,886,895,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9836
+M_0000211,C_0039_001,E_000052,P_0039,39,27,car batteries,991,1004,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9259
+M_0000212,C_0039_001,E_000298,P_0039,39,27,laboratory reagents,1029,1048,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8765
+M_0000213,C_0039_001,E_000114,P_0039,39,27,glass or plastic containers,1157,1184,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.691
+M_0000214,C_0039_002,E_000194,P_0039,39,27,The apparatus,433,446,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5858
+M_0000215,C_0039_002,E_000134,P_0039,39,27,long cartridge,461,475,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7126
+M_0000216,C_0039_002,E_000066,P_0039,39,27,column of granules,548,566,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7916
+M_0000217,C_0039_002,E_000185,P_0039,39,27,Some demineralizers,642,661,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.509
+M_0000218,C_0039_002,E_000054,P_0039,39,27,cartridges,671,681,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5323
+M_0000219,C_0039_002,E_000053,P_0039,39,27,cartridge,758,767,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8957
+M_0000220,C_0039_002,E_000063,P_0039,39,27,closed container,1111,1127,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5755
+M_0000221,C_0040_001,E_000286,P_0040,40,28,zero test,461,470,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5219
+M_0000222,C_0040_001,E_000053,P_0040,40,28,cartridge,561,570,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9626
+M_0000223,C_0040_001,E_000051,P_0040,40,28,button,648,654,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5742
+M_0000224,C_0040_001,E_000285,P_0040,40,28,water test,663,673,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6213
+M_0000225,C_0040_001,E_000197,P_0040,40,28,The needle,676,686,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7045
+M_0000226,C_0040_001,E_000146,P_0040,40,28,needle,776,782,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6576
+M_0000227,C_0040_001,E_000194,P_0040,40,28,The apparatus,941,954,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7759
+M_0000228,C_0040_002,E_000031,P_0040,40,28,1,348,349,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4162
+M_0000229,C_0040_002,E_000302,P_0040,40,28,silver nitrate,365,379,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6538
+M_0000230,C_0040_002,E_000173,P_0040,40,28,resin,465,470,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8816
+M_0000231,C_0040_002,E_000281,P_0040,40,28,test,491,495,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5943
+M_0000232,C_0041_001,E_000053,P_0041,41,29,cartridge,532,541,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7319
+M_0000233,C_0041_001,E_000294,P_0041,41,29,Demineralized water,874,893,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8224
+M_0000234,C_0041_001,E_000118,P_0041,41,29,glassware,922,931,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9916
+M_0000235,C_0041_001,E_000304,P_0041,41,29,stains,1024,1030,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7504
+M_0000236,C_0041_001,E_000269,P_0041,41,29,laboratory procedures,1165,1186,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4217
+M_0000237,C_0041_001,E_000274,P_0041,41,29,preparation of stains,1188,1209,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7778
+M_0000238,C_0042_001,E_000136,P_0042,42,30,Measuring cylinders,256,275,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8482
+M_0000239,C_0042_001,E_000208,P_0042,42,30,Volumetric flask,296,312,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7613
+M_0000240,C_0042_001,E_000305,P_0042,42,30,Universal indicator paper,324,349,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5047
+M_0000241,C_0042_001,E_000297,P_0042,42,30,Indicator paper,385,400,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3939
+M_0000242,C_0042_001,E_000288,P_0042,42,30,Acetic acid,511,522,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7917
+M_0000243,C_0042_001,E_000295,P_0042,42,30,Disodium hydrogen phosphate,590,617,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5553
+M_0000244,C_0042_001,E_000299,P_0042,42,30,Na2HPO4·2H2O,619,631,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4286
+M_0000245,C_0042_001,E_000300,P_0042,42,30,Phenol red,645,655,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7491
+M_0000246,C_0042_001,E_000287,P_0042,42,30,2% solution,762,773,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5322
+M_0000247,C_0042_001,E_000032,P_0042,42,30,1000-ml volumetric flask,895,919,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9358
+M_0000248,C_0042_001,E_000105,P_0042,42,30,funnel,930,936,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9592
+M_0000249,C_0042_001,E_000215,P_0042,42,30,weighing container,968,986,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.94
+M_0000250,C_0042_001,E_000208,P_0042,42,30,volumetric flask,996,1012,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9322
+M_0000251,C_0042_001,E_000105,P_0042,42,30,funnel,1049,1055,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9571
+M_0000252,C_0042_001,E_000103,P_0042,42,30,flask,1065,1070,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9419
+M_0000253,C_0042_001,E_000278,P_0042,42,30,steps 2 and 3,1154,1167,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4054
+M_0000254,C_0042_001,E_000103,P_0042,42,30,flask,1266,1271,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9723
+M_0000255,C_0042_001,E_000104,P_0042,42,30,flask stopper,1320,1333,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9376
+M_0000256,C_0042_002,E_000270,P_0042,42,30,mix the solution well,198,219,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3501
+M_0000257,C_0042_002,E_000216,P_0042,42,30,white glass reagent bottle,249,275,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8594
+M_0000258,C_0042_002,E_000171,P_0042,42,30,refrigerator,290,302,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4567
+M_0000259,C_0042_002,E_000208,P_0042,42,30,volumetric flask,367,383,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.919
+M_0000260,C_0043_001,E_000291,P_0043,43,31,"buffer
+solution",109,124,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6982
+M_0000261,C_0043_001,E_000189,P_0043,43,31,standard chart,180,194,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9306
+M_0000262,C_0043_001,E_000153,P_0043,43,31,paper,628,633,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.462
+M_0000263,C_0043_001,E_000189,P_0043,43,31,standard chart,719,733,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9283
+M_0000264,C_0043_001,E_000207,P_0043,43,31,uncovered round flask,964,985,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8693
+M_0000265,C_0043_001,E_000301,P_0043,43,31,phenol red solution,1094,1113,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7645
+M_0000266,C_0043_001,E_000303,P_0043,43,31,sodium carbonate solution,1163,1188,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6953
+M_0000267,C_0043_002,E_000301,P_0043,43,31,phenol red solution,319,338,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7755
+M_0000268,C_0043_002,E_000289,P_0043,43,31,acetic acid solution,388,408,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.711
+M_0000269,C_0043_002,E_000295,P_0043,43,31,Disodium hydrogen phosphate,848,875,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4646
+M_0000270,C_0044_001,E_000034,P_0044,44,32,5 Equipment,59,70,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3517
+M_0000271,C_0044_001,E_000144,P_0044,44,32,Microscopes1,385,397,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5665
+M_0000272,C_0044_001,E_000142,P_0044,44,32,microscopes,442,453,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4646
+M_0000273,C_0044_001,E_000142,P_0044,44,32,microscope,462,472,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.81
+M_0000274,C_0044_001,E_000027,P_0044,44,32,haematology,487,498,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.373
+M_0000275,C_0044_001,E_000176,P_0044,44,32,second microscope,731,748,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8528
+M_0000276,C_0044_001,E_000271,P_0044,44,32,parasitology,792,804,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8687
+M_0000277,C_0044_001,E_000283,P_0044,44,32,urine analysis,806,820,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9231
+M_0000278,C_0044_001,E_000260,P_0044,44,32,bacteriology,822,834,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.903
+M_0000279,C_0044_001,E_000043,P_0044,44,32,binocular microscope,950,970,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8753
+M_0000280,C_0044_001,E_000058,P_0044,44,32,Centrifuges2,988,1000,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4806
+M_0000281,C_0044_001,E_000057,P_0044,44,32,centrifuges,1027,1038,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3814
+M_0000282,C_0044_001,E_000089,P_0044,44,32,electric centrifuge,1046,1065,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.615
+M_0000283,C_0044_001,E_000140,P_0044,44,32,microhaematocrit head attachment,1073,1105,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4827
+M_0000284,C_0044_001,E_000167,P_0044,44,32,reader,1112,1118,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5857
+M_0000285,C_0044_001,E_000089,P_0044,44,32,electric centrifuge,1145,1164,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6232
+M_0000286,C_0044_001,E_000037,P_0044,44,32,analytical balance,1199,1217,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6036
+M_0000287,C_0044_001,E_000177,P_0044,44,32,set of weights,1225,1239,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6442
+M_0000288,C_0044_001,E_000206,P_0044,44,32,two-pan balance,1375,1390,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9027
+M_0000289,C_0044_002,E_000075,P_0044,44,32,corresponding set of weights,244,272,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4717
+M_0000290,C_0044_002,E_000273,P_0044,44,32,pregnancy tests,357,372,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7449
+M_0000291,C_0044_002,E_000060,P_0044,44,32,certain transport media,403,426,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3501
+M_0000292,C_0044_002,E_000171,P_0044,44,32,refrigerator,467,479,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8648
+M_0000293,C_0044_002,E_000213,P_0044,44,32,Water-bath,483,493,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5717
+M_0000294,C_0044_002,E_000213,P_0044,44,32,water-bath,497,507,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5496
+M_0000295,C_0044_002,E_000199,P_0044,44,32,thermostat,524,534,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7339
+M_0000296,C_0044_002,E_000308,P_0044,44,32,samples or materials,576,596,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7519
+M_0000297,C_0044_002,E_000159,P_0044,44,32,Photometer or colorimeter,800,825,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7247
+M_0000298,C_0044_002,E_000159,P_0044,44,32,photometer or colorimeter,853,878,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6283
+M_0000299,C_0044_002,E_000263,P_0044,44,32,blood chemistry tests,883,904,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8244
+M_0000300,C_0045_001,E_000039,P_0045,45,33,Autoclave,75,84,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7574
+M_0000301,C_0045_001,E_000268,P_0045,45,33,hospital sterilization service,126,156,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3515
+M_0000302,C_0045_001,E_000179,P_0045,45,33,small autoclave,267,282,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7086
+M_0000303,C_0045_001,E_000150,P_0045,45,33,oil stove,309,318,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.397
+M_0000304,C_0045_001,E_000165,P_0045,45,33,pressure cooker,344,359,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7689
+M_0000305,C_0045_001,E_000124,P_0045,45,33,Hot-air oven,363,375,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5638
+M_0000306,C_0045_001,E_000124,P_0045,45,33,hot-air oven,420,432,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5867
+M_0000307,C_0045_001,E_000118,P_0045,45,33,glassware,454,463,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7515
+M_0000308,C_0045_001,E_000279,P_0045,45,33,sterilization,472,485,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4352
+M_0000309,C_0045_001,E_000039,P_0045,45,33,autoclave,510,519,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8369
+M_0000310,C_0045_001,E_000080,P_0045,45,33,Deionizer,543,552,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7655
+M_0000311,C_0045_001,E_000080,P_0045,45,33,deionizer,571,580,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7587
+M_0000312,C_0045_001,E_000054,P_0045,45,33,cartridges,634,644,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4052
+M_0000313,C_0045_001,E_000080,P_0045,45,33,deionizer,703,712,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5922
+M_0000314,C_0045_001,E_000212,P_0045,45,33,water still,733,744,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9167
+M_0000315,C_0045_001,E_000096,P_0045,45,33,Equipment and supplies,780,802,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5373
+M_0000316,C_0045_001,E_000096,P_0045,45,33,equipment and supplies,814,836,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3557
+M_0000317,C_0045_001,E_000118,P_0045,45,33,Glassware,1055,1064,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4912
+M_0000318,C_0045_002,E_000059,P_0045,45,33,Certain pieces of equipment,369,396,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7026
+M_0000319,C_0045_002,E_000107,P_0045,45,33,G File,592,598,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6309
+M_0000320,C_0045_002,E_000112,P_0045,45,33,glass cutter,600,612,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4532
+M_0000321,C_0045_002,E_000083,P_0045,45,33,diamond pencil,616,630,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3809
+M_0000322,C_0045_002,E_000048,P_0045,45,33,Bunsen burner,643,656,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5535
+M_0000323,C_0045_002,E_000154,P_0045,45,33,Pasteur pipette,705,720,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.897
+M_0000324,C_0045_002,E_000117,P_0045,45,33,glass tubing,741,753,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6691
+M_0000325,C_0045_002,E_000100,P_0045,45,33,file,783,787,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4907
+M_0000326,C_0045_002,E_000181,P_0045,45,33,small pipettes,845,859,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8999
+M_0000327,C_0045_002,E_000132,P_0045,45,33,large pipettes,876,890,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9241
+M_0000328,C_0045_002,E_000204,P_0045,45,33,tube,923,927,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8348
+M_0000329,C_0048_001,E_000098,P_0048,48,36,Essential equipment,196,215,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.441
+M_0000330,C_0048_001,E_000191,P_0048,48,36,Syringes,217,225,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3805
+M_0000331,C_0048_001,E_000130,P_0048,48,36,Lancets,754,761,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5383
+M_0000332,C_0048_001,E_000045,P_0048,48,36,Bottles,877,884,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.737
+M_0000333,C_0048_001,E_000232,P_0048,48,36,20ml,969,973,contextual_measurement_rule,1.0
+M_0000334,C_0048_001,E_000175,P_0048,48,36,Scalpel,1007,1014,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5193
+M_0000335,C_0048_001,E_000277,P_0048,48,36,slit skin smear,1049,1064,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4601
+M_0000336,C_0048_001,E_000028,P_0048,48,36,leprosy,1082,1089,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8971
+M_0000337,C_0048_001,E_000079,P_0048,48,36,Curved clamp forceps,1092,1112,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.372
+M_0000338,C_0048_001,E_000277,P_0048,48,36,slit skin smear,1138,1153,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4773
+M_0000339,C_0048_001,E_000028,P_0048,48,36,leprosy,1171,1178,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.909
+M_0000340,C_0048_001,E_000046,P_0048,48,36,Boxes,1181,1186,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.384
+M_0000341,C_0048_001,E_000280,P_0048,48,36,stool collection,1226,1242,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4105
+M_0000342,C_0048_001,E_000038,P_0048,48,36,Applicators,1247,1258,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3806
+M_0000343,C_0048_001,E_000227,P_0048,48,36,12cm ¥ 1mm,1268,1278,contextual_measurement_rule,1.0
+M_0000344,C_0048_001,E_000045,P_0048,48,36,Bottles,1306,1313,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3501
+M_0000345,C_0048_001,E_000241,P_0048,48,36,5ml,1325,1328,contextual_measurement_rule,1.0
+M_0000346,C_0048_001,E_000045,P_0048,48,36,Bottles,1353,1360,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.631
+M_0000347,C_0048_001,E_000244,P_0048,48,36,50ml,1389,1393,contextual_measurement_rule,1.0
+M_0000348,C_0048_001,E_000309,P_0048,48,36,sputum specimens,1456,1472,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9245
+M_0000349,C_0048_001,E_000045,P_0048,48,36,Bottles,1474,1481,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.696
+M_0000350,C_0048_001,E_000236,P_0048,48,36,25ml,1496,1500,contextual_measurement_rule,1.0
+M_0000351,C_0048_002,E_000030,P_0048,48,36,onchocerciasis,414,428,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7738
+M_0000352,C_0048_002,E_000248,P_0048,48,36,6mm,510,513,contextual_measurement_rule,1.0
+M_0000353,C_0048_002,E_000244,P_0048,48,36,50ml,550,554,contextual_measurement_rule,1.0
+M_0000354,C_0048_002,E_000224,P_0048,48,36,100ml,582,587,contextual_measurement_rule,1.0
+M_0000355,C_0048_002,E_000238,P_0048,48,36,250ml,615,620,contextual_measurement_rule,1.0
+M_0000356,C_0048_002,E_000188,P_0048,48,36,Staining troughs,624,640,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3537
+M_0000357,C_0048_002,E_000249,P_0048,48,36,60mm,687,691,contextual_measurement_rule,1.0
+M_0000358,C_0048_002,E_000254,P_0048,48,36,90mm,720,724,contextual_measurement_rule,1.0
+M_0000359,C_0048_002,E_000235,P_0048,48,36,200mm,754,759,contextual_measurement_rule,1.0
+M_0000360,C_0048_002,E_000136,P_0048,48,36,Measuring cylinders,772,791,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3587
+M_0000361,C_0048_002,E_000236,P_0048,48,36,25ml,811,815,contextual_measurement_rule,1.0
+M_0000362,C_0048_002,E_000244,P_0048,48,36,50ml,858,862,contextual_measurement_rule,1.0
+M_0000363,C_0048_002,E_000224,P_0048,48,36,100ml,905,910,contextual_measurement_rule,1.0
+M_0000364,C_0048_002,E_000238,P_0048,48,36,250ml,953,958,contextual_measurement_rule,1.0
+M_0000365,C_0048_002,E_000247,P_0048,48,36,500ml,1000,1005,contextual_measurement_rule,1.0
+M_0000366,C_0048_002,E_000225,P_0048,48,36,1000ml,1047,1053,contextual_measurement_rule,1.0
+M_0000367,C_0048_002,E_000238,P_0048,48,36,250ml,1107,1112,contextual_measurement_rule,1.0
+M_0000368,C_0049_001,E_000247,P_0049,49,37,500ml,145,150,contextual_measurement_rule,1.0
+M_0000369,C_0049_001,E_000225,P_0049,49,37,1000ml,204,210,contextual_measurement_rule,1.0
+M_0000370,C_0049_001,E_000224,P_0049,49,37,100ml,246,251,contextual_measurement_rule,1.0
+M_0000371,C_0049_001,E_000224,P_0049,49,37,100ml,283,288,contextual_measurement_rule,1.0
+M_0000372,C_0049_001,E_000168,P_0049,49,37,Reagent bottles,292,307,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3864
+M_0000373,C_0049_001,E_000224,P_0049,49,37,100ml,327,332,contextual_measurement_rule,1.0
+M_0000374,C_0049_001,E_000168,P_0049,49,37,Reagent bottles,337,352,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3633
+M_0000375,C_0049_001,E_000247,P_0049,49,37,500ml,372,377,contextual_measurement_rule,1.0
+M_0000376,C_0049_001,E_000168,P_0049,49,37,Reagent bottles,382,397,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3534
+M_0000377,C_0049_001,E_000225,P_0049,49,37,1000ml,417,423,contextual_measurement_rule,1.0
+M_0000378,C_0049_001,E_000224,P_0049,49,37,100ml,470,475,contextual_measurement_rule,1.0
+M_0000379,C_0049_001,E_000238,P_0049,49,37,250ml,521,526,contextual_measurement_rule,1.0
+M_0000380,C_0049_001,E_000247,P_0049,49,37,500ml,572,577,contextual_measurement_rule,1.0
+M_0000381,C_0049_001,E_000225,P_0049,49,37,1000ml,622,628,contextual_measurement_rule,1.0
+M_0000382,C_0049_001,E_000143,P_0049,49,37,Microscope slides,632,649,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4956
+M_0000383,C_0049_001,E_000237,P_0049,49,37,25mm ¥ 75mm,651,662,contextual_measurement_rule,1.0
+M_0000384,C_0049_001,E_000077,P_0049,49,37,Coverslips,673,683,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3876
+M_0000385,C_0049_001,E_000233,P_0049,49,37,20mm ¥ 20mm,685,696,contextual_measurement_rule,1.0
+M_0000386,C_0049_001,E_000247,P_0049,49,37,500ml,730,735,contextual_measurement_rule,1.0
+M_0000387,C_0049_001,E_000225,P_0049,49,37,1000ml,762,768,contextual_measurement_rule,1.0
+M_0000388,C_0049_001,E_000245,P_0049,49,37,50mm,787,791,contextual_measurement_rule,1.0
+M_0000389,C_0049_001,E_000221,P_0049,49,37,1ml,859,862,contextual_measurement_rule,1.0
+M_0000390,C_0049_001,E_000160,P_0049,49,37,Pipettes,890,898,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9146
+M_0000391,C_0049_001,E_000160,P_0049,49,37,Pipettes,976,984,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9128
+M_0000392,C_0049_001,E_000160,P_0049,49,37,Pipettes,1061,1069,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9094
+M_0000393,C_0049_001,E_000161,P_0049,49,37,"Pipettes, Pasteur 2",1146,1165,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6905
+M_0000394,C_0049_001,E_000193,P_0049,49,37,Test-tubes,1173,1183,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3936
+M_0000395,C_0049_001,E_000230,P_0049,49,37,150mm ¥ 16mm,1201,1213,contextual_measurement_rule,1.0
+M_0000396,C_0049_001,E_000193,P_0049,49,37,Test-tubes,1218,1228,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4027
+M_0000397,C_0049_001,E_000253,P_0049,49,37,85mm ¥ 15mm,1246,1257,contextual_measurement_rule,1.0
+M_0000398,C_0049_001,E_000126,P_0049,49,37,Kahn tubes,1259,1269,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.7006
+M_0000399,C_0049_001,E_000193,P_0049,49,37,Test-tubes,1276,1286,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3739
+M_0000400,C_0049_001,E_000246,P_0049,49,37,50mm ¥ 6mm,1304,1314,contextual_measurement_rule,1.0
+M_0000401,C_0049_001,E_000078,P_0049,49,37,cross-matching tubes,1316,1336,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6604
+M_0000402,C_0049_001,E_000056,P_0049,49,37,Centrifuge tubes,1342,1358,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3792
+M_0000403,C_0049_001,E_000229,P_0049,49,37,15ml,1369,1373,contextual_measurement_rule,1.0
+M_0000404,C_0049_001,E_000056,P_0049,49,37,Centrifuge tubes,1378,1394,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3897
+M_0000405,C_0049_001,E_000229,P_0049,49,37,15ml,1416,1420,contextual_measurement_rule,1.0
+M_0000406,C_0049_001,E_000117,P_0049,49,37,Glass tubing,1447,1459,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.8841
+M_0000407,C_0049_002,E_000252,P_0049,49,37,7–8mm,293,298,contextual_measurement_rule,1.0
+M_0000408,C_0049_002,E_000219,P_0049,49,37,1kg,308,311,contextual_measurement_rule,1.0
+M_0000409,C_0049_002,E_000158,P_0049,49,37,Petri dishes,331,343,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6047
+M_0000410,C_0049_002,E_000226,P_0049,49,37,112mm,352,357,contextual_measurement_rule,1.0
+M_0000411,C_0049_002,E_000158,P_0049,49,37,Petri dishes,370,382,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5337
+M_0000412,C_0049_002,E_000231,P_0049,49,37,156mm,391,396,contextual_measurement_rule,1.0
+M_0000413,C_0049_002,E_000099,P_0049,49,37,Evaporating dishes,409,427,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4072
+M_0000414,C_0049_002,E_000251,P_0049,49,37,75mm,429,433,contextual_measurement_rule,1.0
+M_0000415,C_0049_002,E_000250,P_0049,49,37,75ml,444,448,contextual_measurement_rule,1.0
+M_0000416,C_0049_002,E_000082,P_0049,49,37,Dessicator,453,463,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6669
+M_0000417,C_0049_002,E_000097,P_0049,49,37,Equipment for haematology tests,467,498,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4509
+M_0000418,C_0049_002,E_000160,P_0049,49,37,Pipettes,548,556,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6946
+M_0000419,C_0049_002,E_000076,P_0049,49,37,Counting chambers,576,593,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.425
+M_0000420,C_0049_002,E_000192,P_0049,49,37,Tally counter,734,747,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5734
+M_0000421,C_0049_002,E_000021,P_0049,49,37,erythrocyte,791,802,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5687
+M_0000422,C_0049_002,E_000139,P_0049,49,37,Microhaematocrit centrifuge,857,884,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6605
+M_0000423,C_0049_002,E_000214,P_0049,49,37,Wax,940,943,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5336
+M_0000424,C_0049_002,E_000141,P_0049,49,37,microhaematocrit tubes,957,979,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3679
+M_0000425,C_0049_002,E_000148,P_0049,49,37,Nichrome wire,1041,1054,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4713
+M_0000426,C_0049_002,E_000222,P_0049,49,37,1mm,1056,1059,contextual_measurement_rule,1.0
+M_0000427,C_0049_002,E_000220,P_0049,49,37,1m,1069,1071,contextual_measurement_rule,1.0
+M_0000428,C_0050_001,E_000166,P_0050,50,38,Protein standard tubes,150,172,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3534
+M_0000429,C_0050_001,E_000048,P_0050,50,38,Bunsen burner,328,341,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3568
+M_0000430,C_0050_001,E_000292,P_0050,50,38,butane gas,355,365,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5242
+M_0000431,C_0050_001,E_000292,P_0050,50,38,Butane gas,369,379,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3697
+M_0000432,C_0050_001,E_000307,P_0050,50,38,positive specimens,709,727,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6869
+M_0000433,C_0050_001,E_000129,P_0050,50,38,Labels for specimen bottles,825,852,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3565
+M_0000434,C_0050_001,E_000142,P_0050,50,38,Microscopes,956,967,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.6457
+M_0000435,C_0050_001,E_000065,P_0050,50,38,Colorimeter,971,982,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4917
+M_0000436,C_0050_001,E_000211,P_0050,50,38,Water bath,986,996,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4779
+M_0000437,C_0050_001,E_000171,P_0050,50,38,Refrigerator,1000,1012,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5037
+M_0000438,C_0050_001,E_000124,P_0050,50,38,Hot-air oven,1016,1028,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5157
+M_0000439,C_0050_001,E_000055,P_0050,50,38,Centrifuge,1032,1042,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4549
+M_0000440,C_0050_001,E_000040,P_0050,50,38,Balance,1046,1053,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3902
+M_0000441,C_0050_001,E_000081,P_0050,50,38,Deionizer or water still,1057,1081,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.3617
+M_0000442,C_0050_001,E_000218,P_0050,50,38,0–60min,1092,1099,contextual_measurement_rule,1.0
+M_0000443,C_0050_001,E_000242,P_0050,50,38,5mm,1270,1273,contextual_measurement_rule,1.0
+M_0000444,C_0050_001,E_000239,P_0050,50,38,30cm,1335,1339,contextual_measurement_rule,1.0
+M_0000445,C_0050_001,E_000223,P_0050,50,38,10cm,1373,1377,contextual_measurement_rule,1.0
+M_0000446,C_0050_001,E_000243,P_0050,50,38,50cm,1418,1422,contextual_measurement_rule,1.0
+M_0000447,C_0051_001,E_000244,P_0051,51,39,50ml,109,113,contextual_measurement_rule,1.0
+M_0000448,C_0051_001,E_000224,P_0051,51,39,100ml,131,136,contextual_measurement_rule,1.0
+M_0000449,C_0051_001,E_000234,P_0051,51,39,200ml,154,159,contextual_measurement_rule,1.0
+M_0000450,C_0051_001,E_000247,P_0051,51,39,500ml,177,182,contextual_measurement_rule,1.0
+M_0000451,C_0051_001,E_000232,P_0051,51,39,20ml,226,230,contextual_measurement_rule,1.0
+M_0000452,C_0051_001,E_000244,P_0051,51,39,50ml,282,286,contextual_measurement_rule,1.0
+M_0000453,C_0051_001,E_000224,P_0051,51,39,100ml,338,343,contextual_measurement_rule,1.0
+M_0000454,C_0051_001,E_000234,P_0051,51,39,200ml,395,400,contextual_measurement_rule,1.0
+M_0000455,C_0051_001,E_000247,P_0051,51,39,500ml,452,457,contextual_measurement_rule,1.0
+M_0000456,C_0051_001,E_000217,P_0051,51,39,0–100°C,543,550,contextual_measurement_rule,1.0
+M_0000457,C_0051_001,E_000228,P_0051,51,39,15cm,684,688,contextual_measurement_rule,1.0
+M_0000458,C_0051_001,E_000117,P_0051,51,39,glass tubing,1100,1112,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4232
+M_0000459,C_0051_001,E_000100,P_0051,51,39,file,1121,1125,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5884
+M_0000460,C_0051_001,E_000117,P_0051,51,39,glass tubing,1154,1166,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5324
+M_0000461,C_0051_001,E_000121,P_0051,51,39,hand glass tubing,1209,1226,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4617
+M_0000462,C_0051_001,E_000266,P_0051,51,39,flaming,1230,1237,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.4199
+M_0000463,C_0051_001,E_000204,P_0051,51,39,tube,1291,1295,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.5966
+M_0000464,C_0051_002,E_000050,P_0051,51,39,burner,355,361,gliner:urchade/gliner_large_bio-v0.1:sentence_batch,0.9297

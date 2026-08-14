@@ -1,6 +1,6 @@
 import os, json, hashlib, argparse
 from pathlib import Path
-import fitz  # PyMuPDF
+import pymupdf
 
 def sha1_bytes(b: bytes) -> str:
     import hashlib
@@ -22,7 +22,7 @@ def main():
     img_dir = out_dir / "files"
     ensure_dir(img_dir)
 
-    doc = fitz.open(str(pdf_path))
+    doc = pymupdf.open(str(pdf_path))
     manifest_path = out_dir / "manifest.jsonl"
 
     total_saved = 0

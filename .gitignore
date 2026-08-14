@@ -54,3 +54,5 @@ temp/
 #who.pdf
 
 #config.neo4j.json
+# Local Neo4j credentials
+config.neo4j.json

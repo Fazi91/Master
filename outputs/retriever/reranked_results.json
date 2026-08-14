@@ -1,0 +1,57 @@
+[
+  {
+    "rank": 3,
+    "score": 0.6822741627693176,
+    "row_id": 155,
+    "id": "semantic_155",
+    "method": "semantic",
+    "n_tokens": 407,
+    "preview": "together with the request form (see section 3.7.1). Then place the tube and the request form in a small wooden or cardboard box and dispatch immediately. 3.8 Safety in the laboratory G Each laboratory should have a written manual of safe laboratory practices which should be followed at all times. G The laboratory should have a first-aid box (see section 3.8.2) and at least one staff member trained in first aid. G The laboratory should be a work area only; visitors should be restricted. G No food",
+    "rerank_score": -1.9359886646270752,
+    "rerank_rank": 1
+  },
+  {
+    "rank": 5,
+    "score": 0.6768283843994141,
+    "row_id": 619,
+    "id": "semantic_619",
+    "method": "semantic",
+    "n_tokens": 356,
+    "preview": "<<<PAGE_BREAK>>> World Health Organization Geneva This manual provides a practical guide to the safe and accurate performance of basic laboratory techniques. Intended for use by laboratory technicians working in peripheral-level laboratories in developing countries, the book emphasizes simple, economical procedures that can yield accurate results where resources, including equipment, are scarce and the climate is hot and humid. The book is divided into three parts. The first describes the settin",
+    "rerank_score": -5.388553142547607,
+    "rerank_rank": 2
+  },
+  {
+    "rank": 4,
+    "score": 0.679244339466095,
+    "row_id": 5,
+    "id": "semantic_5",
+    "method": "semantic",
+    "n_tokens": 645,
+    "preview": ".3 Demineralized water 27 2.4.4 Buffered water 29 2.5 Equipment 32 2.5.1 Essential laboratory instruments 32 2.5.2 Additional items 33 2.5.3 Equipment and supplies 33 2.5.4 Making glass equipment 33 2.5.5 Specimen containers 42 2.5.6 Storage, stocktaking and ordering supplies 45 2.6 Registration of specimens and preparation of monthly reports 46 2.6.1 Registration of specimens 46 <<<PAGE_BREAK>>> iv Manual of basic techniques for a health laboratory 2.6.2 Preparation of monthly reports 47 3. Gen",
+    "rerank_score": -6.946993350982666,
+    "rerank_rank": 3
+  },
+  {
+    "rank": 2,
+    "score": 0.6830073595046997,
+    "row_id": 4,
+    "id": "semantic_4",
+    "method": "semantic",
+    "n_tokens": 568,
+    "preview": "initial capital letters. The World Health Organization does not warrant that the information contained in this publication is complete and correct and shall not be liable for any damages incurred as a result of its use. WHO Library Cataloguing-in-Publication Data Manual of basic techniques for a health laboratory. — 2nd ed. 1.Clinical laboratory techniques — handbooks 2.Technology, Medical — handbooks 3.Manuals ISBN 92 4 154530 5 (NLM classification: QY 25) Design by minimum graphics Typeset in ",
+    "rerank_score": -8.170560836791992,
+    "rerank_rank": 4
+  },
+  {
+    "rank": 1,
+    "score": 0.6885082721710205,
+    "row_id": 618,
+    "id": "semantic_618",
+    "method": "semantic",
+    "n_tokens": 422,
+    "preview": "helping to promote and protect health and prevent and control disease throughout the world, WHO’s books contribute to achieving the Organization’s principal objective – the attainment by all people of the highest possible level of health. Selected WHO publications of related interest Basic laboratory methods in medical parasitology. 1991 (122 pages) Basic laboratory methods in clinical bacteriology. 1991 (128 pages) Laboratory diagnosis of sexually transmitted diseases. Van Dyck E, Meheus AZ, Pi",
+    "rerank_score": -9.16064453125,
+    "rerank_rank": 5
+  }
+]

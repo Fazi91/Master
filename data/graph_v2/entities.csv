@@ -1,0 +1,315 @@
+﻿entity_id,canonical_name,normalized_name,entity_type
+E_000001,B,b,ANATOMICAL_SITE
+E_000002,base of the head,base of the head,ANATOMICAL_SITE
+E_000003,base of the head of the tap,base of the head of the tap,ANATOMICAL_SITE
+E_000004,body,body,ANATOMICAL_SITE
+E_000005,eyes,eyes,ANATOMICAL_SITE
+E_000006,H,h,ANATOMICAL_SITE
+E_000007,head,head,ANATOMICAL_SITE
+E_000008,J,j,ANATOMICAL_SITE
+E_000009,J1,j1,ANATOMICAL_SITE
+E_000010,J2,j2,ANATOMICAL_SITE
+E_000011,J3,j3,ANATOMICAL_SITE
+E_000012,joint,joint,ANATOMICAL_SITE
+E_000013,joint J2,joint j2,ANATOMICAL_SITE
+E_000014,joints,joints,ANATOMICAL_SITE
+E_000015,screw thread,screw thread,ANATOMICAL_SITE
+E_000016,skin,skin,ANATOMICAL_SITE
+E_000017,top,top,ANATOMICAL_SITE
+E_000018,tow,tow,ANATOMICAL_SITE
+E_000019,wall,wall,ANATOMICAL_SITE
+E_000020,cells of crystalline silicon,cells of crystalline silicon,CELL
+E_000021,erythrocyte,erythrocyte,CELL
+E_000022,leukocyte,leukocyte,CELL
+E_000023,lymphocytes,lymphocyte,CELL
+E_000024,panels with cells of amorphous silicon,panels with cells of amorphous silicon,CELL
+E_000025,Reticulocyte,reticulocyte,CELL
+E_000026,anaemia,anaemia,DISEASE
+E_000027,haematology,haematology,DISEASE
+E_000028,leprosy,leprosy,DISEASE
+E_000029,limescale,limescale,DISEASE
+E_000030,onchocerciasis,onchocerciasis,DISEASE
+E_000031,1,1,EQUIPMENT
+E_000032,1000-ml volumetric flask,1000-ml volumetric flask,EQUIPMENT
+E_000033,110–220V transformer,110–220v transformer,EQUIPMENT
+E_000034,5 Equipment,5 equipment,EQUIPMENT
+E_000035,A water distributor,a water distributor,EQUIPMENT
+E_000036,alembics,alembics,EQUIPMENT
+E_000037,analytical balance,analytical balance,EQUIPMENT
+E_000038,Applicators,applicators,EQUIPMENT
+E_000039,Autoclave,autoclave,EQUIPMENT
+E_000040,balance,balance,EQUIPMENT
+E_000041,batteries,batteries,EQUIPMENT
+E_000042,beaker,beaker,EQUIPMENT
+E_000043,binocular microscope,binocular microscope,EQUIPMENT
+E_000044,bottle,bottle,EQUIPMENT
+E_000045,Bottles,bottles,EQUIPMENT
+E_000046,Boxes,boxes,EQUIPMENT
+E_000047,bucket,bucket,EQUIPMENT
+E_000048,Bunsen burner,bunsen burner,EQUIPMENT
+E_000049,Bunsen burner (B),bunsen burner (b,EQUIPMENT
+E_000050,burner,burner,EQUIPMENT
+E_000051,button,button,EQUIPMENT
+E_000052,car batteries,car batteries,EQUIPMENT
+E_000053,cartridge,cartridge,EQUIPMENT
+E_000054,cartridges,cartridges,EQUIPMENT
+E_000055,centrifuge,centrifuge,EQUIPMENT
+E_000056,Centrifuge tubes,centrifuge tubes,EQUIPMENT
+E_000057,centrifuges,centrifuges,EQUIPMENT
+E_000058,Centrifuges2,centrifuges2,EQUIPMENT
+E_000059,Certain pieces of equipment,certain pieces of equipment,EQUIPMENT
+E_000060,certain transport media,certain transport media,EQUIPMENT
+E_000061,charge regulator,charge regulator,EQUIPMENT
+E_000062,clean plastic container,clean plastic container,EQUIPMENT
+E_000063,closed container,closed container,EQUIPMENT
+E_000064,cold-water tube,cold-water tube,EQUIPMENT
+E_000065,colorimeter,colorimeter,EQUIPMENT
+E_000066,column of granules,column of granules,EQUIPMENT
+E_000067,condenser,condenser,EQUIPMENT
+E_000068,container,container,EQUIPMENT
+E_000069,container of water,container of water,EQUIPMENT
+E_000070,converter,converter,EQUIPMENT
+E_000071,cooling column,cooling column,EQUIPMENT
+E_000072,cooling tube,cooling tube,EQUIPMENT
+E_000073,Copper or stainless steel alembics,copper or stainless steel alembics,EQUIPMENT
+E_000074,copper or stainless steel stills,copper or stainless steel stills,EQUIPMENT
+E_000075,corresponding set of weights,corresponding set of weights,EQUIPMENT
+E_000076,Counting chambers,counting chambers,EQUIPMENT
+E_000077,Coverslips,coverslips,EQUIPMENT
+E_000078,cross-matching tubes,cross-matching tubes,EQUIPMENT
+E_000079,Curved clamp forceps,curved clamp forceps,EQUIPMENT
+E_000080,deionizer,deionizer,EQUIPMENT
+E_000081,Deionizer or water still,deionizer or water still,EQUIPMENT
+E_000082,Dessicator,dessicator,EQUIPMENT
+E_000083,diamond pencil,diamond pencil,EQUIPMENT
+E_000084,distributor,distributor,EQUIPMENT
+E_000085,drug containers,drug containers,EQUIPMENT
+E_000086,Dual-voltage equipment,dual-voltage equipment,EQUIPMENT
+E_000087,Dual-voltage instruments,dual-voltage instruments,EQUIPMENT
+E_000088,Each piece of electrical equipment,each piece of electrical equipment,EQUIPMENT
+E_000089,electric centrifuge,electric centrifuge,EQUIPMENT
+E_000090,electric element,electric element,EQUIPMENT
+E_000091,electric lamp,electric lamp,EQUIPMENT
+E_000092,electrical equipment,electrical equipment,EQUIPMENT
+E_000093,electricity supply,electricity supply,EQUIPMENT
+E_000094,empty bottles,empty bottles,EQUIPMENT
+E_000095,empty tins,empty tins,EQUIPMENT
+E_000096,Equipment and supplies,equipment and supplies,EQUIPMENT
+E_000097,Equipment for haematology tests,equipment for haematology tests,EQUIPMENT
+E_000098,Essential equipment,essential equipment,EQUIPMENT
+E_000099,Evaporating dishes,evaporating dishes,EQUIPMENT
+E_000100,file,file,EQUIPMENT
+E_000101,filter reservoir,filter reservoir,EQUIPMENT
+E_000102,Filters,filters,EQUIPMENT
+E_000103,flask,flask,EQUIPMENT
+E_000104,flask stopper,flask stopper,EQUIPMENT
+E_000105,funnel,funnel,EQUIPMENT
+E_000106,fuse box,fuse box,EQUIPMENT
+E_000107,G File,g file,EQUIPMENT
+E_000108,gas bottle,gas bottle,EQUIPMENT
+E_000109,generators,generator,EQUIPMENT
+E_000110,glass bottle,glass bottle,EQUIPMENT
+E_000111,glass cover,glass cover,EQUIPMENT
+E_000112,glass cutter,glass cutter,EQUIPMENT
+E_000113,glass or plastic container,glass or plastic container,EQUIPMENT
+E_000114,glass or plastic containers,glass or plastic containers,EQUIPMENT
+E_000115,glass still,glass still,EQUIPMENT
+E_000116,Glass stills,glass stills,EQUIPMENT
+E_000117,glass tubing,glass tubing,EQUIPMENT
+E_000118,glassware,glassware,EQUIPMENT
+E_000119,glassware shelf,glassware shelf,EQUIPMENT
+E_000120,graduated glassware,graduated glassware,EQUIPMENT
+E_000121,hand glass tubing,hand glass tubing,EQUIPMENT
+E_000122,hand-operated centrifuge,hand-operated centrifuge,EQUIPMENT
+E_000123,high shelf,high shelf,EQUIPMENT
+E_000124,Hot-air oven,hot-air oven,EQUIPMENT
+E_000125,Inverters,inverter,EQUIPMENT
+E_000126,Kahn tubes,kahn tubes,EQUIPMENT
+E_000127,kerosene heater,kerosene heater,EQUIPMENT
+E_000128,knife,knife,EQUIPMENT
+E_000129,Labels for specimen bottles,labels for specimen bottles,EQUIPMENT
+E_000130,Lancets,lancets,EQUIPMENT
+E_000131,large compartment,large compartment,EQUIPMENT
+E_000132,large pipettes,large pipettes,EQUIPMENT
+E_000133,local generator,local generator,EQUIPMENT
+E_000134,long cartridge,long cartridge,EQUIPMENT
+E_000135,manually operated type,manually operated type,EQUIPMENT
+E_000136,Measuring cylinders,measuring cylinders,EQUIPMENT
+E_000137,metal drum,metal drum,EQUIPMENT
+E_000138,meter,meter,EQUIPMENT
+E_000139,microhaematocrit centrifuge,microhaematocrit centrifuge,EQUIPMENT
+E_000140,microhaematocrit head attachment,microhaematocrit head attachment,EQUIPMENT
+E_000141,microhaematocrit tubes,microhaematocrit tubes,EQUIPMENT
+E_000142,microscopes,microscope,EQUIPMENT
+E_000143,Microscope slides,microscope slides,EQUIPMENT
+E_000144,Microscopes1,microscopes1,EQUIPMENT
+E_000145,Mohr clip,mohr clip,EQUIPMENT
+E_000146,needle,needle,EQUIPMENT
+E_000147,new piece of equipment,new piece of equipment,EQUIPMENT
+E_000148,Nichrome wire,nichrome wire,EQUIPMENT
+E_000149,Ni–Cd battery,ni–cd battery,EQUIPMENT
+E_000150,oil stove,oil stove,EQUIPMENT
+E_000151,outpatient’s table,outpatient’s table,EQUIPMENT
+E_000152,panel,panel,EQUIPMENT
+E_000153,paper,paper,EQUIPMENT
+E_000154,Pasteur pipette,pasteur pipette,EQUIPMENT
+E_000155,pellets,pellets,EQUIPMENT
+E_000156,penicillin bottles,penicillin bottles,EQUIPMENT
+E_000157,perforated bucket,perforated bucket,EQUIPMENT
+E_000158,Petri dishes,petri dishes,EQUIPMENT
+E_000159,Photometer or colorimeter,photometer or colorimeter,EQUIPMENT
+E_000160,Pipettes,pipettes,EQUIPMENT
+E_000161,"Pipettes, Pasteur 2","pipettes, pasteur 2",EQUIPMENT
+E_000162,plate,plate,EQUIPMENT
+E_000163,plunger,plunger,EQUIPMENT
+E_000164,plungerternatively,plungerternatively,EQUIPMENT
+E_000165,pressure cooker,pressure cooker,EQUIPMENT
+E_000166,Protein standard tubes,protein standard tubes,EQUIPMENT
+E_000167,reader,reader,EQUIPMENT
+E_000168,Reagent bottles,reagent bottles,EQUIPMENT
+E_000169,reagent refrigerator,reagent refrigerator,EQUIPMENT
+E_000170,reagent shelf,reagent shelf,EQUIPMENT
+E_000171,refrigerator,refrigerator,EQUIPMENT
+E_000172,reservoir,reservoir,EQUIPMENT
+E_000173,resin,resin,EQUIPMENT
+E_000174,sand filter,sand filter,EQUIPMENT
+E_000175,Scalpel,scalpel,EQUIPMENT
+E_000176,second microscope,second microscope,EQUIPMENT
+E_000177,set of weights,set of weights,EQUIPMENT
+E_000178,sink,sink,EQUIPMENT
+E_000179,small autoclave,small autoclave,EQUIPMENT
+E_000180,small compartment,small compartment,EQUIPMENT
+E_000181,small pipettes,small pipettes,EQUIPMENT
+E_000182,solar energy supply system,solar energy supply system,EQUIPMENT
+E_000183,Solar panels,solar panels,EQUIPMENT
+E_000184,solar stills,solar stills,EQUIPMENT
+E_000185,Some demineralizers,some demineralizers,EQUIPMENT
+E_000186,spectrophotometer,spectrophotometer,EQUIPMENT
+E_000187,staining box,staining box,EQUIPMENT
+E_000188,Staining troughs,staining troughs,EQUIPMENT
+E_000189,standard chart,standard chart,EQUIPMENT
+E_000190,still,still,EQUIPMENT
+E_000191,Syringes,syringes,EQUIPMENT
+E_000192,Tally counter,tally counter,EQUIPMENT
+E_000193,Test-tubes,test-tubes,EQUIPMENT
+E_000194,The apparatus,the apparatus,EQUIPMENT
+E_000195,The electricity meter,the electricity meter,EQUIPMENT
+E_000196,The instrument,the instrument,EQUIPMENT
+E_000197,The needle,the needle,EQUIPMENT
+E_000198,The still,the still,EQUIPMENT
+E_000199,thermostat,thermostat,EQUIPMENT
+E_000200,this equipment,this equipment,EQUIPMENT
+E_000201,Tools and materials,tools and materials,EQUIPMENT
+E_000202,transformer,transformer,EQUIPMENT
+E_000203,trap,trap,EQUIPMENT
+E_000204,tube,tube,EQUIPMENT
+E_000205,tubes and slides,tubes and slides,EQUIPMENT
+E_000206,two-pan balance,two-pan balance,EQUIPMENT
+E_000207,uncovered round flask,uncovered round flask,EQUIPMENT
+E_000208,volumetric flask,volumetric flask,EQUIPMENT
+E_000209,washer,washer,EQUIPMENT
+E_000210,waste sink,waste sink,EQUIPMENT
+E_000211,Water bath,water bath,EQUIPMENT
+E_000212,water still,water still,EQUIPMENT
+E_000213,water-bath,water-bath,EQUIPMENT
+E_000214,Wax,wax,EQUIPMENT
+E_000215,weighing container,weighing container,EQUIPMENT
+E_000216,white glass reagent bottle,white glass reagent bottle,EQUIPMENT
+E_000217,0–100°C,0–100 °c,MEASUREMENT
+E_000218,0–60min,0–60min,MEASUREMENT
+E_000219,1kg,1 kg,MEASUREMENT
+E_000220,1m,1 m,MEASUREMENT
+E_000221,1ml,1 ml,MEASUREMENT
+E_000222,1mm,1 mm,MEASUREMENT
+E_000223,10cm,10 cm,MEASUREMENT
+E_000224,100ml,100 ml,MEASUREMENT
+E_000225,1000ml,1000 ml,MEASUREMENT
+E_000226,112mm,112 mm,MEASUREMENT
+E_000227,12cm ¥ 1mm,12 cm × 1 mm,MEASUREMENT
+E_000228,15cm,15 cm,MEASUREMENT
+E_000229,15ml,15 ml,MEASUREMENT
+E_000230,150mm ¥ 16mm,150 mm × 16 mm,MEASUREMENT
+E_000231,156mm,156 mm,MEASUREMENT
+E_000232,20ml,20 ml,MEASUREMENT
+E_000233,20mm ¥ 20mm,20 mm × 20 mm,MEASUREMENT
+E_000234,200ml,200 ml,MEASUREMENT
+E_000235,200mm,200 mm,MEASUREMENT
+E_000236,25ml,25 ml,MEASUREMENT
+E_000237,25mm ¥ 75mm,25 mm × 75 mm,MEASUREMENT
+E_000238,250ml,250 ml,MEASUREMENT
+E_000239,30cm,30 cm,MEASUREMENT
+E_000240,5cm,5 cm,MEASUREMENT
+E_000241,5ml,5 ml,MEASUREMENT
+E_000242,5mm,5 mm,MEASUREMENT
+E_000243,50cm,50 cm,MEASUREMENT
+E_000244,50ml,50 ml,MEASUREMENT
+E_000245,50mm,50 mm,MEASUREMENT
+E_000246,50mm ¥ 6mm,50 mm × 6 mm,MEASUREMENT
+E_000247,500ml,500 ml,MEASUREMENT
+E_000248,6mm,6 mm,MEASUREMENT
+E_000249,60mm,60 mm,MEASUREMENT
+E_000250,75ml,75 ml,MEASUREMENT
+E_000251,75mm,75 mm,MEASUREMENT
+E_000252,7–8mm,7–8 mm,MEASUREMENT
+E_000253,85mm ¥ 15mm,85 mm × 15 mm,MEASUREMENT
+E_000254,90mm,90 mm,MEASUREMENT
+E_000255,bacteria,bacteria,ORGANISM
+E_000256,bat,bat,ORGANISM
+E_000257,helminth eggs,helminth eggs,ORGANISM
+E_000258,malaria parasites,malaria parasites,ORGANISM
+E_000259,tubercle bacilli,tubercle bacilli,ORGANISM
+E_000260,bacteriology,bacteriology,PROCEDURE
+E_000261,basic laboratory techniques,basic laboratory techniques,PROCEDURE
+E_000262,blood chemistry,blood chemistry,PROCEDURE
+E_000263,blood chemistry tests,blood chemistry tests,PROCEDURE
+E_000264,distillation method,distillation method,PROCEDURE
+E_000265,distillation process,distillation process,PROCEDURE
+E_000266,flaming,flaming,PROCEDURE
+E_000267,Gram staining,gram staining,PROCEDURE
+E_000268,hospital sterilization service,hospital sterilization service,PROCEDURE
+E_000269,laboratory procedures,laboratory procedures,PROCEDURE
+E_000270,mix the solution well,mix the solution well,PROCEDURE
+E_000271,parasitology,parasitology,PROCEDURE
+E_000272,plumbing operation,plumbing operation,PROCEDURE
+E_000273,pregnancy tests,pregnancy tests,PROCEDURE
+E_000274,preparation of stains,preparation of stains,PROCEDURE
+E_000275,scraping,scraping,PROCEDURE
+E_000276,serological tests,serological tests,PROCEDURE
+E_000277,slit skin smear,slit skin smear,PROCEDURE
+E_000278,steps 2 and 3,steps 2 and 3,PROCEDURE
+E_000279,sterilization,sterilization,PROCEDURE
+E_000280,stool collection,stool collection,PROCEDURE
+E_000281,test,test,PROCEDURE
+E_000282,Unblocking,unblocking,PROCEDURE
+E_000283,urine analysis,urine analysis,PROCEDURE
+E_000284,"washing
+and sterilization",washing and sterilization,PROCEDURE
+E_000285,water test,water test,PROCEDURE
+E_000286,zero test,zero test,PROCEDURE
+E_000287,2% solution,2% solution,REAGENT
+E_000288,Acetic acid,acetic acid,REAGENT
+E_000289,acetic acid solution,acetic acid solution,REAGENT
+E_000290,AgNO3,agno3,REAGENT
+E_000291,"buffer
+solution",buffer solution,REAGENT
+E_000292,butane gas,butane gas,REAGENT
+E_000293,"crystal violet, modified
+Hucker","crystal violet, modified hucker",REAGENT
+E_000294,Demineralized water,demineralized water,REAGENT
+E_000295,Disodium hydrogen phosphate,disodium hydrogen phosphate,REAGENT
+E_000296,Distilled water,distilled water,REAGENT
+E_000297,Indicator paper,indicator paper,REAGENT
+E_000298,laboratory reagents,laboratory reagents,REAGENT
+E_000299,Na2HPO4·2H2O,na2hpo4·2h2o,REAGENT
+E_000300,Phenol red,phenol red,REAGENT
+E_000301,phenol red solution,phenol red solution,REAGENT
+E_000302,silver nitrate,silver nitrate,REAGENT
+E_000303,sodium carbonate solution,sodium carbonate solution,REAGENT
+E_000304,stains,stains,REAGENT
+E_000305,Universal indicator paper,universal indicator paper,REAGENT
+E_000306,blood,blood,SPECIMEN
+E_000307,positive specimens,positive specimens,SPECIMEN
+E_000308,samples or materials,samples or materials,SPECIMEN
+E_000309,sputum specimens,sputum,SPECIMEN
+E_000310,stools,stools,SPECIMEN
+E_000311,urine,urine,SPECIMEN

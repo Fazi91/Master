@@ -1181,12 +1181,12 @@ def _build_prompt(context_texts, question):
 
 def _llm_generate(prompt, context_texts=None):
     # Check if no context was provided (semantic filter rejected everything)
-    if "No relevant context found" in prompt:
+    if isinstance(prompt, str) and "No relevant context found" in prompt:
         return "No semantically relevant context found in the retrieved documents for this question."
     
     # If we already have structured context, use it directly; otherwise parse the prompt
     ctx = context_texts if context_texts is not None else []
-    if context_texts is None:
+    if context_texts is None and isinstance(prompt, str):
         lines = prompt.split('\n')
         i = 0
         while i < len(lines):
