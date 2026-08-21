@@ -449,6 +449,107 @@ class GraphV2QA:
         return consistent[:8]
 
     @staticmethod
+    def compose_numbered_procedure(
+        rows: list[dict[str, Any]]
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Reconstruct numbered source steps without generating new facts."""
+        ordered_rows = sorted(
+            rows,
+            key=lambda row: (
+                row.get("pdf_page") or 0,
+                row.get("chunk_id") or "",
+            ),
+        )
+        variants: dict[int, list[dict[str, Any]]] = {}
+        step_pattern = re.compile(
+            r"(?<![\d.])(\d{1,2})\.\s+(.*?)"
+            r"(?=(?<![\d.])\s+\d{1,2}\.\s+|$)",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        stop_heading = re.compile(
+            r"\b(?:rapid|alternative|modified)\s+method\b",
+            flags=re.IGNORECASE,
+        )
+        incomplete_ending = re.compile(
+            r"\b(?:the|a|an|and|or|to|of|in|for|with|be|into|using|until|as)$",
+            flags=re.IGNORECASE,
+        )
+
+        for row in ordered_rows:
+            text = row.get("text") or ""
+            stop = stop_heading.search(text)
+            if stop:
+                text = text[:stop.start()]
+            for match in step_pattern.finditer(text):
+                number = int(match.group(1))
+                raw_step = normalize_space(match.group(2))
+                if not raw_step:
+                    continue
+                figure_noise = len(re.findall(
+                    r"\bFig\.\s*\d+\.\d+", raw_step, flags=re.IGNORECASE
+                ))
+                cleaned = re.sub(
+                    r"\s*\(Fig\.\s*\d+\.\d+\)",
+                    "",
+                    raw_step,
+                    flags=re.IGNORECASE,
+                )
+                cleaned = normalize_space(cleaned)
+                complete = bool(re.search(r"[.!?)]$", cleaned))
+                incomplete = bool(incomplete_ending.search(cleaned.rstrip(".,;:")))
+                quality = (
+                    (40.0 if complete and not incomplete else -40.0)
+                    + min(len(cleaned), 500) * 0.03
+                    - max(len(cleaned) - 650, 0) * 0.20
+                    - figure_noise * 18.0
+                )
+                variants.setdefault(number, []).append({
+                    "number": number,
+                    "text": cleaned,
+                    "row": row,
+                    "quality": quality,
+                    "figure_noise": figure_noise,
+                    "complete": complete and not incomplete,
+                })
+
+        chosen = []
+        for number in sorted(variants):
+            candidate = max(
+                variants[number], key=lambda item: item["quality"]
+            )
+            # Do not expose a truncated step or a step corrupted by multiple
+            # interleaved figure captions. The source Chunk remains visible.
+            if not candidate["complete"] or candidate["figure_noise"] >= 3:
+                continue
+            chosen.append(candidate)
+            if len(chosen) == 8:
+                break
+
+        if len(chosen) < 2:
+            return "", []
+
+        source_rows = []
+        source_number: dict[str, int] = {}
+        for item in chosen:
+            chunk_id = item["row"].get("chunk_id")
+            if chunk_id not in source_number:
+                if len(source_rows) >= MAX_EVIDENCE_CHUNKS:
+                    continue
+                source_number[chunk_id] = len(source_rows) + 1
+                source_rows.append(item["row"])
+
+        answer_lines = ["According to the manual's numbered procedure:"]
+        for item in chosen:
+            chunk_id = item["row"].get("chunk_id")
+            if chunk_id not in source_number:
+                continue
+            citation = source_number[chunk_id]
+            answer_lines.append(
+                f"{item['number']}. {item['text']} [S{citation}]"
+            )
+        return "\n".join(answer_lines), source_rows
+
+    @staticmethod
     def compose_extract_answer(
         question: str, rows: list[dict[str, Any]]
     ) -> tuple[str, list[dict[str, Any]]]:
@@ -469,6 +570,13 @@ class GraphV2QA:
             phrase in lowered_question
             for phrase in ("appearance", "look like", "microscopic appearance", "show")
         )
+        if procedure_question:
+            procedure_answer, procedure_rows = (
+                GraphV2QA.compose_numbered_procedure(rows)
+            )
+            if procedure_answer:
+                return procedure_answer, procedure_rows
+
         descriptive_terms = {
             "appear", "appearance", "shape", "size", "colour", "color",
             "spore", "spores", "mycelium", "filament", "filaments",
