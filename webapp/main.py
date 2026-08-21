@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sentence_transformers import CrossEncoder
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
@@ -34,6 +35,11 @@ LOCAL_ANSWER_MODEL = os.getenv(
 )
 MAX_SYNTHESIS_CHUNKS = 8
 MAX_SYNTHESIS_CONTEXT_CHARS = 12000
+NLI_VERIFIER_MODEL = os.getenv(
+    "NLI_VERIFIER_MODEL", "cross-encoder/nli-deberta-v3-small"
+)
+NLI_ENTAILMENT_MIN = 0.60
+NLI_CONTRADICTION_MAX = 0.20
 
 SMALL_TALK = [
     (r"^(?:(?:hi|hello|hey|salam)[!,. ]*)+$",
@@ -221,6 +227,9 @@ class GraphV2QA:
         self._model_lock = Lock()
         self._answer_tokenizer = None
         self._answer_model = None
+        self._nli_model = None
+        self._nli_entailment_index = None
+        self._nli_contradiction_index = None
 
     def _run(self, query: str, **parameters: Any) -> list[dict[str, Any]]:
         with self.driver.session(database=self.database) as session:
@@ -826,32 +835,61 @@ class GraphV2QA:
         )
         return normalize_space(answer)
 
-    @staticmethod
+    def _ensure_nli_model(self) -> None:
+        if self._nli_model is not None:
+            return
+        with self._model_lock:
+            if self._nli_model is not None:
+                return
+            model = CrossEncoder(NLI_VERIFIER_MODEL, device="cpu")
+            labels = {
+                str(label).lower(): int(index)
+                for index, label in model.model.config.id2label.items()
+            }
+            entailment = next(
+                (index for label, index in labels.items()
+                 if "entail" in label),
+                None,
+            )
+            contradiction = next(
+                (index for label, index in labels.items()
+                 if "contrad" in label),
+                None,
+            )
+            if entailment is None or contradiction is None:
+                raise RuntimeError(
+                    f"Unsupported NLI label mapping: {labels}"
+                )
+            self._nli_model = model
+            self._nli_entailment_index = entailment
+            self._nli_contradiction_index = contradiction
+
     def verify_synthesis(
-        answer: str, evidence_rows: list[dict[str, Any]]
-    ) -> bool:
-        """Reject generated text containing unsupported claims or values."""
+        self, answer: str, evidence_rows: list[dict[str, Any]]
+    ) -> tuple[bool, str]:
+        """Apply deterministic value gates, then claim-level NLI."""
         normalized = normalize_space(answer)
-        if (
-            not normalized
-            or normalized == "INSUFFICIENT_EVIDENCE"
-            or len(normalized) < 30
-        ):
-            return False
+        if not normalized:
+            return False, "empty generation"
+        if normalized == "INSUFFICIENT_EVIDENCE":
+            return False, "model reported insufficient evidence"
+        if len(normalized) < 30:
+            return False, "generation too short"
 
         evidence_text = normalize_space(
             " ".join(row.get("text") or "" for row in evidence_rows)
         )
         if not evidence_text:
-            return False
+            return False, "empty evidence"
 
         number_pattern = re.compile(
             r"(?<![A-Za-z])\d+(?:\.\d+)?%?"
         )
         source_numbers = set(number_pattern.findall(evidence_text))
         answer_numbers = set(number_pattern.findall(normalized))
-        if not answer_numbers.issubset(source_numbers):
-            return False
+        novel_numbers = sorted(answer_numbers - source_numbers)
+        if novel_numbers:
+            return False, f"unsupported numeric values: {novel_numbers}"
 
         allowed_editor_terms = {
             "according", "manual", "first", "then", "next", "finally",
@@ -860,11 +898,17 @@ class GraphV2QA:
         }
         evidence_terms = set(content_terms(evidence_text))
         answer_terms = set(content_terms(normalized))
-        unsupported_terms = (
+        unsupported_terms = sorted(
             answer_terms - evidence_terms - allowed_editor_terms
         )
-        if answer_terms and len(unsupported_terms) / len(answer_terms) > 0.18:
-            return False
+        if (
+            answer_terms
+            and len(unsupported_terms) / len(answer_terms) > 0.35
+        ):
+            return False, (
+                "too many unsupported content terms: "
+                f"{unsupported_terms[:12]}"
+            )
 
         evidence_sentences = []
         for row in evidence_rows:
@@ -873,18 +917,46 @@ class GraphV2QA:
             )
         claims = [
             normalize_space(claim)
-            for claim in re.split(r"(?<=[.!?])\s+|\n+", normalized)
-            if len(normalize_space(claim)) >= 20
+            for claim in re.split(
+                r"(?<=[.!?])\s+|\n+|(?=\s*[-*]\s+)",
+                answer,
+            )
+            if len(normalize_space(claim).strip("-* ")) >= 20
         ]
         if not claims or not evidence_sentences:
-            return False
-        for claim in claims:
-            scores = GraphV2QA._similarities(
+            return False, "no verifiable claims"
+
+        self._ensure_nli_model()
+        for claim_number, claim in enumerate(claims, 1):
+            lexical_scores = GraphV2QA._similarities(
                 claim, evidence_sentences
             )
-            if len(scores) == 0 or float(np.max(scores)) < 0.10:
-                return False
-        return True
+            if len(lexical_scores) == 0:
+                return False, f"claim {claim_number}: no evidence"
+            best_indices = np.argsort(lexical_scores)[::-1][:3]
+            premise = " ".join(
+                evidence_sentences[int(index)]
+                for index in best_indices
+            )
+            probabilities = self._nli_model.predict(
+                [(premise, claim)],
+                apply_softmax=True,
+                show_progress_bar=False,
+            )
+            scores = np.asarray(probabilities)[0]
+            entailment = float(scores[self._nli_entailment_index])
+            contradiction = float(
+                scores[self._nli_contradiction_index]
+            )
+            if (
+                entailment < NLI_ENTAILMENT_MIN
+                or contradiction > NLI_CONTRADICTION_MAX
+            ):
+                return False, (
+                    f"claim {claim_number}: entailment={entailment:.3f}, "
+                    f"contradiction={contradiction:.3f}"
+                )
+        return True, f"{len(claims)} claim(s) entailed by evidence"
 
     @staticmethod
     def best_display_sources(
@@ -901,8 +973,8 @@ class GraphV2QA:
             item = dict(row)
             item["answer_coverage"] = float(coverage)
             item["display_score"] = (
-                float(row.get("score") or 0.0)
-                + 0.45 * float(coverage)
+                0.30 * min(float(row.get("score") or 0.0), 1.0)
+                + 0.70 * float(coverage)
             )
             ranked.append(item)
         ranked.sort(
@@ -921,28 +993,18 @@ class GraphV2QA:
         MATCH (page:Page)-[:HAS_CHUNK]->(chunk:Chunk)-[link:ILLUSTRATED_BY]->(image:Image)
         WHERE chunk.id IN $chunk_ids AND image.file_path IS NOT NULL
           AND coalesce(link.semantic_score, 0.0) >= $minimum_score
+          AND coalesce(image.content_relevance, 'undetermined') <> 'irrelevant'
+          AND coalesce(image.final_type, image.predicted_type, '') <> 'fragment_or_noise'
         RETURN DISTINCT image.id AS id, image.file_path AS file_path,
                coalesce(link.image_type, image.final_type, image.predicted_type) AS image_type,
                link.semantic_score AS confidence, chunk.id AS chunk_id,
                page.pdf_page AS pdf_page,
-               coalesce(image.caption, image.context_text, image.description, "") AS caption
-        ORDER BY confidence DESC LIMIT 20
-        """, chunk_ids=chunk_ids, minimum_score=IMAGE_MIN_SCORE)
-
-        query_terms = set(content_terms(question))
-        verified = []
-        for row in rows:
-            image_terms = set(content_terms(
-                f"{row.get('caption', '')} {row.get('image_type', '')}"
-            ))
-            # A graph link and score are necessary but not sufficient. Require
-            # textual image evidence to overlap the question.
-            if not image_terms or not (query_terms & image_terms):
-                continue
-            verified.append(row)
-            if len(verified) == MAX_IMAGES:
-                break
-        return verified
+               image.content_relevance AS content_relevance,
+               image.classification_confidence AS classification_confidence
+        ORDER BY confidence DESC LIMIT $limit
+        """, chunk_ids=chunk_ids, minimum_score=IMAGE_MIN_SCORE,
+             limit=MAX_IMAGES)
+        return rows
 
     def image_path(self, image_id: str) -> str | None:
         rows = self._run(
@@ -960,7 +1022,10 @@ class GraphV2QA:
         images = [{
             "id": row["id"], "pdf_page": row.get("pdf_page"),
             "type": row.get("image_type"),
-            "caption": normalize_space(row.get("caption") or ""),
+            "content_relevance": row.get("content_relevance"),
+            "classification_confidence": round(
+                float(row.get("classification_confidence") or 0.0), 4
+            ),
             "confidence": round(float(row.get("confidence") or 0.0), 4),
             "chunk_id": row.get("chunk_id"),
             "url": f"/image/{row['id']}",
@@ -1031,15 +1096,26 @@ class GraphV2QA:
             generated_answer = self.synthesize_answer(
                 question, consistent
             )
-            if self.verify_synthesis(generated_answer, consistent):
+            print(f"[SYNTHESIS] Generated: {generated_answer}")
+            verified, diagnostic = self.verify_synthesis(
+                generated_answer, consistent
+            )
+            print(
+                f"[SYNTHESIS] Verified={verified}; "
+                f"diagnostic={diagnostic}"
+            )
+            if verified:
                 final_answer = generated_answer
                 answer_rows = self.best_display_sources(
                     question, final_answer, consistent
                 )
                 synthesis_mode = "local_model_verified"
-        except Exception:
-            # Model download/loading/inference failure must never cause an
-            # unverified answer. Continue with the evidence-only fallback.
+        except Exception as error:
+            # Model or verifier failure must never expose an unchecked answer.
+            print(
+                "[SYNTHESIS] Failure: "
+                f"{type(error).__name__}: {error}"
+            )
             final_answer = ""
 
         if not final_answer:
@@ -1054,9 +1130,7 @@ class GraphV2QA:
                     synthesis_mode="verification_failed",
                 )
             final_answer = extract_answer
-            answer_rows = self.best_display_sources(
-                question, final_answer, consistent
-            )
+            answer_rows = extract_rows[:MAX_EVIDENCE_CHUNKS]
 
         sources = [
             serializable_source({
