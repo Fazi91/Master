@@ -846,16 +846,10 @@ class GraphV2QA:
             return False
 
         number_pattern = re.compile(
-            r"(?<![A-Za-z])\d+(?:[.–—-]\d+)?(?:\.\d+)?%?"
+            r"(?<![A-Za-z])\d+(?:\.\d+)?%?"
         )
-        source_numbers = {
-            value.replace("—", "–")
-            for value in number_pattern.findall(evidence_text)
-        }
-        answer_numbers = {
-            value.replace("—", "–")
-            for value in number_pattern.findall(normalized)
-        }
+        source_numbers = set(number_pattern.findall(evidence_text))
+        answer_numbers = set(number_pattern.findall(normalized))
         if not answer_numbers.issubset(source_numbers):
             return False
 
