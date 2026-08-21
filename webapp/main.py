@@ -455,7 +455,11 @@ class GraphV2QA:
                     continue
                 sentence_terms = set(content_terms(sentence))
                 overlap = len(query_terms & sentence_terms)
-                if overlap == 0:
+                normalized_sentence = normalize_space(sentence).lower().rstrip("?.!:")
+                normalized_question = normalize_space(question).lower().rstrip("?.!:")
+                # A section title that merely repeats the question is evidence
+                # location, not an answer statement.
+                if normalized_sentence == normalized_question:
                     continue
                 # OCR often concatenates navigation headings. Such fragments
                 # must not become answers even when they repeat the question.
@@ -464,9 +468,23 @@ class GraphV2QA:
                 is_action = bool(action_pattern.search(sentence))
                 if procedure_question and not is_action:
                     continue
+                continuation = (
+                    procedure_question
+                    and is_action
+                    and overlap == 0
+                    and row.get("keyword_overlap", 0) >= 2
+                    and row.get("keyword_coverage", 0.0) >= 0.40
+                )
+                if overlap == 0 and not continuation:
+                    continue
                 coverage = overlap / max(len(query_terms), 1)
                 similarity = float(GraphV2QA._similarities(question, [sentence])[0])
-                score = similarity + overlap * 0.12 + coverage * 0.20
+                score = (
+                    similarity
+                    + overlap * 0.12
+                    + coverage * 0.20
+                    + min(float(row.get("score") or 0.0) * 0.08, 0.08)
+                )
                 if procedure_question and is_action:
                     score += 0.25
                 if re.search(r"\b\d+(?:\.\d+)?\b|\bpH\b|\bminutes?\b", sentence):
