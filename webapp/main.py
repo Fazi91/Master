@@ -23,7 +23,7 @@ load_dotenv(ROOT / ".env")
 
 MAX_SOURCES = 4
 MAX_IMAGES = 2
-MAX_REVIEWED_EVIDENCE = 12
+MAX_EVIDENCE_CHUNKS = 2
 FALLBACK_MIN_SCORE = 0.16
 FACT_MIN_SCORE = 0.14
 IMAGE_MIN_SCORE = 0.35
@@ -397,6 +397,58 @@ class GraphV2QA:
         ]
 
     @staticmethod
+    def select_consistent_candidates(
+        question: str, ranked_rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Keep one coherent page/section cluster instead of mixing contexts."""
+        grounded = [
+            row for row in ranked_rows
+            if row.get("score", 0.0) >= FALLBACK_MIN_SCORE
+            and GraphV2QA.chunk_is_grounded(question, row)
+        ]
+        if not grounded:
+            return []
+
+        exact_rows = [row for row in grounded if row.get("exact_phrase")]
+        anchor = exact_rows[0] if exact_rows else grounded[0]
+        anchor_page = anchor.get("pdf_page")
+        query_terms = set(content_terms(question))
+        minimum_overlap = 2 if len(query_terms) >= 2 else 1
+
+        consistent = []
+        for row in grounded:
+            page = row.get("pdf_page")
+            same_section_window = (
+                isinstance(anchor_page, int)
+                and isinstance(page, int)
+                and anchor_page <= page <= anchor_page + 1
+            )
+            same_page = page == anchor_page
+            strong_term_match = row.get("keyword_overlap", 0) >= minimum_overlap
+            if row is anchor or (
+                (same_section_window or same_page) and strong_term_match
+            ):
+                consistent.append(row)
+
+        # If the graph has no usable page metadata, retain only the strongest
+        # lexically grounded candidates. Never fall back to unrelated pages.
+        if len(consistent) == 1 and not isinstance(anchor_page, int):
+            consistent = [
+                row for row in grounded
+                if row.get("keyword_overlap", 0) >= minimum_overlap
+                and row.get("score", 0.0) >= anchor.get("score", 0.0) * 0.65
+            ]
+
+        consistent.sort(
+            key=lambda row: (
+                row.get("score", 0.0),
+                row.get("keyword_coverage", 0.0),
+            ),
+            reverse=True,
+        )
+        return consistent[:8]
+
+    @staticmethod
     def compose_extract_answer(
         question: str, rows: list[dict[str, Any]]
     ) -> tuple[str, list[dict[str, Any]]]:
@@ -450,6 +502,13 @@ class GraphV2QA:
                 GraphV2QA._evidence_segments(row.get("text") or "")
             ):
                 if not 30 <= len(sentence) <= 700:
+                    continue
+                if re.search(
+                    r"\b(?:the|a|an|and|or|to|of|in|for|with|be|into|using|until|as)$",
+                    sentence,
+                    flags=re.IGNORECASE,
+                ):
+                    # Reject text cut off at a Chunk boundary.
                     continue
                 if not statement_pattern.search(sentence):
                     continue
@@ -511,9 +570,9 @@ class GraphV2QA:
             chunk_id = item["row"].get("chunk_id")
             if item["score"] < 0.20 or sentence_key in seen_sentences:
                 continue
-            # At most three evidence chunks; this permits corroboration without
-            # merging a long tail of loosely related sections.
-            if chunk_id not in used_chunk_ids and len(used_chunk_ids) >= 3:
+            # The answer may use at most two mutually consistent Chunks.
+            if (chunk_id not in used_chunk_ids
+                    and len(used_chunk_ids) >= MAX_EVIDENCE_CHUNKS):
                 continue
             selected.append(item)
             seen_sentences.add(sentence_key)
@@ -523,6 +582,15 @@ class GraphV2QA:
 
         if not selected:
             return "", []
+
+        # Present procedural evidence in manual order after relevance-based
+        # selection so the resulting instructions remain readable.
+        if procedure_question:
+            selected.sort(key=lambda item: (
+                item["row"].get("pdf_page") or 0,
+                item["row"].get("chunk_id") or "",
+                item["position"],
+            ))
 
         source_rows = []
         source_number = {}
@@ -537,43 +605,6 @@ class GraphV2QA:
             for item in selected
         ]
         return " ".join(answer_parts), source_rows
-
-    @staticmethod
-    def reviewed_evidence(
-        question: str, ranked_rows: list[dict[str, Any]],
-        used_chunk_ids: set[str],
-    ) -> list[dict[str, Any]]:
-        reviewed = []
-        for row in ranked_rows:
-            if len(reviewed) >= MAX_REVIEWED_EVIDENCE:
-                break
-            if row.get("keyword_overlap", 0) == 0 and row.get("score", 0.0) < 0.10:
-                continue
-            chunk_id = row.get("chunk_id")
-            grounded = GraphV2QA.chunk_is_grounded(question, row)
-            if chunk_id in used_chunk_ids:
-                status = "used"
-                reason = "A statement from this chunk is cited in the final answer."
-            elif grounded and row.get("score", 0.0) >= FALLBACK_MIN_SCORE:
-                status = "supporting"
-                reason = "Relevant candidate reviewed, but no unique answer statement was required."
-            else:
-                status = "rejected"
-                reason = "Insufficient keyword/entity grounding or lower relevance."
-            source = serializable_source({
-                **row,
-                "evidence": row.get("text"),
-                "confidence": row.get("score"),
-            })
-            source.update({
-                "status": status,
-                "reason": reason,
-                "semantic_score": round(float(row.get("semantic_score") or 0.0), 4),
-                "keyword_overlap": int(row.get("keyword_overlap") or 0),
-                "keyword_coverage": round(float(row.get("keyword_coverage") or 0.0), 4),
-            })
-            reviewed.append(source)
-        return reviewed
 
     def verified_images(self, question: str, relation_type: str | None,
                         chunk_ids: list[str]) -> list[dict[str, Any]]:
@@ -616,8 +647,7 @@ class GraphV2QA:
     def response(
         kind: str, question: str, answer: str,
         sources: list[dict[str, Any]], image_rows: list[dict[str, Any]],
-        reviewed_sources: list[dict[str, Any]] | None = None,
-        chunks_scanned: int = 0,
+        chunks_scanned: int = 0, candidates_considered: int = 0,
     ) -> dict[str, Any]:
         images = [{
             "id": row["id"], "pdf_page": row.get("pdf_page"),
@@ -631,25 +661,25 @@ class GraphV2QA:
             "kind": kind,
             "question": question,
             "answer": answer,
-            "sources": sources,
+            "sources": sources[:MAX_EVIDENCE_CHUNKS],
             "images": images,
-            "reviewed_sources": reviewed_sources or [],
             "retrieval_summary": {
                 "chunks_scanned": chunks_scanned,
-                "candidates_reported": len(reviewed_sources or []),
-                "sources_used": len(sources),
-                "verification": (
-                    "grounded" if kind == "domain_answer" else "not_verified"
+                "consistent_candidates": candidates_considered,
+                "sources_used": min(len(sources), MAX_EVIDENCE_CHUNKS),
+                "neo4j_verification": (
+                    "verified" if kind == "domain_answer" else "not_verified"
                 ),
             },
         }
 
 
     def answer(self, question: str) -> dict[str, Any]:
-        # Every Chunk is scored before either graph-fact or extractive answer
-        # selection. This makes the evidence audit consistent for all queries.
+        # Neo4j supplies Chunk text, Page location, mentioned Entities,
+        # explicit Entity relations and verified Chunk-to-Image links.
         chunks = self.ranked_chunks(question)
         chunks_scanned = len(chunks)
+        consistent = self.select_consistent_candidates(question, chunks)
         relation_type = relation_intent(question)
 
         if relation_type:
@@ -659,50 +689,35 @@ class GraphV2QA:
                 source_id = facts[0].get("source_id")
                 selected = [
                     row for row in facts if row.get("source_id") == source_id
-                ][:MAX_SOURCES]
+                ][:MAX_EVIDENCE_CHUNKS]
                 fact_answer = self.compose_fact_answer(relation_type, selected)
                 sources = [serializable_source(row) for row in selected]
-                chunk_ids = list(dict.fromkeys(
+                chunk_ids = [
                     row["chunk_id"] for row in selected if row.get("chunk_id")
-                ))
-                reviewed = self.reviewed_evidence(
-                    question, chunks, set(chunk_ids)
-                )
+                ]
                 image_rows = self.verified_images(
                     question, relation_type, chunk_ids
                 )
                 return self.response(
                     "domain_answer", question, fact_answer, sources, image_rows,
-                    reviewed, chunks_scanned,
+                    chunks_scanned, len(consistent),
                 )
 
-        grounded_candidates = [
-            row for row in chunks
-            if row["score"] >= FALLBACK_MIN_SCORE
-            and self.chunk_is_grounded(question, row)
-        ]
-        if not grounded_candidates:
-            reviewed = self.reviewed_evidence(question, chunks, set())
+        if not consistent:
             return self.response(
                 "out_of_scope", question,
                 "I could not verify this question in the provided laboratory manual. Please ask a more specific laboratory question.",
-                [], [], reviewed, chunks_scanned,
+                [], [], chunks_scanned, 0,
             )
 
         extract_answer, answer_rows = self.compose_extract_answer(
-            question, grounded_candidates
-        )
-        used_chunk_ids = {
-            row.get("chunk_id") for row in answer_rows if row.get("chunk_id")
-        }
-        reviewed = self.reviewed_evidence(
-            question, chunks, used_chunk_ids
+            question, consistent
         )
         if not extract_answer or not answer_rows:
             return self.response(
                 "not_found", question,
-                "Relevant evidence was reviewed, but no sufficiently grounded answer statement could be verified. The system will not guess.",
-                [], [], reviewed, chunks_scanned,
+                "Relevant evidence was found, but no complete and context-consistent answer could be verified. The system will not guess.",
+                [], [], chunks_scanned, len(consistent),
             )
 
         sources = [
@@ -711,17 +726,18 @@ class GraphV2QA:
                 "evidence": row.get("text"),
                 "confidence": row.get("score"),
             })
-            for row in answer_rows
+            for row in answer_rows[:MAX_EVIDENCE_CHUNKS]
         ]
         chunk_ids = [
-            row["chunk_id"] for row in answer_rows if row.get("chunk_id")
+            row["chunk_id"] for row in answer_rows[:MAX_EVIDENCE_CHUNKS]
+            if row.get("chunk_id")
         ]
         image_rows = self.verified_images(
             question, relation_type, chunk_ids
         )
         return self.response(
             "domain_answer", question, extract_answer, sources, image_rows,
-            reviewed, chunks_scanned,
+            chunks_scanned, len(consistent),
         )
 
 
