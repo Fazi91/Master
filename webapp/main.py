@@ -539,14 +539,31 @@ class GraphV2QA:
                 source_rows.append(item["row"])
 
         answer_lines = ["According to the manual's numbered procedure:"]
+        included_numbers = []
         for item in chosen:
             chunk_id = item["row"].get("chunk_id")
             if chunk_id not in source_number:
                 continue
             citation = source_number[chunk_id]
+            included_numbers.append(item["number"])
             answer_lines.append(
                 f"{item['number']}. {item['text']} [S{citation}]"
             )
+        if included_numbers:
+            missing = [
+                number
+                for number in range(
+                    min(included_numbers), max(included_numbers) + 1
+                )
+                if number not in included_numbers
+            ]
+            if missing:
+                labels = ", ".join(str(number) for number in missing)
+                answer_lines.append(
+                    "Source step(s) "
+                    f"{labels} contained interleaved figure-caption OCR and "
+                    "were not restated to avoid introducing unsupported text."
+                )
         return "\n".join(answer_lines), source_rows
 
     @staticmethod
