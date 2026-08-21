@@ -463,7 +463,7 @@ class GraphV2QA:
         variants: dict[int, list[dict[str, Any]]] = {}
         step_pattern = re.compile(
             r"(?<![\d.])(\d{1,2})\.\s+(.*?)"
-            r"(?=(?<![\d.])\s+\d{1,2}\.\s+|$)",
+            r"(?=\s+\d{1,2}\.\s+|$)",
             flags=re.IGNORECASE | re.DOTALL,
         )
         stop_heading = re.compile(
