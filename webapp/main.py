@@ -23,6 +23,7 @@ load_dotenv(ROOT / ".env")
 
 MAX_SOURCES = 4
 MAX_IMAGES = 2
+MAX_CANDIDATE_CHUNKS = 32
 FALLBACK_MIN_SCORE = 0.16
 FACT_MIN_SCORE = 0.14
 
@@ -140,12 +141,28 @@ def relation_intent(question: str) -> str | None:
 
 
 def serializable_source(row: dict[str, Any]) -> dict[str, Any]:
+    chunk_id = row.get("chunk_id")
+    pdf_page = row.get("pdf_page")
+    source_name = normalize_space(row.get("source_name") or "")
+    target_name = normalize_space(row.get("target_name") or "")
+    relation_type = row.get("relation_type")
+    graph_location = (
+        f"(:Page {{pdf_page: {pdf_page}}})-[:HAS_CHUNK]->"
+        f"(:Chunk {{id: '{chunk_id}'}})"
+    )
+    if source_name and target_name and relation_type:
+        graph_location += (
+            f"; (:Entity {{canonical_name: '{source_name}'}})"
+            f"-[:{relation_type}]->"
+            f"(:Entity {{canonical_name: '{target_name}'}})"
+        )
     return {
-        "chunk_id": row.get("chunk_id"),
-        "pdf_page": row.get("pdf_page"),
+        "chunk_id": chunk_id,
+        "pdf_page": pdf_page,
         "printed_page": row.get("printed_page"),
         "evidence": normalize_space(row.get("evidence") or row.get("text") or "")[:1200],
         "confidence": round(float(row.get("confidence") or row.get("score") or 0.0), 4),
+        "graph_location": graph_location,
     }
 
 
@@ -279,20 +296,43 @@ class GraphV2QA:
             self._char_matrix = self._char_vectorizer.fit_transform(documents)
             self._chunks = chunks
 
-    def ranked_chunks(self, question: str, limit: int = 4) -> list[dict[str, Any]]:
+    def ranked_chunks(
+        self, question: str, limit: int = MAX_CANDIDATE_CHUNKS
+    ) -> list[dict[str, Any]]:
         self._ensure_chunk_index()
         word_query = self._word_vectorizer.transform([question])
         char_query = self._char_vectorizer.transform([question])
-        scores = (
+        semantic_scores = (
             0.55 * (self._word_matrix @ word_query.T).toarray().ravel()
             + 0.45 * (self._char_matrix @ char_query.T).toarray().ravel()
         )
-        output = []
-        for index in np.argsort(scores)[::-1][:limit]:
-            row = dict(self._chunks[int(index)])
-            row["score"] = float(scores[int(index)])
-            output.append(row)
-        return output
+
+        query_terms = set(content_terms(question))
+        ranked = []
+        for index, semantic_score in enumerate(semantic_scores):
+            row = dict(self._chunks[index])
+            document_terms = set(content_terms(
+                f"{row.get('text', '')} {' '.join(row.get('entity_names') or [])}"
+            ))
+            overlap = len(query_terms & document_terms)
+            coverage = overlap / max(len(query_terms), 1)
+            row["semantic_score"] = float(semantic_score)
+            row["keyword_overlap"] = overlap
+            row["keyword_coverage"] = coverage
+            row["score"] = (
+                float(semantic_score)
+                + min(overlap * 0.10, 0.40)
+                + min(coverage * 0.25, 0.25)
+            )
+            ranked.append(row)
+
+        ranked.sort(
+            key=lambda row: (
+                row["score"], row["keyword_coverage"], row["keyword_overlap"]
+            ),
+            reverse=True,
+        )
+        return ranked[:limit]
 
     @staticmethod
     def chunk_is_grounded(question: str, row: dict[str, Any]) -> bool:
@@ -304,88 +344,92 @@ class GraphV2QA:
         return entity_overlap > 0 or text_overlap >= 2
 
     @staticmethod
-    def compose_extract_answer(question: str, rows: list[dict[str, Any]]) -> str:
+    def compose_extract_answer(
+        question: str, rows: list[dict[str, Any]]
+    ) -> tuple[str, dict[str, Any] | None]:
         if not rows:
-            return ""
+            return "", None
 
-        # The first row is the strongest grounded Chunk. Do not mix unrelated
-        # organisms or procedures from lower-ranked Chunks into one answer.
-        row = rows[0]
         query_terms = set(content_terms(question))
         lowered_question = question.lower()
-
-        appearance_question = any(
-            word in lowered_question
-            for word in ("appearance", "look like", "microscopic appearance", "show")
+        procedure_question = any(
+            phrase in lowered_question
+            for phrase in (
+                "how", "procedure", "method", "prepare", "stain", "examine",
+                "perform", "steps", "treatment", "technique",
+            )
         )
-
+        appearance_question = any(
+            phrase in lowered_question
+            for phrase in ("appearance", "look like", "microscopic appearance", "show")
+        )
         descriptive_terms = {
             "appear", "appearance", "shape", "size", "colour", "color",
             "spore", "spores", "mycelium", "filament", "filaments",
             "round", "rectangular", "oval", "branch", "branches",
             "seen", "visible", "stained", "unstained",
         }
+        statement_pattern = re.compile(
+            r"\b(is|are|was|were|has|have|can|may|should|must|use|uses|"
+            r"appear|appears|seen|found|show|shows|examine|examined|"
+            r"characterized|contains|consists|stain|stained|prepare|prepared|"
+            r"add|mix|wash|dry|fix|place|transfer|incubate|centrifuge|"
+            r"allow|remove|filter|heat|cool|dilute|discard|collect|read)\b",
+            flags=re.IGNORECASE,
+        )
 
-        candidates = []
-
-        for sentence in re.split(
-            r"(?<=[.!?])\s+|\n+",
-            row.get("text") or "",
-        ):
-            sentence = normalize_space(sentence)
-
-            # Reject short headings and OCR fragments.
-            if not 45 <= len(sentence) <= 700:
-                continue
-
-            # A valid answer sentence must contain an actual statement,
-            # not only a section or figure title.
-            if not re.search(
-                r"\b(is|are|was|were|has|have|can|may|should|use|uses|"
-                r"appear|appears|seen|found|show|shows|examine|examined|"
-                r"characterized|contains|consists)\b",
-                sentence,
-                flags=re.IGNORECASE,
-            ):
-                continue
-
-            sentence_terms = set(content_terms(sentence))
-            overlap = len(query_terms & sentence_terms)
-            similarity = float(
-                GraphV2QA._similarities(question, [sentence])[0]
-            )
-
-            score = similarity + overlap * 0.12
-
-            if appearance_question:
-                description_overlap = len(
-                    {word.lower() for word in re.findall(r"[a-z]+", sentence.lower())}
-                    & descriptive_terms
-                )
-                if description_overlap == 0:
+        best_by_chunk: dict[str, list[tuple[float, str]]] = {}
+        chunk_rows: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            chunk_id = str(row.get("chunk_id") or "")
+            chunk_rows[chunk_id] = row
+            for sentence in re.split(r"(?<=[.!?])\s+|\n+", row.get("text") or ""):
+                sentence = normalize_space(sentence)
+                if not 35 <= len(sentence) <= 700 or not statement_pattern.search(sentence):
                     continue
-                score += min(description_overlap * 0.10, 0.40)
+                sentence_terms = set(content_terms(sentence))
+                overlap = len(query_terms & sentence_terms)
+                if overlap == 0:
+                    continue
+                coverage = overlap / max(len(query_terms), 1)
+                similarity = float(GraphV2QA._similarities(question, [sentence])[0])
+                score = similarity + overlap * 0.12 + coverage * 0.20
+                if procedure_question and re.match(
+                    r"^(?:\d+[.)]\s*)?(stain|prepare|add|mix|wash|dry|fix|"
+                    r"place|transfer|incubate|centrifuge|allow|remove|filter|"
+                    r"heat|cool|dilute|discard|collect|examine|read)\b",
+                    sentence,
+                    flags=re.IGNORECASE,
+                ):
+                    score += 0.25
+                if appearance_question:
+                    words = set(re.findall(r"[a-z]+", sentence.lower()))
+                    description_overlap = len(words & descriptive_terms)
+                    if description_overlap == 0:
+                        continue
+                    score += min(description_overlap * 0.10, 0.40)
+                best_by_chunk.setdefault(chunk_id, []).append((score, sentence))
 
-            candidates.append((score, sentence))
+        if not best_by_chunk:
+            return "", None
 
-        candidates.sort(key=lambda item: item[0], reverse=True)
-
+        chunk_id = max(
+            best_by_chunk,
+            key=lambda key: max(score for score, _ in best_by_chunk[key]),
+        )
+        candidates = sorted(best_by_chunk[chunk_id], reverse=True)
         selected = []
         seen = set()
-
         for score, sentence in candidates:
             key = sentence.lower()[:180]
-
             if score < 0.16 or key in seen:
                 continue
-
             selected.append(sentence)
             seen.add(key)
-
             if len(selected) == 3:
                 break
+        return " ".join(selected), chunk_rows.get(chunk_id)
 
-        return " ".join(selected)
     def verified_images(self, question: str, relation_type: str | None,
                         chunk_ids: list[str]) -> list[dict[str, Any]]:
         if not chunk_ids:
@@ -437,28 +481,34 @@ class GraphV2QA:
                 images = self.verified_images(question, relation_type, chunk_ids)
                 return self.response("domain_answer", question, answer, sources, images)
 
-        chunks = self.ranked_chunks(question, limit=MAX_SOURCES)
-        if (not chunks or chunks[0]["score"] < FALLBACK_MIN_SCORE
-                or not self.chunk_is_grounded(question, chunks[0])):
+        chunks = self.ranked_chunks(question)
+        grounded_candidates = [
+            row for row in chunks
+            if row["score"] >= FALLBACK_MIN_SCORE
+            and self.chunk_is_grounded(question, row)
+        ]
+        if not grounded_candidates:
             return self.response(
                 "out_of_scope", question,
                 "I could not verify this question in the provided laboratory manual. Please ask a more specific laboratory question.",
                 [], [],
             )
-        grounded_chunks = [chunks[0]]
-        answer = self.compose_extract_answer(question, grounded_chunks)
-        if not answer:
+
+        answer, answer_row = self.compose_extract_answer(
+            question, grounded_candidates
+        )
+        if not answer or answer_row is None:
             return self.response(
                 "not_found", question,
                 "Relevant material was found, but it was not sufficient to produce a reliable answer. Please make the question more specific.",
                 [], [],
             )
         sources = [serializable_source({
-            **row, "evidence": row.get("text"), "confidence": row.get("score")
-        }) for row in grounded_chunks]
-        chunk_ids = list(dict.fromkeys(
-            row["chunk_id"] for row in grounded_chunks if row.get("chunk_id")
-        ))
+            **answer_row,
+            "evidence": answer_row.get("text"),
+            "confidence": answer_row.get("score"),
+        })]
+        chunk_ids = [answer_row["chunk_id"]] if answer_row.get("chunk_id") else []
         images = self.verified_images(question, relation_type, chunk_ids)
         return self.response("domain_answer", question, answer, sources, images)
 
