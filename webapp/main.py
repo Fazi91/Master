@@ -133,8 +133,34 @@ def small_talk_answer(text: str) -> str | None:
 
 
 def relation_intent(question: str) -> str | None:
-    lowered = question.lower()
+    lowered = normalize_space(question).lower()
+
+    # A reagent name inside a procedure question does not mean that the user
+    # is asking for a USES_REAGENT graph fact. Route procedural wording to
+    # chunk retrieval, where the complete manual instruction can be returned.
+    procedure_patterns = (
+        r"\bhow\s+(?:do|does|to)\b",
+        r"\bprocedure\b",
+        r"\bmethod\b",
+        r"\btechnique\b",
+        r"\bprepar(?:e|ation|ing)\b",
+        r"\bstaining\b",
+        r"\bstain(?:ed)?\s+(?:blood|film|smear|slide|specimen|sample)\b",
+    )
+    explicit_reagent_question = any(re.search(pattern, lowered) for pattern in (
+        r"\b(?:which|what)\s+(?:stain|reagent|solution|chemical|dye)\b",
+        r"\b(?:stain|reagent|solution|chemical|dye)\s+(?:is|are|was|were)\s+used\b",
+        r"\buses?\s+(?:which|what)\s+(?:stain|reagent|solution|chemical|dye)\b",
+    ))
+    if (any(re.search(pattern, lowered) for pattern in procedure_patterns)
+            and not explicit_reagent_question):
+        return None
+
     for relation_type, phrases in RELATION_RULES:
+        if relation_type == "USES_REAGENT":
+            if explicit_reagent_question:
+                return relation_type
+            continue
         if any(phrase in lowered for phrase in phrases):
             return relation_type
     return None
