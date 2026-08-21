@@ -135,7 +135,10 @@ def content_terms(text: str) -> list[str]:
         term = normalize_token(raw)
         if term not in terms:
             terms.append(term)
-    return terms[:24]
+    # Do not truncate evidence vocabulary. The previous 24-term limit caused
+    # valid words occurring later in a Chunk (for example "methanol" and
+    # "fixed") to be misclassified as unsupported by the verifier.
+    return terms
 
 
 def question_type(question: str) -> str:
@@ -471,6 +474,53 @@ class GraphV2QA:
         return min(best, 1.0)
 
     @staticmethod
+    def _focused_answer_passages(
+        question: str, text: str, limit: int = 4
+    ) -> list[str]:
+        """Return local passages that directly answer the question."""
+        segments = GraphV2QA._evidence_segments(text)
+        if not segments:
+            return []
+        units = list(segments)
+        units.extend(
+            f"{segments[index]} {segments[index + 1]}"
+            for index in range(len(segments) - 1)
+        )
+        scored = []
+        query_terms = set(content_terms(question))
+        for position, passage in enumerate(units):
+            passage = normalize_space(passage)
+            if not passage or len(passage) > 1400:
+                continue
+            passage_terms = set(content_terms(passage))
+            overlap = len(query_terms & passage_terms)
+            if overlap == 0:
+                continue
+            direct = GraphV2QA._direct_answerability(question, passage)
+            similarity = float(
+                GraphV2QA._similarities(question, [passage])[0]
+            )
+            scored.append((direct, similarity, overlap, -position, passage))
+        scored.sort(reverse=True)
+        selected = []
+        seen = set()
+        for direct, _, _, _, passage in scored:
+            if direct < 0.35:
+                continue
+            key = passage.lower()
+            if key in seen:
+                continue
+            # Prefer the joined cause/effect window over either contained
+            # fragment so the model receives the complete relation.
+            if any(key in existing.lower() for existing in selected):
+                continue
+            selected.append(passage)
+            seen.add(key)
+            if len(selected) == limit:
+                break
+        return selected
+
+    @staticmethod
     def chunk_is_grounded(question: str, row: dict[str, Any]) -> bool:
         query_terms = set(content_terms(question))
         entity_terms = set(content_terms(" ".join(row.get("entity_names") or [])))
@@ -494,9 +544,14 @@ class GraphV2QA:
                 cleaned,
                 flags=re.IGNORECASE,
             )
+        # PDF extraction inserts single newlines at visual line wraps. They
+        # are not sentence boundaries and previously split a supported claim
+        # immediately before key words such as "methanol". Preserve only
+        # blank-line paragraph boundaries.
+        cleaned = re.sub(r"(?<!\n)\n(?!\n)", " ", cleaned)
         return [
             normalize_space(part)
-            for part in re.split(r"(?<=[.!?;])\s+|\n+", cleaned)
+            for part in re.split(r"(?<=[.!?;])\s+|\n{2,}", cleaned)
             if normalize_space(part)
         ]
 
@@ -738,9 +793,14 @@ class GraphV2QA:
 
         candidates = []
         for row in rows:
-            for position, sentence in enumerate(
-                GraphV2QA._evidence_segments(row.get("text") or "")
-            ):
+            segments = GraphV2QA._evidence_segments(row.get("text") or "")
+            evidence_units = list(segments)
+            if requested_type == "reason":
+                evidence_units.extend(
+                    f"{segments[index]} {segments[index + 1]}"
+                    for index in range(len(segments) - 1)
+                )
+            for position, sentence in enumerate(evidence_units):
                 if not 30 <= len(sentence) <= 700:
                     continue
                 if re.search(
@@ -813,9 +873,16 @@ class GraphV2QA:
         seen_sentences = set()
         used_chunk_ids = set()
         for item in candidates:
-            sentence_key = item["sentence"].lower()[:220]
+            full_sentence_key = item["sentence"].lower()
+            sentence_key = full_sentence_key[:220]
             chunk_id = item["row"].get("chunk_id")
             if item["score"] < 0.20 or sentence_key in seen_sentences:
+                continue
+            if any(
+                full_sentence_key in chosen["sentence"].lower()
+                or chosen["sentence"].lower() in full_sentence_key
+                for chosen in selected
+            ):
                 continue
             # The answer may use at most two mutually consistent Chunks.
             if (chunk_id not in used_chunk_ids
@@ -824,6 +891,8 @@ class GraphV2QA:
             selected.append(item)
             seen_sentences.add(sentence_key)
             used_chunk_ids.add(chunk_id)
+            if requested_type == "reason":
+                break
             if len(selected) == 4:
                 break
 
@@ -875,11 +944,20 @@ class GraphV2QA:
             self._answer_model = model
 
     @staticmethod
-    def _synthesis_context(rows: list[dict[str, Any]]) -> str:
+    def _synthesis_context(
+        question: str, rows: list[dict[str, Any]]
+    ) -> str:
         parts = []
         used = 0
         for index, row in enumerate(rows[:MAX_SYNTHESIS_CHUNKS], 1):
             text = normalize_space(row.get("text") or "")
+            if question_type(question) == "reason":
+                passages = GraphV2QA._focused_answer_passages(
+                    question, text, limit=1
+                )
+                text = " ".join(passages)
+            if not text:
+                continue
             piece = (
                 f"[E{index}] chunk={row.get('chunk_id')} "
                 f"pdf_page={row.get('pdf_page')}\n{text[:2400]}\n"
@@ -895,7 +973,7 @@ class GraphV2QA:
     ) -> str:
         """Rewrite verified evidence; the verifier decides whether to use it."""
         self._ensure_answer_model()
-        context = self._synthesis_context(rows)
+        context = self._synthesis_context(question, rows)
         if not context:
             return ""
         system_message = (
@@ -905,6 +983,9 @@ class GraphV2QA:
             "organisms, equipment, durations, temperatures, pH values or "
             "procedural steps. Combine consistent evidence, remove repetition "
             "and OCR/figure-caption noise, and write clear natural English. "
+            "Keep each reason attached to the exact specimen, film type, "
+            "organism or procedure named in the evidence; never transfer a "
+            "reason from a nearby sentence about a different subject. "
             "If the evidence does not support an answer, output exactly "
             "INSUFFICIENT_EVIDENCE."
         )
