@@ -1,4 +1,4 @@
-"""Validate and load data/graph_v2 into Neo4j Aura.
+﻿"""Validate and load data/graph_v2 into Neo4j Aura.
 
 Validation is read-only and does not require a Neo4j connection. Loading is
 intentionally destructive and requires both --replace and a confirmation
@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_GRAPH_DIR = ROOT / "data" / "graph_v2"
 BATCH_SIZE = 500
 CONFIRMATION_TOKEN = "REPLACE_WITH_GRAPH_V2"
+IMAGE_MODEL = "openai/clip-vit-base-patch32"
 
 ENTITY_LABELS = {
     "ANATOMICAL_SITE": "AnatomicalSite",
@@ -52,6 +53,7 @@ FILES = {
     "document_page": "rel_document_page.csv",
     "page_chunk": "rel_page_chunk.csv",
     "page_image": "rel_page_image.csv",
+    "chunk_image": "rel_chunk_image.csv",
     "mentions": "rel_chunk_entity.csv",
     "entity_relations": "rel_entity_entity.csv",
 }
@@ -65,6 +67,10 @@ REQUIRED_FIELDS = {
     "document_page": {"relation_id", "start_id", "end_id", "relation_type"},
     "page_chunk": {"relation_id", "start_id", "end_id", "relation_type"},
     "page_image": {"relation_id", "page_id", "image_id", "relation_type"},
+    "chunk_image": {
+        "relation_id", "chunk_id", "image_id", "relation_type", "page_id",
+        "pdf_page", "semantic_score", "image_type", "link_method",
+    },
     "mentions": {
         "mention_id", "chunk_id", "entity_id", "page_id", "pdf_page",
         "mention_text", "start_char", "end_char_exclusive",
@@ -95,7 +101,144 @@ def parse_args():
     parser.add_argument("--replace", action="store_true")
     parser.add_argument("--confirm-replace", default="")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
+    parser.add_argument("--build-image-links", action="store_true")
+    parser.add_argument("--image-model", default=IMAGE_MODEL)
+    parser.add_argument("--image-threshold", type=float, default=0.20)
+    parser.add_argument("--image-min-confidence", type=float, default=0.55)
+    parser.add_argument("--image-max-links", type=int, default=1)
+    parser.add_argument("--image-batch-size", type=int, default=16)
     return parser.parse_args()
+
+
+def build_chunk_image_relations(
+    graph_dir, model_name, threshold, minimum_confidence,
+    max_links_per_image, batch_size,
+):
+    """Create same-page semantic Chunk -> Image links with CLIP."""
+    import torch
+    from PIL import Image
+    from transformers import CLIPModel, CLIPProcessor
+
+    if not 0 <= threshold <= 1:
+        raise ValueError("--image-threshold must be between 0 and 1")
+    if max_links_per_image < 1 or batch_size < 1:
+        raise ValueError("Image link counts and batch size must be at least 1")
+
+    _, chunks = read_csv(graph_dir / "chunks.csv")
+    _, images = read_csv(graph_dir / "images.csv")
+    _, occurrences = read_csv(graph_dir / "rel_page_image.csv")
+    image_by_id = {row["image_id"]: row for row in images}
+    allowed_types = {"microscopy", "clinical_or_laboratory", "diagram_or_chart"}
+    candidates = []
+    seen = set()
+    for occurrence in occurrences:
+        image = image_by_id.get(occurrence["image_id"])
+        if not image:
+            continue
+        image_type = (
+            image.get("final_type") or image.get("predicted_type") or ""
+        ).strip()
+        confidence = float(image.get("classification_confidence") or 0)
+        width = int(image.get("pixel_width") or 0)
+        height = int(image.get("pixel_height") or 0)
+        key = (occurrence["page_id"], image["image_id"])
+        if (key in seen or image_type not in allowed_types
+                or confidence < minimum_confidence or min(width, height) < 96):
+            continue
+        image_path = ROOT / image["file_path"]
+        if not image_path.is_file():
+            raise FileNotFoundError(f"Missing image file: {image_path}")
+        candidates.append({
+            **occurrence, **image, "effective_type": image_type,
+            "image_path": image_path,
+        })
+        seen.add(key)
+    if not candidates:
+        raise RuntimeError("No meaningful image candidates passed the filters")
+
+    def normalized(features):
+        if hasattr(features, "pooler_output"):
+            features = features.pooler_output
+        return features / (features.norm(dim=-1, keepdim=True) + 1e-12)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"[INFO] Loading CLIP: {model_name}")
+    print(f"[INFO] Device: {device}")
+    processor = CLIPProcessor.from_pretrained(model_name)
+    model = CLIPModel.from_pretrained(model_name).to(device).eval()
+
+    text_features = []
+    prompts = [
+        "Laboratory manual passage: " + " ".join(row["chunk_text"].split())
+        for row in chunks
+    ]
+    with torch.inference_mode():
+        for start in range(0, len(prompts), batch_size):
+            inputs = processor(
+                text=prompts[start:start + batch_size], return_tensors="pt",
+                padding=True, truncation=True, max_length=77,
+            ).to(device)
+            text_features.append(normalized(model.get_text_features(**inputs)).cpu())
+    text_features = torch.cat(text_features)
+
+    image_features = []
+    with torch.inference_mode():
+        for start in range(0, len(candidates), batch_size):
+            batch = candidates[start:start + batch_size]
+            opened = [Image.open(row["image_path"]).convert("RGB") for row in batch]
+            try:
+                inputs = processor(images=opened, return_tensors="pt").to(device)
+                image_features.append(
+                    normalized(model.get_image_features(**inputs)).cpu()
+                )
+            finally:
+                for opened_image in opened:
+                    opened_image.close()
+    image_features = torch.cat(image_features)
+
+    chunks_by_page = defaultdict(list)
+    for index, chunk in enumerate(chunks):
+        chunks_by_page[chunk["page_id"]].append(index)
+    relations = []
+    for image_index, image in enumerate(candidates):
+        indexes = chunks_by_page.get(image["page_id"], [])
+        if not indexes:
+            continue
+        scores = text_features[indexes] @ image_features[image_index]
+        ranked = sorted(
+            zip(indexes, scores.tolist()), key=lambda item: item[1], reverse=True
+        )
+        for chunk_index, score in ranked[:max_links_per_image]:
+            if score < threshold:
+                continue
+            chunk = chunks[chunk_index]
+            relations.append({
+                "chunk_id": chunk["chunk_id"],
+                "image_id": image["image_id"],
+                "relation_type": "ILLUSTRATED_BY",
+                "page_id": image["page_id"],
+                "pdf_page": image["pdf_page"],
+                "semantic_score": f"{score:.6f}",
+                "image_type": image["effective_type"],
+                "link_method": f"clip_same_page:{model_name}",
+            })
+    relations.sort(
+        key=lambda row: (int(row["pdf_page"]), row["chunk_id"], row["image_id"])
+    )
+    for index, row in enumerate(relations, start=1):
+        row["relation_id"] = f"rel_chunk_image_{index:06d}"
+    output_fields = [
+        "relation_id", "chunk_id", "image_id", "relation_type", "page_id",
+        "pdf_page", "semantic_score", "image_type", "link_method",
+    ]
+    output = graph_dir / "rel_chunk_image.csv"
+    with output.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=output_fields)
+        writer.writeheader()
+        writer.writerows(relations)
+    print(f"[OK] Meaningful image candidates: {len(candidates)}")
+    print(f"[OK] ILLUSTRATED_BY relations: {len(relations)}")
+    print(f"[OK] Wrote: {output}")
 
 
 def read_csv(path):
@@ -136,6 +279,7 @@ def load_and_validate(graph_dir):
         ("document_page", "relation_id"),
         ("page_chunk", "relation_id"),
         ("page_image", "relation_id"),
+        ("chunk_image", "relation_id"),
         ("mentions", "mention_id"),
         ("entity_relations", "relation_id"),
     ):
@@ -168,6 +312,13 @@ def load_and_validate(graph_dir):
             raise RuntimeError(f"Invalid CONTAINS_IMAGE relation: {row['relation_id']}")
         if row["relation_type"] != "CONTAINS_IMAGE":
             raise RuntimeError(f"Unexpected page-image type: {row['relation_type']}")
+    for row in data["chunk_image"]:
+        if row["chunk_id"] not in chunk_ids or row["image_id"] not in image_ids:
+            raise RuntimeError(f"Invalid ILLUSTRATED_BY relation: {row['relation_id']}")
+        if row["page_id"] not in page_ids:
+            raise RuntimeError(f"Unknown chunk-image page: {row['relation_id']}")
+        if row["relation_type"] != "ILLUSTRATED_BY":
+            raise RuntimeError(f"Unexpected chunk-image type: {row['relation_type']}")
     for row in data["mentions"]:
         if row["chunk_id"] not in chunk_ids or row["entity_id"] not in entity_ids:
             raise RuntimeError(f"Invalid mention: {row['mention_id']}")
@@ -288,6 +439,7 @@ def load_graph(session, data, batch_size):
             n.pixel_width = row.pixel_width, n.pixel_height = row.pixel_height,
             n.occurrence_count = row.occurrence_count,
             n.first_pdf_page = row.first_pdf_page,
+            n.predicted_type = row.predicted_type,
             n.final_type = row.final_type,
             n.content_relevance = row.content_relevance,
             n.classification_status = row.classification_status,
@@ -340,6 +492,20 @@ def load_graph(session, data, batch_size):
             page_coverage: row.page_coverage
         }]->(i)
     """, page_image_rows, batch_size)
+
+    chunk_image_rows = [dict(
+        row, pdf_page=to_int(row.get("pdf_page")),
+        semantic_score=to_float(row.get("semantic_score")),
+    ) for row in data["chunk_image"]]
+    run_batches(session, """
+        UNWIND $rows AS row
+        MATCH (c:Chunk {id: row.chunk_id}), (i:Image {id: row.image_id})
+        CREATE (c)-[:ILLUSTRATED_BY {
+            id: row.relation_id, page_id: row.page_id,
+            pdf_page: row.pdf_page, semantic_score: row.semantic_score,
+            image_type: row.image_type, link_method: row.link_method
+        }]->(i)
+    """, chunk_image_rows, batch_size)
 
     mention_rows = [dict(row, pdf_page=to_int(row["pdf_page"]),
                          start_char=to_int(row["start_char"]),
@@ -395,7 +561,7 @@ def verify_loaded_graph(session, data):
     expected_relationships = (
         len(data["document_page"]) + len(data["page_chunk"]) +
         len(data["page_image"]) + len(data["mentions"]) +
-        len(data["entity_relations"])
+        len(data["chunk_image"]) + len(data["entity_relations"])
     )
     actual_relationships = session.run(
         "MATCH ()-[r]->() RETURN count(r) AS count"
@@ -416,6 +582,13 @@ def main():
     args = parse_args()
     if args.batch_size < 1:
         raise ValueError("--batch-size must be at least 1")
+    if args.build_image_links:
+        build_chunk_image_relations(
+            args.graph_dir, args.image_model, args.image_threshold,
+            args.image_min_confidence, args.image_max_links,
+            args.image_batch_size,
+        )
+        return
     data = load_and_validate(args.graph_dir)
     print_validation_summary(data)
 
@@ -457,3 +630,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

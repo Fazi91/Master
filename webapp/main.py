@@ -1,4 +1,4 @@
-"""FastAPI interface for evidence-grounded questions over Graph V2."""
+﻿"""FastAPI interface for evidence-grounded questions over Graph V2."""
 
 from __future__ import annotations
 
@@ -305,54 +305,101 @@ class GraphV2QA:
 
     @staticmethod
     def compose_extract_answer(question: str, rows: list[dict[str, Any]]) -> str:
+        if not rows:
+            return ""
+
+        # The first row is the strongest grounded Chunk. Do not mix unrelated
+        # organisms or procedures from lower-ranked Chunks into one answer.
+        row = rows[0]
         query_terms = set(content_terms(question))
+        lowered_question = question.lower()
+
+        appearance_question = any(
+            word in lowered_question
+            for word in ("appearance", "look like", "microscopic appearance", "show")
+        )
+
+        descriptive_terms = {
+            "appear", "appearance", "shape", "size", "colour", "color",
+            "spore", "spores", "mycelium", "filament", "filaments",
+            "round", "rectangular", "oval", "branch", "branches",
+            "seen", "visible", "stained", "unstained",
+        }
+
         candidates = []
-        for row in rows:
-            for sentence in re.split(r"(?<=[.!?])\s+|\n+", row.get("text") or ""):
-                sentence = normalize_space(sentence)
-                if not 30 <= len(sentence) <= 700:
+
+        for sentence in re.split(
+            r"(?<=[.!?])\s+|\n+",
+            row.get("text") or "",
+        ):
+            sentence = normalize_space(sentence)
+
+            # Reject short headings and OCR fragments.
+            if not 45 <= len(sentence) <= 700:
+                continue
+
+            # A valid answer sentence must contain an actual statement,
+            # not only a section or figure title.
+            if not re.search(
+                r"\b(is|are|was|were|has|have|can|may|should|use|uses|"
+                r"appear|appears|seen|found|show|shows|examine|examined|"
+                r"characterized|contains|consists)\b",
+                sentence,
+                flags=re.IGNORECASE,
+            ):
+                continue
+
+            sentence_terms = set(content_terms(sentence))
+            overlap = len(query_terms & sentence_terms)
+            similarity = float(
+                GraphV2QA._similarities(question, [sentence])[0]
+            )
+
+            score = similarity + overlap * 0.12
+
+            if appearance_question:
+                description_overlap = len(
+                    {word.lower() for word in re.findall(r"[a-z]+", sentence.lower())}
+                    & descriptive_terms
+                )
+                if description_overlap == 0:
                     continue
-                overlap = len(query_terms & set(content_terms(sentence)))
-                similarity = float(GraphV2QA._similarities(question, [sentence])[0])
-                candidates.append((similarity + overlap * 0.12, sentence))
+                score += min(description_overlap * 0.10, 0.40)
+
+            candidates.append((score, sentence))
+
         candidates.sort(key=lambda item: item[0], reverse=True)
-        chosen, seen = [], set()
+
+        selected = []
+        seen = set()
+
         for score, sentence in candidates:
             key = sentence.lower()[:180]
-            if score >= 0.16 and key not in seen:
-                chosen.append(sentence)
-                seen.add(key)
-            if len(chosen) == 2:
-                break
-        return " ".join(chosen)
 
+            if score < 0.16 or key in seen:
+                continue
+
+            selected.append(sentence)
+            seen.add(key)
+
+            if len(selected) == 3:
+                break
+
+        return " ".join(selected)
     def verified_images(self, question: str, relation_type: str | None,
-                        pages: list[int]) -> list[dict[str, Any]]:
-        lowered = question.lower()
-        explicitly_visual = any(term in lowered for term in ("image", "figure", "picture", "show"))
-        microscopy_subject = (
-            any(term in lowered for term in ("cell", "organism", "parasite", "egg", "larva", "smear", "specimen"))
-            and any(term in lowered for term in ("microscope", "microscopic", "microscopy"))
-        )
-        if relation_type == "USES_EQUIPMENT" and not explicitly_visual:
+                        chunk_ids: list[str]) -> list[dict[str, Any]]:
+        if not chunk_ids:
             return []
-        if not explicitly_visual and not microscopy_subject:
-            return []
-        allowed = ["microscopy"] if microscopy_subject else [
-            "microscopy", "clinical_or_laboratory", "diagram_or_chart"
-        ]
         return self._run("""
-        MATCH (page:Page)-[occurrence:CONTAINS_IMAGE]->(image:Image)
-        WHERE page.pdf_page IN $pages AND image.file_path IS NOT NULL
-          AND coalesce(image.classification_confidence, 0.0) >= 0.65
-          AND trim(coalesce(image.final_type, '')) <> ''
-          AND image.final_type IN $allowed_types
+        MATCH (page:Page)-[:HAS_CHUNK]->(chunk:Chunk)-[link:ILLUSTRATED_BY]->(image:Image)
+        WHERE chunk.id IN $chunk_ids AND image.file_path IS NOT NULL
+          AND coalesce(link.semantic_score, 0.0) >= $minimum_score
         RETURN DISTINCT image.id AS id, image.file_path AS file_path,
-               image.final_type AS image_type,
-               image.classification_confidence AS confidence,
-               page.pdf_page AS pdf_page, occurrence.page_coverage AS page_coverage
-        ORDER BY confidence DESC, page_coverage DESC LIMIT $limit
-        """, pages=pages, allowed_types=allowed, limit=MAX_IMAGES)
+               coalesce(link.image_type, image.final_type, image.predicted_type) AS image_type,
+               link.semantic_score AS confidence, chunk.id AS chunk_id,
+               page.pdf_page AS pdf_page
+        ORDER BY confidence DESC LIMIT $limit
+        """, chunk_ids=chunk_ids, minimum_score=0.20, limit=MAX_IMAGES)
 
     def image_path(self, image_id: str) -> str | None:
         rows = self._run(
@@ -368,6 +415,7 @@ class GraphV2QA:
             "id": row["id"], "pdf_page": row.get("pdf_page"),
             "type": row.get("image_type"),
             "confidence": round(float(row.get("confidence") or 0.0), 4),
+            "chunk_id": row.get("chunk_id"),
             "url": f"/image/{row['id']}",
         } for row in image_rows]
         return {"kind": kind, "question": question, "answer": answer,
@@ -383,10 +431,10 @@ class GraphV2QA:
                 selected = [row for row in facts if row.get("source_id") == source_id][:MAX_SOURCES]
                 answer = self.compose_fact_answer(relation_type, selected)
                 sources = [serializable_source(row) for row in selected]
-                pages = list(dict.fromkeys(
-                    int(row["pdf_page"]) for row in selected if row.get("pdf_page") is not None
+                chunk_ids = list(dict.fromkeys(
+                    row["chunk_id"] for row in selected if row.get("chunk_id")
                 ))
-                images = self.verified_images(question, relation_type, pages)
+                images = self.verified_images(question, relation_type, chunk_ids)
                 return self.response("domain_answer", question, answer, sources, images)
 
         chunks = self.ranked_chunks(question, limit=MAX_SOURCES)
@@ -397,7 +445,8 @@ class GraphV2QA:
                 "I could not verify this question in the provided laboratory manual. Please ask a more specific laboratory question.",
                 [], [],
             )
-        answer = self.compose_extract_answer(question, chunks)
+        grounded_chunks = [chunks[0]]
+        answer = self.compose_extract_answer(question, grounded_chunks)
         if not answer:
             return self.response(
                 "not_found", question,
@@ -406,11 +455,11 @@ class GraphV2QA:
             )
         sources = [serializable_source({
             **row, "evidence": row.get("text"), "confidence": row.get("score")
-        }) for row in chunks[:2]]
-        pages = list(dict.fromkeys(
-            int(row["pdf_page"]) for row in chunks[:2] if row.get("pdf_page") is not None
+        }) for row in grounded_chunks]
+        chunk_ids = list(dict.fromkeys(
+            row["chunk_id"] for row in grounded_chunks if row.get("chunk_id")
         ))
-        images = self.verified_images(question, relation_type, pages)
+        images = self.verified_images(question, relation_type, chunk_ids)
         return self.response("domain_answer", question, answer, sources, images)
 
 
@@ -474,3 +523,4 @@ def image(image_id: str) -> FileResponse:
     if ROOT.resolve() not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="Image file not found")
     return FileResponse(path)
+
