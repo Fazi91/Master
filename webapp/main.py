@@ -1,4 +1,4 @@
-﻿"""FastAPI interface for evidence-grounded questions over Graph V2."""
+"""FastAPI interface for evidence-grounded questions over Graph V2."""
 
 from __future__ import annotations
 
@@ -136,6 +136,22 @@ def content_terms(text: str) -> list[str]:
         if term not in terms:
             terms.append(term)
     return terms[:24]
+
+
+def question_type(question: str) -> str:
+    """Return the kind of evidence an answer must contain."""
+    lowered = normalize_space(question).lower()
+    if re.search(r"\bwhy\b|\breason\b", lowered):
+        return "reason"
+    if re.search(r"\bwhen\b|\bhow long\b|\bduration\b", lowered):
+        return "time"
+    if re.search(r"\bhow\b|\bprocedure\b|\bmethod\b|\bsteps?\b", lowered):
+        return "procedure"
+    if re.search(r"\bdifference\b|\bcompare\b|\bversus\b|\bvs\.?\b", lowered):
+        return "comparison"
+    if re.search(r"\bwhere\b", lowered):
+        return "location"
+    return "fact"
 
 
 def small_talk_answer(text: str) -> str | None:
@@ -353,6 +369,7 @@ class GraphV2QA:
         )
 
         query_terms = set(content_terms(question))
+        requested_type = question_type(question)
         ranked = []
         for index, semantic_score in enumerate(semantic_scores):
             row = dict(self._chunks[index])
@@ -365,14 +382,20 @@ class GraphV2QA:
             exact_phrase = normalize_space(question).lower().rstrip("?.!") in (
                 normalize_space(row.get("text") or "").lower()
             )
+            answerability = self._direct_answerability(
+                question, row.get("text") or ""
+            )
             row["semantic_score"] = float(semantic_score)
             row["keyword_overlap"] = overlap
             row["keyword_coverage"] = coverage
             row["exact_phrase"] = exact_phrase
+            row["answerability"] = answerability
+            row["question_type"] = requested_type
             row["score"] = (
-                float(semantic_score)
-                + min(overlap * 0.10, 0.40)
-                + min(coverage * 0.25, 0.25)
+                0.30 * float(semantic_score)
+                + min(overlap * 0.08, 0.32)
+                + min(coverage * 0.18, 0.18)
+                + 0.90 * answerability
                 + (0.08 if exact_phrase else 0.0)
             )
             ranked.append(row)
@@ -384,6 +407,68 @@ class GraphV2QA:
             reverse=True,
         )
         return ranked
+
+    @staticmethod
+    def _direct_answerability(question: str, text: str) -> float:
+        """Score whether one local passage contains the requested answer."""
+        query_terms = set(content_terms(question))
+        if not query_terms:
+            return 0.0
+        requested_type = question_type(question)
+        type_patterns = {
+            "reason": re.compile(
+                r"\b(?:because|therefore|thus|hence|due to|so that|"
+                r"in order to|to (?:permit|prevent|avoid|ensure|allow))\b",
+                flags=re.IGNORECASE,
+            ),
+            "procedure": re.compile(
+                r"\b(?:method|procedure|first|then|next|finally|"
+                r"\d{1,2}\.\s|prepare|add|mix|place|stain|rinse|dry|fix)\b",
+                flags=re.IGNORECASE,
+            ),
+            "time": re.compile(
+                r"\b(?:when|before|after|during|for\s+\d|minutes?|hours?|days?)\b",
+                flags=re.IGNORECASE,
+            ),
+            "comparison": re.compile(
+                r"\b(?:whereas|while|unlike|compared|difference|both)\b",
+                flags=re.IGNORECASE,
+            ),
+            "location": re.compile(
+                r"\b(?:in|inside|within|located|found|present)\b",
+                flags=re.IGNORECASE,
+            ),
+        }
+        best = 0.0
+        segments = GraphV2QA._evidence_segments(text)
+        windows = list(segments)
+        windows.extend(
+            f"{segments[index]} {segments[index + 1]}"
+            for index in range(len(segments) - 1)
+        )
+        for passage in windows:
+            passage_terms = set(content_terms(passage))
+            coverage = len(query_terms & passage_terms) / len(query_terms)
+            if coverage == 0:
+                continue
+            type_match = bool(
+                type_patterns.get(requested_type, re.compile(r"."))
+                .search(passage)
+            )
+            polarity_match = (
+                "not" not in query_terms or "not" in passage_terms
+            )
+            score = 0.72 * coverage
+            if type_match:
+                score += 0.20
+            if polarity_match:
+                score += 0.08
+            if requested_type == "reason" and not type_match:
+                score *= 0.45
+            if "not" in query_terms and not polarity_match:
+                score *= 0.55
+            best = max(best, score)
+        return min(best, 1.0)
 
     @staticmethod
     def chunk_is_grounded(question: str, row: dict[str, Any]) -> bool:
@@ -429,7 +514,13 @@ class GraphV2QA:
             return []
 
         exact_rows = [row for row in grounded if row.get("exact_phrase")]
-        anchor = exact_rows[0] if exact_rows else grounded[0]
+        anchor = exact_rows[0] if exact_rows else max(
+            grounded,
+            key=lambda row: (
+                row.get("answerability", 0.0),
+                row.get("score", 0.0),
+            ),
+        )
         anchor_page = anchor.get("pdf_page")
         query_terms = set(content_terms(question))
         minimum_overlap = 2 if len(query_terms) >= 2 else 1
@@ -440,12 +531,15 @@ class GraphV2QA:
             same_section_window = (
                 isinstance(anchor_page, int)
                 and isinstance(page, int)
-                and anchor_page <= page <= anchor_page + 1
+                and abs(anchor_page - page) <= 2
             )
             same_page = page == anchor_page
             strong_term_match = row.get("keyword_overlap", 0) >= minimum_overlap
+            direct_enough = row.get("answerability", 0.0) >= 0.42
             if row is anchor or (
-                (same_section_window or same_page) and strong_term_match
+                (same_section_window or same_page)
+                and strong_term_match
+                and direct_enough
             ):
                 consistent.append(row)
 
@@ -460,6 +554,7 @@ class GraphV2QA:
 
         consistent.sort(
             key=lambda row: (
+                row.get("answerability", 0.0),
                 row.get("score", 0.0),
                 row.get("keyword_coverage", 0.0),
             ),
@@ -595,6 +690,7 @@ class GraphV2QA:
 
         query_terms = set(content_terms(question))
         lowered_question = question.lower()
+        requested_type = question_type(question)
         procedure_question = any(
             phrase in lowered_question
             for phrase in (
@@ -680,6 +776,12 @@ class GraphV2QA:
                 )
                 if overlap == 0 and not continuation:
                     continue
+                direct_answerability = GraphV2QA._direct_answerability(
+                    question, sentence
+                )
+                minimum_direct = 0.58 if requested_type == "reason" else 0.38
+                if direct_answerability < minimum_direct:
+                    continue
                 coverage = overlap / max(len(query_terms), 1)
                 similarity = float(GraphV2QA._similarities(question, [sentence])[0])
                 score = (
@@ -687,6 +789,7 @@ class GraphV2QA:
                     + overlap * 0.12
                     + coverage * 0.20
                     + min(float(row.get("score") or 0.0) * 0.08, 0.08)
+                    + direct_answerability * 0.55
                 )
                 if procedure_question and is_action:
                     score += 0.25
@@ -761,9 +864,12 @@ class GraphV2QA:
             )
             model = AutoModelForCausalLM.from_pretrained(
                 LOCAL_ANSWER_MODEL,
-                torch_dtype="auto",
+                dtype="auto",
                 low_cpu_mem_usage=False,
             )
+            model.generation_config.temperature = None
+            model.generation_config.top_p = None
+            model.generation_config.top_k = None
             model.eval()
             self._answer_tokenizer = tokenizer
             self._answer_model = model
@@ -1215,4 +1321,3 @@ def image(image_id: str) -> FileResponse:
     if ROOT.resolve() not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="Image file not found")
     return FileResponse(path)
-
