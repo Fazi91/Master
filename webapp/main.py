@@ -9,12 +9,14 @@ import os
 import re
 
 import numpy as np
+import torch
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +29,11 @@ MAX_EVIDENCE_CHUNKS = 2
 FALLBACK_MIN_SCORE = 0.16
 FACT_MIN_SCORE = 0.14
 IMAGE_MIN_SCORE = 0.35
+LOCAL_ANSWER_MODEL = os.getenv(
+    "LOCAL_ANSWER_MODEL", "Qwen/Qwen2.5-1.5B-Instruct"
+)
+MAX_SYNTHESIS_CHUNKS = 8
+MAX_SYNTHESIS_CONTEXT_CHARS = 12000
 
 SMALL_TALK = [
     (r"^(?:(?:hi|hello|hey|salam)[!,. ]*)+$",
@@ -211,6 +218,9 @@ class GraphV2QA:
         self._char_vectorizer = None
         self._word_matrix = None
         self._char_matrix = None
+        self._model_lock = Lock()
+        self._answer_tokenizer = None
+        self._answer_model = None
 
     def _run(self, query: str, **parameters: Any) -> list[dict[str, Any]]:
         with self.driver.session(database=self.database) as session:
@@ -731,6 +741,184 @@ class GraphV2QA:
         ]
         return " ".join(answer_parts), source_rows
 
+    def _ensure_answer_model(self) -> None:
+        if self._answer_model is not None:
+            return
+        with self._model_lock:
+            if self._answer_model is not None:
+                return
+            tokenizer = AutoTokenizer.from_pretrained(
+                LOCAL_ANSWER_MODEL, use_fast=True
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                LOCAL_ANSWER_MODEL,
+                torch_dtype="auto",
+                low_cpu_mem_usage=False,
+            )
+            model.eval()
+            self._answer_tokenizer = tokenizer
+            self._answer_model = model
+
+    @staticmethod
+    def _synthesis_context(rows: list[dict[str, Any]]) -> str:
+        parts = []
+        used = 0
+        for index, row in enumerate(rows[:MAX_SYNTHESIS_CHUNKS], 1):
+            text = normalize_space(row.get("text") or "")
+            piece = (
+                f"[E{index}] chunk={row.get('chunk_id')} "
+                f"pdf_page={row.get('pdf_page')}\n{text[:2400]}\n"
+            )
+            if used + len(piece) > MAX_SYNTHESIS_CONTEXT_CHARS:
+                break
+            parts.append(piece)
+            used += len(piece)
+        return "\n".join(parts)
+
+    def synthesize_answer(
+        self, question: str, rows: list[dict[str, Any]]
+    ) -> str:
+        """Rewrite verified evidence; the verifier decides whether to use it."""
+        self._ensure_answer_model()
+        context = self._synthesis_context(rows)
+        if not context:
+            return ""
+        system_message = (
+            "You are a correctness-first laboratory evidence editor. "
+            "Answer only from the supplied evidence. Do not use outside "
+            "knowledge. Do not invent or change numbers, units, reagent names, "
+            "organisms, equipment, durations, temperatures, pH values or "
+            "procedural steps. Combine consistent evidence, remove repetition "
+            "and OCR/figure-caption noise, and write clear natural English. "
+            "If the evidence does not support an answer, output exactly "
+            "INSUFFICIENT_EVIDENCE."
+        )
+        user_message = (
+            f"Question: {question}\n\nVerified evidence:\n{context}\n\n"
+            "Write a complete answer. For a procedure, preserve the supported "
+            "step order. Summarize and paraphrase rather than copying long "
+            "passages. Do not mention evidence IDs in the answer."
+        )
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message},
+        ]
+        prompt = self._answer_tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = self._answer_tokenizer(
+            prompt,
+            return_tensors="pt",
+            truncation=True,
+            max_length=6144,
+        )
+        with torch.inference_mode():
+            generated = self._answer_model.generate(
+                **inputs,
+                max_new_tokens=520,
+                do_sample=False,
+                repetition_penalty=1.05,
+                pad_token_id=self._answer_tokenizer.eos_token_id,
+            )
+        new_tokens = generated[0][inputs["input_ids"].shape[1]:]
+        answer = self._answer_tokenizer.decode(
+            new_tokens, skip_special_tokens=True
+        )
+        return normalize_space(answer)
+
+    @staticmethod
+    def verify_synthesis(
+        answer: str, evidence_rows: list[dict[str, Any]]
+    ) -> bool:
+        """Reject generated text containing unsupported claims or values."""
+        normalized = normalize_space(answer)
+        if (
+            not normalized
+            or normalized == "INSUFFICIENT_EVIDENCE"
+            or len(normalized) < 30
+        ):
+            return False
+
+        evidence_text = normalize_space(
+            " ".join(row.get("text") or "" for row in evidence_rows)
+        )
+        if not evidence_text:
+            return False
+
+        number_pattern = re.compile(
+            r"(?<![A-Za-z])\d+(?:[.–—-]\d+)?(?:\.\d+)?%?"
+        )
+        source_numbers = {
+            value.replace("—", "–")
+            for value in number_pattern.findall(evidence_text)
+        }
+        answer_numbers = {
+            value.replace("—", "–")
+            for value in number_pattern.findall(normalized)
+        }
+        if not answer_numbers.issubset(source_numbers):
+            return False
+
+        allowed_editor_terms = {
+            "according", "manual", "first", "then", "next", "finally",
+            "ensure", "carefully", "procedure", "step", "steps", "method",
+            "using", "before", "after", "during", "only", "avoid",
+        }
+        evidence_terms = set(content_terms(evidence_text))
+        answer_terms = set(content_terms(normalized))
+        unsupported_terms = (
+            answer_terms - evidence_terms - allowed_editor_terms
+        )
+        if answer_terms and len(unsupported_terms) / len(answer_terms) > 0.18:
+            return False
+
+        evidence_sentences = []
+        for row in evidence_rows:
+            evidence_sentences.extend(
+                GraphV2QA._evidence_segments(row.get("text") or "")
+            )
+        claims = [
+            normalize_space(claim)
+            for claim in re.split(r"(?<=[.!?])\s+|\n+", normalized)
+            if len(normalize_space(claim)) >= 20
+        ]
+        if not claims or not evidence_sentences:
+            return False
+        for claim in claims:
+            scores = GraphV2QA._similarities(
+                claim, evidence_sentences
+            )
+            if len(scores) == 0 or float(np.max(scores)) < 0.10:
+                return False
+        return True
+
+    @staticmethod
+    def best_display_sources(
+        question: str, answer: str, rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        if not rows:
+            return []
+        documents = [row.get("text") or "" for row in rows]
+        coverage_scores = GraphV2QA._similarities(
+            f"{question} {answer}", documents
+        )
+        ranked = []
+        for row, coverage in zip(rows, coverage_scores):
+            item = dict(row)
+            item["answer_coverage"] = float(coverage)
+            item["display_score"] = (
+                float(row.get("score") or 0.0)
+                + 0.45 * float(coverage)
+            )
+            ranked.append(item)
+        ranked.sort(
+            key=lambda row: (
+                row["display_score"], row["answer_coverage"]
+            ),
+            reverse=True,
+        )
+        return ranked[:MAX_EVIDENCE_CHUNKS]
+
     def verified_images(self, question: str, relation_type: str | None,
                         chunk_ids: list[str]) -> list[dict[str, Any]]:
         if not chunk_ids:
@@ -773,6 +961,7 @@ class GraphV2QA:
         kind: str, question: str, answer: str,
         sources: list[dict[str, Any]], image_rows: list[dict[str, Any]],
         chunks_scanned: int = 0, candidates_considered: int = 0,
+        synthesis_mode: str = "extractive",
     ) -> dict[str, Any]:
         images = [{
             "id": row["id"], "pdf_page": row.get("pdf_page"),
@@ -794,6 +983,12 @@ class GraphV2QA:
                 "sources_used": min(len(sources), MAX_EVIDENCE_CHUNKS),
                 "neo4j_verification": (
                     "verified" if kind == "domain_answer" else "not_verified"
+                ),
+                "synthesis_mode": synthesis_mode,
+                "local_model": (
+                    LOCAL_ANSWER_MODEL
+                    if synthesis_mode == "local_model_verified"
+                    else None
                 ),
             },
         }
@@ -835,14 +1030,38 @@ class GraphV2QA:
                 [], [], chunks_scanned, 0,
             )
 
-        extract_answer, answer_rows = self.compose_extract_answer(
-            question, consistent
-        )
-        if not extract_answer or not answer_rows:
-            return self.response(
-                "not_found", question,
-                "Relevant evidence was found, but no complete and context-consistent answer could be verified. The system will not guess.",
-                [], [], chunks_scanned, len(consistent),
+        synthesis_mode = "extractive_fallback"
+        final_answer = ""
+        answer_rows: list[dict[str, Any]] = []
+        try:
+            generated_answer = self.synthesize_answer(
+                question, consistent
+            )
+            if self.verify_synthesis(generated_answer, consistent):
+                final_answer = generated_answer
+                answer_rows = self.best_display_sources(
+                    question, final_answer, consistent
+                )
+                synthesis_mode = "local_model_verified"
+        except Exception:
+            # Model download/loading/inference failure must never cause an
+            # unverified answer. Continue with the evidence-only fallback.
+            final_answer = ""
+
+        if not final_answer:
+            extract_answer, extract_rows = self.compose_extract_answer(
+                question, consistent
+            )
+            if not extract_answer or not extract_rows:
+                return self.response(
+                    "not_found", question,
+                    "Relevant evidence was found, but no complete and context-consistent answer could be verified. The system will not guess.",
+                    [], [], chunks_scanned, len(consistent),
+                    synthesis_mode="verification_failed",
+                )
+            final_answer = extract_answer
+            answer_rows = self.best_display_sources(
+                question, final_answer, consistent
             )
 
         sources = [
@@ -861,8 +1080,9 @@ class GraphV2QA:
             question, relation_type, chunk_ids
         )
         return self.response(
-            "domain_answer", question, extract_answer, sources, image_rows,
+            "domain_answer", question, final_answer, sources, image_rows,
             chunks_scanned, len(consistent),
+            synthesis_mode=synthesis_mode,
         )
 
 
