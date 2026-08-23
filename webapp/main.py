@@ -1193,6 +1193,11 @@ class GraphV2QA:
                 # following consequence. Do not create overlapping pairs for
                 # list/criteria clauses, which caused duplicated answers.
                 if any(question_type(facet) == "reason" for facet in facets):
+                    reason_terms = set().union(*(
+                        set(content_terms(facet))
+                        for facet in facets
+                        if question_type(facet) == "reason"
+                    ))
                     evidence_units.extend(
                         f"{evidence_units[index]} {evidence_units[index + 1]}"
                         for index in range(len(evidence_units) - 1)
@@ -1202,6 +1207,12 @@ class GraphV2QA:
                             evidence_units[index + 1],
                             flags=re.IGNORECASE,
                         )
+                        and len(
+                            reason_terms & set(content_terms(
+                                f"{evidence_units[index]} "
+                                f"{evidence_units[index + 1]}"
+                            ))
+                        ) >= min(2, len(reason_terms))
                     )
             else:
                 evidence_units = GraphV2QA._local_evidence_units(
@@ -1363,6 +1374,16 @@ class GraphV2QA:
 
         if not selected:
             return "", []
+
+        if len(facets) > 1:
+            # Present claims in the same order as the clauses in the user's
+            # question, then preserve their order inside the source Chunk.
+            selected.sort(key=lambda item: (
+                min(item["covered_facets"]) if item["covered_facets"] else len(facets),
+                item["row"].get("pdf_page") or 0,
+                item["row"].get("chunk_id") or "",
+                item["position"],
+            ))
 
         # Present procedural evidence in manual order after relevance-based
         # selection so the resulting instructions remain readable.
