@@ -1960,22 +1960,16 @@ class GraphV2QA:
                 [], [], chunks_scanned, 0,
             )
 
-        # First build the deterministic, source-only answer. When retrieval
-        # already contains a complete local passage (or a complete numbered
-        # procedure), running the local generator and NLI verifier adds CPU
-        # latency without adding evidence and often ends in the same fallback.
+        # First build the deterministic, source-only answer. Completeness is
+        # evaluated on the final combined answer, because one Chunk does not
+        # always contain every required facet. When the combined extract is
+        # complete, generation and NLI add latency without adding evidence.
         extract_answer, extract_rows = self.compose_extract_answer(
             question, consistent
         )
-        requested_type = question_type(question)
         direct_complete = bool(
             extract_answer and extract_rows
             and self._requirements_satisfied(question, extract_answer)
-            and (
-                requested_type == "procedure"
-                or len(consistent) == 1
-                or any(row.get("requirements_complete") for row in consistent)
-            )
         )
         synthesis_mode = (
             "verified_extract" if direct_complete
