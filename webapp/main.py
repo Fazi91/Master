@@ -113,6 +113,7 @@ def normalize_space(value: str) -> str:
 def clean_answer_text(value: str) -> str:
     """Remove PDF layout markers without changing the source meaning."""
     cleaned = normalize_space(value)
+    cleaned = re.sub(r"(?<=[A-Za-z])-\s+(?=[a-z])", "", cleaned)
     # The manual uses a standalone capital G as a rendered bullet marker.
     cleaned = re.sub(r"^(?:G\s+)+", "", cleaned)
     cleaned = re.sub(r"\.?\s+G\s+(?=[A-Z])", "; ", cleaned)
@@ -123,6 +124,12 @@ def clean_answer_text(value: str) -> str:
         flags=re.IGNORECASE,
     )[0]
     cleaned = re.sub(r"\s*;\s*", "; ", cleaned)
+    cleaned = re.sub(
+        r"^(?:Thick|Thin) blood films\s+(?=In\s+(?:thick|thin) blood films)",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     return cleaned.strip(" ;")
 
 
@@ -163,6 +170,13 @@ def content_terms(text: str) -> list[str]:
 def question_type(question: str) -> str:
     """Return the kind of evidence an answer must contain."""
     lowered = normalize_space(question).lower()
+    if re.search(
+        r"\b(?:materials?|reagents?|equipment|supplies)\b.*\b(?:required|"
+        r"needed|necessary|used)\b|\bwhat (?:materials?|reagents?|"
+        r"equipment|supplies)\b",
+        lowered,
+    ):
+        return "materials"
     # Explicit comparison wording takes precedence over requested dimensions
     # such as "uses" or "functions".
     if re.search(
@@ -172,7 +186,7 @@ def question_type(question: str) -> str:
     ):
         return "comparison"
     if re.search(
-        r"\bpurpose\b|\bused for\b|\buses? of\b|"
+        r"\bpurposes?\b|\bused for\b|\buses? of\b|"
         r"\brespective uses?\b|\bfunctions? of\b|\broles? of\b|"
         r"\bwhat (?:is|are) .+? used to\b|"
         r"\bhow (?:is|are|was|were) .+? used\b",
@@ -182,7 +196,8 @@ def question_type(question: str) -> str:
     if re.search(r"\bwhy\b|\breason\b", lowered):
         return "reason"
     if re.search(
-        r"\bwhen\b|\bhow long\b|\bduration\b|\bat what (?:time|point)\b|"
+        r"^when\b|^how long\b|\bduration\b|\bat what (?:time|point)\b|"
+        r"\b(?:tell me|state|specify)\s+when\b|"
         r"\b(?:best|suitable|recommended) time\b",
         lowered,
     ):
@@ -282,6 +297,18 @@ def question_facets(question: str) -> list[str]:
         parts[1] = f"{parts[0]}, {parts[1]}"
         parts = parts[1:]
     facets = [part.strip(" ,;:?.!") for part in parts if part.strip(" ,;:?.!")]
+    paired = paired_subject_terms(normalized)
+    if paired and len(facets) > 1:
+        paired_text = " and ".join(sorted(paired))
+        facets = [facets[0]] + [
+            re.sub(
+                r"\b(?:each|both)\s+(?:blood\s+)?films?\b",
+                f"{paired_text} blood films",
+                facet,
+                flags=re.IGNORECASE,
+            )
+            for facet in facets[1:]
+        ]
     return facets if len(facets) > 1 else [normalized]
 
 
@@ -302,6 +329,8 @@ def answer_plan(question: str) -> dict[str, Any]:
         }
     if requested_type == "procedure":
         return {"mode": "procedure", "max_claims": 24, "stop_on_complete": False}
+    if requested_type == "materials":
+        return {"mode": "multi", "max_claims": 30, "stop_on_complete": False}
     if requested_type in {"time", "comparison"} or explicit_multi:
         return {"mode": "multi", "max_claims": 6, "stop_on_complete": False}
     if requested_type in {"purpose", "reason"}:
@@ -700,6 +729,59 @@ class GraphV2QA:
         return units
 
     @staticmethod
+    def _material_items(text: str) -> list[str]:
+        """Extract verb-less G-bullets from a materials/equipment section."""
+        normalized_lines = re.sub(r"-\s*\n\s*", "", text or "")
+        heading = re.search(
+            r"(?:\d+(?:\.\d+)+\s+)?Materials and reagents\s*",
+            normalized_lines,
+            flags=re.IGNORECASE,
+        )
+        if not heading:
+            return []
+        section = normalized_lines[heading.end():]
+        section = re.split(
+            r"\n\s*(?:\d+(?:\.\d+)+\s+)?(?:Method|Procedure|Technique|"
+            r"Preparation|Examination|Principle)\b",
+            section,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        items = []
+        for raw in re.split(r"(?:^|\n)\s*G\s+", section):
+            item = normalize_space(raw).strip(" .;:")
+            if not item or len(item) > 260:
+                continue
+            if re.search(r"\b(?:and|or|with|if|of|the|a|an)$", item,
+                         flags=re.IGNORECASE):
+                continue
+            if item.count("(") != item.count(")"):
+                continue
+            items.append(item)
+        return items
+
+    @staticmethod
+    def compose_materials_answer(
+        rows: list[dict[str, Any]]
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Compose a complete materials list without requiring sentence verbs."""
+        best_row = None
+        best_items: list[str] = []
+        for row in rows:
+            items = GraphV2QA._material_items(row.get("text") or "")
+            if len(items) > len(best_items):
+                best_row = row
+                best_items = items
+        if not best_row or len(best_items) < 3:
+            return "", []
+        return (
+            "The required materials and reagents are: "
+            + "; ".join(best_items)
+            + ". [S1]",
+            [best_row],
+        )
+
+    @staticmethod
     def _complete_answer_passages(question: str, text: str) -> list[str]:
         """Return only local passages satisfying all explicit requirements."""
         passages = []
@@ -758,6 +840,11 @@ class GraphV2QA:
             ),
             "definition": re.compile(
                 r"\b(?:is|are|means?|defined as|refers? to|consists? of)\b",
+                flags=re.IGNORECASE,
+            ),
+            "materials": re.compile(
+                r"\b(?:materials?|reagents?|equipment|microscope|slides?|"
+                r"stains?|methanol|water|beakers?|pipettes?)\b",
                 flags=re.IGNORECASE,
             ),
         }
@@ -846,6 +933,16 @@ class GraphV2QA:
             subject_terms = set(content_terms(question)) & set(content_terms(passage))
             return bool(subject_terms)
         requested_type = question_type(question)
+        if requested_type == "materials":
+            item_count = normalized_passage.count(";") + 1
+            return (
+                item_count >= 3
+                and bool(re.search(
+                    r"\b(?:materials?|reagents?|equipment|required)\b",
+                    normalized_passage,
+                    flags=re.IGNORECASE,
+                ))
+            )
         direct = GraphV2QA._direct_answerability(question, passage)
         passage_terms = set(content_terms(passage))
         # Relation words describe the requested answer shape; they are not
@@ -875,10 +972,29 @@ class GraphV2QA:
         if paired_terms and not paired_terms.issubset(passage_terms):
             return False
         if (
+            paired_terms == {"thick", "thin"}
+            and re.search(
+                r"\b(?:prepar(?:e|ed|ation)|fix(?:ed|ation|ing)?)\b",
+                lowered_question,
+            )
+            and not GraphV2QA._paired_preparation_satisfied(passage)
+        ):
+            return False
+        if (
+            paired_terms == {"thick", "thin"}
+            and requested_type in {"procedure", "comparison"}
+            and re.search(
+                r"\b(?:prepar(?:e|ed|ation)|fix(?:ed|ation|ing)?)\b",
+                lowered_question,
+            )
+            and GraphV2QA._paired_preparation_satisfied(passage)
+        ):
+            return True
+        if (
             paired_terms
             and requested_type in {"purpose", "comparison"}
             and re.search(
-                r"\b(?:use|uses|used|purpose|function|role|detect|identify|"
+                r"\b(?:use|uses|used|purposes?|functions?|roles?|detect|identify|"
                 r"detection|identifying)\b",
                 lowered_question,
             )
@@ -914,7 +1030,7 @@ class GraphV2QA:
                     )
                     if not (thin_fixed and thick_not_fixed):
                         return False
-            if re.search(r"\b(?:use|uses|purpose|function)\b", lowered_question):
+            if re.search(r"\b(?:use|uses|purposes?|functions?|roles?)\b", lowered_question):
                 if not re.search(
                     r"\b(?:used for|used to|purpose|identify|identifying|detect|detection)\b",
                     passage,
@@ -946,6 +1062,23 @@ class GraphV2QA:
             "time": 0.45, "location": 0.45, "definition": 0.42,
         }
         return direct >= thresholds.get(requested_type, 0.55)
+
+    @staticmethod
+    def _paired_preparation_satisfied(passage: str) -> bool:
+        """Verify the distinct fixation instructions for thin and thick films."""
+        thin_fixed = re.search(
+            r"(?:\bfix(?:ed)?\b.{0,60}\bthin\b|"
+            r"\bthin\b.{0,100}\bfix(?:ed)?\b)",
+            passage,
+            flags=re.IGNORECASE,
+        )
+        thick_not_fixed = re.search(
+            r"(?:\bthick\b.{0,100}\bnot\b.{0,60}\bfix(?:ed)?\b|"
+            r"\bnot\b.{0,60}\bfix(?:ed)?\b.{0,100}\bthick\b)",
+            passage,
+            flags=re.IGNORECASE,
+        )
+        return bool(thin_fixed and thick_not_fixed)
 
     @staticmethod
     def _paired_role_mapping_satisfied(
@@ -1124,12 +1257,19 @@ class GraphV2QA:
     ) -> list[dict[str, Any]]:
         """Follow a numbered procedure across Chunk and page boundaries."""
         anchor_page = anchor.get("pdf_page")
+        anchor_id = str(anchor.get("chunk_id") or "")
         if not isinstance(anchor_page, int):
             return []
         window = [
             row for row in ranked_rows
             if isinstance(row.get("pdf_page"), int)
-            and row["pdf_page"] >= anchor_page
+            and (
+                row["pdf_page"] > anchor_page
+                or (
+                    row["pdf_page"] == anchor_page
+                    and str(row.get("chunk_id") or "") >= anchor_id
+                )
+            )
         ]
         window.sort(key=lambda row: (
             row.get("pdf_page") or 0,
@@ -1139,17 +1279,35 @@ class GraphV2QA:
         started = False
         highest_step = 0
         first_step_page = None
+        anchor_text = anchor.get("text") or ""
+        method_headings = list(re.finditer(
+            r"(?:^|\n)\s*(?:Rapid method|Staining .+? with .+? stain|"
+            r"Method for .+?)\s*(?:\n|$)",
+            anchor_text,
+            flags=re.IGNORECASE,
+        ))
+        step_markers = list(re.finditer(
+            r"(?<![\d.])\d{1,2}\.\s+", anchor_text
+        ))
+        wait_for_new_step_one = bool(
+            method_headings and step_markers
+            and method_headings[-1].start() > step_markers[-1].start()
+        )
         for row in window:
-            numbers = GraphV2QA._step_numbers(row.get("text") or "")
+            row_text = row.get("text") or ""
+            if wait_for_new_step_one and str(row.get("chunk_id") or "") == anchor_id:
+                continue
+            numbers = GraphV2QA._step_numbers(row_text)
             if not numbers:
                 continue
             page = row.get("pdf_page")
             if not started:
                 # Begin only at the start of a method, not in a random table.
-                if 1 not in numbers and min(numbers) > 2:
+                if 1 not in numbers:
                     continue
                 started = True
                 first_step_page = page
+                wait_for_new_step_one = False
             elif (
                 1 in numbers and highest_step >= 2
                 and isinstance(page, int)
@@ -1158,6 +1316,23 @@ class GraphV2QA:
             ):
                 # Numbering restarted on a later page: a new method began.
                 break
+            if started and highest_step >= 2:
+                boundary = re.search(
+                    r"(?:^|\n)\s*(?:Staining .+? with .+? stain|"
+                    r"Rapid method|Method for .+?)\s*(?:\n|$)",
+                    row_text,
+                    flags=re.IGNORECASE,
+                )
+                if boundary and re.search(
+                    r"(?<![\d.])1\.\s+", row_text[boundary.end():]
+                ):
+                    preceding = row_text[:boundary.start()].strip()
+                    if preceding:
+                        trimmed = dict(row)
+                        trimmed["text"] = preceding
+                        if GraphV2QA._step_numbers(preceding):
+                            chain.append(trimmed)
+                    break
             if min(numbers) > highest_step + 1 and highest_step:
                 continue
             chain.append(row)
@@ -1194,6 +1369,32 @@ class GraphV2QA:
         ]
 
     @staticmethod
+    def _appearance_scope(question: str, text: str) -> str:
+        """Restrict morphology/quality evidence to the requested film section."""
+        lowered = normalize_space(question).lower()
+        target = "thick" if "thick" in lowered else (
+            "thin" if "thin" in lowered else ""
+        )
+        if not target:
+            return text
+        heading = re.search(
+            rf"(?:^|\n)\s*{target}\s+blood films\s*(?:\n|$)",
+            text or "",
+            flags=re.IGNORECASE,
+        )
+        if not heading:
+            return text
+        section = (text or "")[heading.end():]
+        section = re.split(
+            r"\n\s*(?:Thin blood films|Thick blood films|Parasite density|"
+            r"Materials and reagents|Method|Procedure)\s*(?:\n|$)",
+            section,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        return f"{target.title()} blood films\n\n{section}"
+
+    @staticmethod
     def select_consistent_candidates(
         question: str, ranked_rows: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -1207,6 +1408,26 @@ class GraphV2QA:
             return []
 
         requested_type = question_type(question)
+
+        if requested_type == "materials":
+            material_rows = [
+                row for row in grounded
+                if GraphV2QA._material_items(row.get("text") or "")
+            ]
+            material_rows.sort(
+                key=lambda row: (
+                    len(GraphV2QA._material_items(row.get("text") or "")),
+                    row.get("score", 0.0),
+                    row.get("keyword_coverage", 0.0),
+                ),
+                reverse=True,
+            )
+            for material_row in material_rows:
+                answer, sources = GraphV2QA.compose_materials_answer(
+                    [material_row]
+                )
+                if answer and sources:
+                    return [material_row]
 
         if requested_type == "procedure":
             exact_rows = [row for row in grounded if row.get("exact_phrase")]
@@ -1518,7 +1739,11 @@ class GraphV2QA:
         procedure_question = requested_type == "procedure"
         appearance_question = any(
             phrase in lowered_question
-            for phrase in ("appearance", "look like", "microscopic appearance", "show")
+            for phrase in (
+                "appearance", "look like", "microscopic appearance", "show",
+                "characteristic", "criteria", "correctly prepared",
+                "satisfactory",
+            )
         )
         if procedure_question:
             procedure_answer, procedure_rows = (
@@ -1526,12 +1751,18 @@ class GraphV2QA:
             )
             if procedure_answer:
                 return procedure_answer, procedure_rows
+        if requested_type == "materials":
+            return GraphV2QA.compose_materials_answer(rows)
 
         descriptive_terms = {
             "appear", "appearance", "shape", "size", "colour", "color",
             "spore", "spores", "mycelium", "filament", "filaments",
             "round", "rectangular", "oval", "branch", "branches",
             "seen", "visible", "stained", "unstained",
+            "clean", "debris", "chromatin", "cytoplasm", "purple",
+            "nuclei", "nucleus", "dots", "lysed", "granules",
+            "smooth", "ragged", "line", "lines", "hole", "holes",
+            "greasy", "long", "thick", "importance", "morphology",
         }
         action_pattern = re.compile(
             r"\b(stain|prepare|add|mix|wash|dry|fix|place|transfer|"
@@ -1557,6 +1788,10 @@ class GraphV2QA:
         candidates = []
         for row in rows:
             row_text = row.get("text") or ""
+            if appearance_question:
+                row_text = GraphV2QA._appearance_scope(
+                    question, row_text
+                )
             if len(facets) > 1:
                 evidence_units = GraphV2QA._evidence_segments(row_text)
                 evidence_units.extend(
@@ -1638,7 +1873,28 @@ class GraphV2QA:
                     and row.get("keyword_overlap", 0) >= 2
                     and row.get("keyword_coverage", 0.0) >= 0.40
                 )
-                if overlap == 0 and not continuation:
+                words = set(re.findall(r"[a-z]+", sentence.lower()))
+                description_overlap = len(words & descriptive_terms)
+                descriptive_continuation = bool(
+                    appearance_question
+                    and description_overlap > 0
+                    and row.get("keyword_overlap", 0) >= 2
+                )
+                if (
+                    descriptive_continuation
+                    and "thick" in query_terms
+                    and "thin" in sentence_terms
+                    and "thick" not in sentence_terms
+                ):
+                    descriptive_continuation = False
+                if (
+                    descriptive_continuation
+                    and "thin" in query_terms
+                    and "thick" in sentence_terms
+                    and "thin" not in sentence_terms
+                ):
+                    descriptive_continuation = False
+                if overlap == 0 and not continuation and not descriptive_continuation:
                     continue
                 facet_answerability = [
                     GraphV2QA._direct_answerability(facet, sentence)
@@ -1650,10 +1906,13 @@ class GraphV2QA:
                     and len(
                         set(content_terms(facet)) & sentence_terms
                     ) >= (
-                        1 if re.search(
-                            r"\b(?:characteristics?|criteria|features?|signs?)\b",
-                            facet,
-                            flags=re.IGNORECASE,
+                        1 if (
+                            question_type(facet) == "reason"
+                            or re.search(
+                                r"\b(?:characteristics?|criteria|features?|signs?)\b",
+                                facet,
+                                flags=re.IGNORECASE,
+                            )
                         ) else min(2, len(set(content_terms(facet))))
                     )
                 }
@@ -1666,6 +1925,8 @@ class GraphV2QA:
                     ],
                     default=0.0,
                 )
+                if descriptive_continuation:
+                    direct_answerability = max(direct_answerability, 0.55)
                 minimum_direct = 0.38 if len(facets) > 1 else (
                     0.58 if requested_type == "reason" else 0.38
                 )
@@ -1714,8 +1975,6 @@ class GraphV2QA:
                     # single item or an unrelated sentence containing "used".
                     score += min(sentence.count(";") * 0.22, 0.88)
                 if appearance_question:
-                    words = set(re.findall(r"[a-z]+", sentence.lower()))
-                    description_overlap = len(words & descriptive_terms)
                     if description_overlap == 0:
                         continue
                     score += min(description_overlap * 0.10, 0.40)
