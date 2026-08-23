@@ -694,6 +694,60 @@ class GraphV2QA:
         return entity_overlap > 0 or text_overlap >= 2
 
     @staticmethod
+    def _step_numbers(text: str) -> list[int]:
+        return [
+            int(value) for value in re.findall(
+                r"(?<![\d.])(\d{1,2})\.\s+", text or ""
+            )
+        ]
+
+    @staticmethod
+    def _procedure_chain(
+        anchor: dict[str, Any], ranked_rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Follow a numbered procedure across Chunk and page boundaries."""
+        anchor_page = anchor.get("pdf_page")
+        if not isinstance(anchor_page, int):
+            return []
+        window = [
+            row for row in ranked_rows
+            if isinstance(row.get("pdf_page"), int)
+            and anchor_page <= row["pdf_page"] <= anchor_page + 4
+        ]
+        window.sort(key=lambda row: (
+            row.get("pdf_page") or 0,
+            row.get("chunk_id") or "",
+        ))
+        chain = []
+        started = False
+        highest_step = 0
+        first_step_page = None
+        for row in window:
+            numbers = GraphV2QA._step_numbers(row.get("text") or "")
+            if not numbers:
+                continue
+            page = row.get("pdf_page")
+            if not started:
+                # Begin only at the start of a method, not in a random table.
+                if 1 not in numbers and min(numbers) > 2:
+                    continue
+                started = True
+                first_step_page = page
+            elif (
+                1 in numbers and highest_step >= 2
+                and isinstance(page, int)
+                and isinstance(first_step_page, int)
+                and page > first_step_page
+            ):
+                # Numbering restarted on a later page: a new method began.
+                break
+            if min(numbers) > highest_step + 1 and highest_step:
+                continue
+            chain.append(row)
+            highest_step = max(highest_step, max(numbers))
+        return chain
+
+    @staticmethod
     def _evidence_segments(text: str) -> list[str]:
         cleaned = text or ""
         section_names = (
@@ -734,6 +788,19 @@ class GraphV2QA:
             return []
 
         requested_type = question_type(question)
+
+        if requested_type == "procedure":
+            exact_rows = [row for row in grounded if row.get("exact_phrase")]
+            anchor = exact_rows[0] if exact_rows else max(
+                grounded,
+                key=lambda row: (
+                    row.get("answerability", 0.0),
+                    row.get("score", 0.0),
+                ),
+            )
+            chain = GraphV2QA._procedure_chain(anchor, ranked_rows)
+            if chain:
+                return chain[:MAX_SYNTHESIS_CHUNKS]
 
         # A locally complete passage is stronger than any combination of
         # partial passages. This decision must happen before page anchoring.
@@ -894,8 +961,20 @@ class GraphV2QA:
                 cleaned = normalize_space(cleaned)
                 complete = bool(re.search(r"[.!?)]$", cleaned))
                 incomplete = bool(incomplete_ending.search(cleaned.rstrip(".,;:")))
+                fragment_ending = bool(re.search(
+                    r"(?:\(\s*Fig\.|\bFig\.)$",
+                    cleaned,
+                    flags=re.IGNORECASE,
+                ))
+                unbalanced_parenthesis = (
+                    cleaned.count("(") != cleaned.count(")")
+                )
+                complete = (
+                    complete and not incomplete and not fragment_ending
+                    and not unbalanced_parenthesis
+                )
                 quality = (
-                    (40.0 if complete and not incomplete else -40.0)
+                    (40.0 if complete else -40.0)
                     + min(len(cleaned), 500) * 0.03
                     - max(len(cleaned) - 650, 0) * 0.20
                     - figure_noise * 18.0
@@ -906,7 +985,7 @@ class GraphV2QA:
                     "row": row,
                     "quality": quality,
                     "figure_noise": figure_noise,
-                    "complete": complete and not incomplete,
+                    "complete": complete,
                 })
 
         chosen = []
@@ -930,7 +1009,7 @@ class GraphV2QA:
         for item in chosen:
             chunk_id = item["row"].get("chunk_id")
             if chunk_id not in source_number:
-                if len(source_rows) >= MAX_EVIDENCE_CHUNKS:
+                if len(source_rows) >= MAX_SYNTHESIS_CHUNKS:
                     continue
                 source_number[chunk_id] = len(source_rows) + 1
                 source_rows.append(item["row"])
@@ -1475,7 +1554,7 @@ class GraphV2QA:
         } for row in image_rows]
         chunk_ids = [
             str(source.get("chunk_id"))
-            for source in sources[:MAX_EVIDENCE_CHUNKS]
+            for source in sources[:MAX_SYNTHESIS_CHUNKS]
             if source.get("chunk_id")
         ]
         cypher_ids = ", ".join(
@@ -1552,39 +1631,58 @@ class GraphV2QA:
                 [], [], chunks_scanned, 0,
             )
 
-        synthesis_mode = "extractive_fallback"
-        final_answer = ""
-        answer_rows: list[dict[str, Any]] = []
-        try:
-            generated_answer = self.synthesize_answer(
-                question, consistent
+        # First build the deterministic, source-only answer. When retrieval
+        # already contains a complete local passage (or a complete numbered
+        # procedure), running the local generator and NLI verifier adds CPU
+        # latency without adding evidence and often ends in the same fallback.
+        extract_answer, extract_rows = self.compose_extract_answer(
+            question, consistent
+        )
+        requested_type = question_type(question)
+        direct_complete = bool(
+            extract_answer and extract_rows
+            and (
+                requested_type == "procedure"
+                or len(consistent) == 1
+                or any(row.get("requirements_complete") for row in consistent)
             )
-            print(f"[SYNTHESIS] Generated: {generated_answer}")
-            verified, diagnostic = self.verify_synthesis(
-                generated_answer, consistent
-            )
-            print(
-                f"[SYNTHESIS] Verified={verified}; "
-                f"diagnostic={diagnostic}"
-            )
-            if verified:
-                final_answer = generated_answer
-                answer_rows = self.best_display_sources(
-                    question, final_answer, consistent
+        )
+        synthesis_mode = (
+            "verified_extract" if direct_complete
+            else "extractive_fallback"
+        )
+        final_answer = extract_answer if direct_complete else ""
+        answer_rows: list[dict[str, Any]] = (
+            extract_rows if direct_complete else []
+        )
+
+        if not direct_complete:
+            try:
+                generated_answer = self.synthesize_answer(
+                    question, consistent
                 )
-                synthesis_mode = "local_model_verified"
-        except Exception as error:
-            # Model or verifier failure must never expose an unchecked answer.
-            print(
-                "[SYNTHESIS] Failure: "
-                f"{type(error).__name__}: {error}"
-            )
-            final_answer = ""
+                print(f"[SYNTHESIS] Generated: {generated_answer}")
+                verified, diagnostic = self.verify_synthesis(
+                    generated_answer, consistent
+                )
+                print(
+                    f"[SYNTHESIS] Verified={verified}; "
+                    f"diagnostic={diagnostic}"
+                )
+                if verified:
+                    final_answer = generated_answer
+                    answer_rows = self.best_display_sources(
+                        question, final_answer, consistent
+                    )
+                    synthesis_mode = "local_model_verified"
+            except Exception as error:
+                # Model or verifier failure must never expose an unchecked answer.
+                print(
+                    "[SYNTHESIS] Failure: "
+                    f"{type(error).__name__}: {error}"
+                )
 
         if not final_answer:
-            extract_answer, extract_rows = self.compose_extract_answer(
-                question, consistent
-            )
             if not extract_answer or not extract_rows:
                 return self.response(
                     "not_found", question,
@@ -1593,7 +1691,7 @@ class GraphV2QA:
                     synthesis_mode="verification_failed",
                 )
             final_answer = extract_answer
-            answer_rows = extract_rows[:MAX_EVIDENCE_CHUNKS]
+            answer_rows = extract_rows
 
         sources = [
             serializable_source({
@@ -1601,7 +1699,7 @@ class GraphV2QA:
                 "evidence": row.get("text"),
                 "confidence": row.get("score"),
             })
-            for row in answer_rows[:MAX_EVIDENCE_CHUNKS]
+            for row in answer_rows[:MAX_SYNTHESIS_CHUNKS]
         ]
         chunk_ids = [
             row["chunk_id"] for row in answer_rows[:MAX_EVIDENCE_CHUNKS]
