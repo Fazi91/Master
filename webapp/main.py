@@ -109,6 +109,16 @@ def normalize_space(value: str) -> str:
     return " ".join((value or "").split())
 
 
+def clean_answer_text(value: str) -> str:
+    """Remove PDF layout markers without changing the source meaning."""
+    cleaned = normalize_space(value)
+    # The manual uses a standalone capital G as a rendered bullet marker.
+    cleaned = re.sub(r"^(?:G\s+)+", "", cleaned)
+    cleaned = re.sub(r"\.?\s+G\s+(?=[A-Z])", "; ", cleaned)
+    cleaned = re.sub(r"\s*;\s*", "; ", cleaned)
+    return cleaned.strip(" ;")
+
+
 def normalize_token(token: str) -> str:
     token = token.lower()
     replacements = {
@@ -118,6 +128,7 @@ def normalize_token(token: str) -> str:
         "measurements": "measurement", "organisms": "organism",
         "parasites": "parasite", "bacteria": "bacterium",
         "diagnostic": "diagnosis",
+        "important": "importance",
     }
     if token in replacements:
         return replacements[token]
@@ -177,6 +188,18 @@ def paired_subject_terms(question: str) -> set[str]:
     return {normalize_token(match.group(1)), normalize_token(match.group(2))} if match else set()
 
 
+def question_facets(question: str) -> list[str]:
+    """Split an explicitly compound question into independently required parts."""
+    normalized = normalize_space(question).strip(" ?.!")
+    parts = re.split(
+        r"\s*(?:,\s*)?\band\s+(?=(?:why|how|what|when|where|which|who)\b)",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    facets = [part.strip(" ,;:?.!") for part in parts if part.strip(" ,;:?.!")]
+    return facets if len(facets) > 1 else [normalized]
+
+
 def answer_plan(question: str) -> dict[str, Any]:
     """Plan answer cardinality and stopping rules from the question form."""
     lowered = normalize_space(question).lower()
@@ -191,6 +214,12 @@ def answer_plan(question: str) -> dict[str, Any]:
         r"\b(?:explain|describe|discuss|why|how does|how do)\b",
         lowered,
     ))
+    compound = len(question_facets(question)) > 1
+    if compound:
+        return {
+            "mode": "multi", "max_claims": 8,
+            "stop_on_complete": False, "required_facets": len(question_facets(question)),
+        }
     if requested_type == "procedure":
         return {"mode": "procedure", "max_claims": 8, "stop_on_complete": False}
     if requested_type in {"time", "comparison"} or explicit_multi:
@@ -483,7 +512,10 @@ class GraphV2QA:
         """Create local answer units without joining unrelated paragraphs."""
         segments = GraphV2QA._evidence_segments(text)
         units = list(segments)
-        if question_type(question) in {"reason", "comparison"}:
+        if (
+            question_type(question) in {"reason", "comparison"}
+            or len(question_facets(question)) > 1
+        ):
             units.extend(
                 f"{segments[index]} {segments[index + 1]}"
                 for index in range(len(segments) - 1)
@@ -524,7 +556,8 @@ class GraphV2QA:
             ),
             "reason": re.compile(
                 r"\b(?:because|therefore|thus|hence|due to|so that|"
-                r"in order to|to (?:permit|prevent|avoid|ensure|allow))\b",
+                r"in order to|results? in|leads? to|will give|"
+                r"make it impossible|to (?:permit|prevent|avoid|ensure|allow))\b",
                 flags=re.IGNORECASE,
             ),
             "procedure": re.compile(
@@ -587,6 +620,30 @@ class GraphV2QA:
     @staticmethod
     def _requirements_satisfied(question: str, passage: str) -> bool:
         """Check completeness for the relation explicitly requested."""
+        facets = question_facets(question)
+        if len(facets) > 1:
+            # A compound question is complete only if the same evidence
+            # passage answers every explicit clause, not merely one of them.
+            return all(
+                GraphV2QA._requirements_satisfied(facet, passage)
+                for facet in facets
+            )
+        lowered_question = normalize_space(question).lower()
+        if re.search(
+            r"\b(?:characteristics?|criteria|features?|signs?)\b",
+            lowered_question,
+        ):
+            quality_markers = re.findall(
+                r"\b(?:characteristics?|criteria|features?|satisfactory|"
+                r"should|must|smooth|ragged|lines?|holes?|"
+                r"too\s+(?:long|thick|thin)|free from|appearance)\b",
+                passage,
+                flags=re.IGNORECASE,
+            )
+            if len({marker.lower() for marker in quality_markers}) < 2:
+                return False
+            subject_terms = set(content_terms(question)) & set(content_terms(passage))
+            return bool(subject_terms)
         requested_type = question_type(question)
         direct = GraphV2QA._direct_answerability(question, passage)
         passage_terms = set(content_terms(passage))
@@ -595,7 +652,7 @@ class GraphV2QA:
             return False
         relation_patterns = {
             "purpose": r"\b(?:purpose|used for|used to|serves? to|function(?:s)? as)\b",
-            "reason": r"\b(?:because|therefore|thus|hence|due to|so that|in order to|to (?:permit|prevent|avoid|ensure|allow))\b",
+            "reason": r"\b(?:because|therefore|thus|hence|due to|so that|in order to|results? in|leads? to|will give|make it impossible|to (?:permit|prevent|avoid|ensure|allow))\b",
             "comparison": r"\b(?:whereas|while|unlike|compared|difference|both)\b",
             "time": r"\b(?:when|before|after|during|for\s+\d|minutes?|hours?|days?)\b",
             "location": r"\b(?:inside|within|located|found|present|occurs?)\b",
@@ -768,8 +825,10 @@ class GraphV2QA:
         # blank-line paragraph boundaries.
         cleaned = re.sub(r"(?<!\n)\n(?!\n)", " ", cleaned)
         cleaned = re.sub(r"\.{2,}", ".", cleaned)
+        # Do not split a sentence immediately after the figure abbreviation.
+        cleaned = re.sub(r"\bFig\.", "Fig§", cleaned, flags=re.IGNORECASE)
         return [
-            normalize_space(part)
+            normalize_space(part).replace("Fig§", "Fig.")
             for part in re.split(r"(?<=[.!?;])\s+|\n{2,}", cleaned)
             if normalize_space(part)
         ]
@@ -826,24 +885,45 @@ class GraphV2QA:
             # discard a correct distant page merely because another page had
             # a higher initial similarity score.
             query_terms = set(content_terms(question))
+            facets = question_facets(question)
             covered_terms: set[str] = set()
+            covered_facets: set[int] = set()
             selected: list[dict[str, Any]] = []
             remaining = []
             for row in grounded[:80]:
-                passages = GraphV2QA._focused_answer_passages(
-                    question, row.get("text") or "", limit=2
-                )
+                row_text = row.get("text") or ""
+                facet_passages = [
+                    GraphV2QA._focused_answer_passages(
+                        facet, row_text, limit=2
+                    )
+                    for facet in facets
+                ]
+                facet_coverage = {
+                    index for index, passages_for_facet
+                    in enumerate(facet_passages)
+                    if passages_for_facet and any(
+                        GraphV2QA._requirements_satisfied(facets[index], passage)
+                        for passage in passages_for_facet
+                    )
+                }
+                passages = []
+                for passages_for_facet in facet_passages:
+                    for passage in passages_for_facet:
+                        if passage not in passages:
+                            passages.append(passage)
                 passage_terms = set(content_terms(" ".join(passages)))
                 contribution = query_terms & passage_terms
-                if passages and contribution:
+                if passages and (contribution or facet_coverage):
                     item = dict(row)
                     item["evidence_passages"] = passages
                     item["requirement_terms"] = contribution
+                    item["requirement_facets"] = facet_coverage
                     remaining.append(item)
 
             while remaining and len(selected) < MAX_SYNTHESIS_CHUNKS:
                 remaining.sort(
                     key=lambda row: (
+                        len(row["requirement_facets"] - covered_facets),
                         len(row["requirement_terms"] - covered_terms),
                         row.get("answerability", 0.0),
                         row.get("score", 0.0),
@@ -852,11 +932,21 @@ class GraphV2QA:
                 )
                 best = remaining.pop(0)
                 new_terms = best["requirement_terms"] - covered_terms
-                if not new_terms:
+                new_facets = best["requirement_facets"] - covered_facets
+                if not new_terms and not new_facets:
                     break
                 selected.append(best)
                 covered_terms.update(new_terms)
-                if query_terms and len(covered_terms) / len(query_terms) >= 0.80:
+                covered_facets.update(new_facets)
+                if (
+                    len(facets) > 1
+                    and len(covered_facets) == len(facets)
+                ):
+                    break
+                if (
+                    len(facets) == 1 and query_terms
+                    and len(covered_terms) / len(query_terms) >= 0.80
+                ):
                     break
             if selected:
                 return selected
@@ -958,7 +1048,7 @@ class GraphV2QA:
                     raw_step,
                     flags=re.IGNORECASE,
                 )
-                cleaned = normalize_space(cleaned)
+                cleaned = clean_answer_text(cleaned)
                 complete = bool(re.search(r"[.!?)]$", cleaned))
                 incomplete = bool(incomplete_ending.search(cleaned.rstrip(".,;:")))
                 fragment_ending = bool(re.search(
@@ -1051,6 +1141,7 @@ class GraphV2QA:
             return "", []
 
         query_terms = set(content_terms(question))
+        facets = question_facets(question)
         lowered_question = question.lower()
         requested_type = question_type(question)
         plan = answer_plan(question)
@@ -1095,10 +1186,29 @@ class GraphV2QA:
 
         candidates = []
         for row in rows:
-            evidence_units = GraphV2QA._local_evidence_units(
-                question, row.get("text") or ""
-            )
+            row_text = row.get("text") or ""
+            if len(facets) > 1:
+                evidence_units = GraphV2QA._evidence_segments(row_text)
+                # Join only an explanatory statement to its immediately
+                # following consequence. Do not create overlapping pairs for
+                # list/criteria clauses, which caused duplicated answers.
+                if any(question_type(facet) == "reason" for facet in facets):
+                    evidence_units.extend(
+                        f"{evidence_units[index]} {evidence_units[index + 1]}"
+                        for index in range(len(evidence_units) - 1)
+                        if re.search(
+                            r"\b(?:because|therefore|results? in|leads? to|"
+                            r"will give|make it impossible)\b",
+                            evidence_units[index + 1],
+                            flags=re.IGNORECASE,
+                        )
+                    )
+            else:
+                evidence_units = GraphV2QA._local_evidence_units(
+                    question, row_text
+                )
             for position, sentence in enumerate(evidence_units):
+                sentence = clean_answer_text(sentence)
                 if not 30 <= len(sentence) <= 700:
                     continue
                 if re.search(
@@ -1134,10 +1244,35 @@ class GraphV2QA:
                 )
                 if overlap == 0 and not continuation:
                     continue
-                direct_answerability = GraphV2QA._direct_answerability(
-                    question, sentence
+                facet_answerability = [
+                    GraphV2QA._direct_answerability(facet, sentence)
+                    for facet in facets
+                ]
+                facet_supported = {
+                    index for index, facet in enumerate(facets)
+                    if GraphV2QA._requirements_satisfied(facet, sentence)
+                    and len(
+                        set(content_terms(facet)) & sentence_terms
+                    ) >= (
+                        1 if re.search(
+                            r"\b(?:characteristics?|criteria|features?|signs?)\b",
+                            facet,
+                            flags=re.IGNORECASE,
+                        ) else min(2, len(set(content_terms(facet))))
+                    )
+                }
+                if len(facets) > 1 and not facet_supported:
+                    continue
+                direct_answerability = max(
+                    [
+                        max(score, 0.65) if index in facet_supported else score
+                        for index, score in enumerate(facet_answerability)
+                    ],
+                    default=0.0,
                 )
-                minimum_direct = 0.58 if requested_type == "reason" else 0.38
+                minimum_direct = 0.38 if len(facets) > 1 else (
+                    0.58 if requested_type == "reason" else 0.38
+                )
                 if direct_answerability < minimum_direct:
                     continue
                 coverage = overlap / max(len(query_terms), 1)
@@ -1165,6 +1300,7 @@ class GraphV2QA:
                     "row": row,
                     "position": position,
                     "covered_terms": query_terms & sentence_terms,
+                    "covered_facets": facet_supported,
                     "requirements_complete": (
                         GraphV2QA._requirements_satisfied(
                             question, sentence
@@ -1182,6 +1318,7 @@ class GraphV2QA:
         seen_sentences = set()
         used_chunk_ids = set()
         covered_terms: set[str] = set()
+        covered_facets: set[int] = set()
         for item in candidates:
             full_sentence_key = item["sentence"].lower()
             sentence_key = full_sentence_key[:220]
@@ -1208,7 +1345,18 @@ class GraphV2QA:
             seen_sentences.add(sentence_key)
             used_chunk_ids.add(chunk_id)
             covered_terms.update(item["covered_terms"])
+            covered_facets.update(item["covered_facets"])
             if item["requirements_complete"] and plan["stop_on_complete"]:
+                break
+            exhaustive_compound = any(re.search(
+                r"\b(?:characteristics?|criteria|features?|signs?|list|all)\b",
+                facet,
+                flags=re.IGNORECASE,
+            ) for facet in facets)
+            if (
+                len(facets) > 1 and not exhaustive_compound
+                and len(covered_facets) == len(facets)
+            ):
                 break
             if len(selected) == plan["max_claims"]:
                 break
@@ -1641,6 +1789,7 @@ class GraphV2QA:
         requested_type = question_type(question)
         direct_complete = bool(
             extract_answer and extract_rows
+            and self._requirements_satisfied(question, extract_answer)
             and (
                 requested_type == "procedure"
                 or len(consistent) == 1
