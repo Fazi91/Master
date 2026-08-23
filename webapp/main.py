@@ -171,6 +171,24 @@ def question_type(question: str) -> str:
     """Return the kind of evidence an answer must contain."""
     lowered = normalize_space(question).lower()
     if re.search(
+        r"^how\s+(?:is|are|was|were)\b.+\b"
+        r"(?:determined|estimated|calculated|measured|counted)\b",
+        lowered,
+    ):
+        return "fact"
+    if re.search(r"^how should\b.+\bbe treated\b", lowered) and not re.search(
+        r"\b(?:method|procedure|steps?|stained|prepared)\b", lowered
+    ):
+        return "fact"
+    if re.search(r"^when\b.+,\s*how\s+can\b", lowered) and not re.search(
+        r"\b(?:method|procedure|steps?|how should .+ be stained)\b", lowered
+    ):
+        return "fact"
+    if re.search(r"^when\b.+,\s*how\b", lowered):
+        return "procedure"
+    if re.search(r"^what\s+(?:precautions?|rules?|requirements?)\b", lowered):
+        return "fact"
+    if re.search(
         r"\b(?:materials?|reagents?|equipment|supplies)\b.*\b(?:required|"
         r"needed|necessary|used)\b|\bwhat (?:materials?|reagents?|"
         r"equipment|supplies)\b",
@@ -241,6 +259,22 @@ def paired_subject_terms(question: str) -> set[str]:
 def question_facets(question: str) -> list[str]:
     """Split an explicitly compound question into independently required parts."""
     normalized = normalize_space(question).strip(" ?.!")
+    including_match = re.match(
+        r"^(.*?)(?:,\s*)?\bincluding\s+(.+)$",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if including_match:
+        base = including_match.group(1).strip(" ,")
+        dimensions = re.split(
+            r"\s*(?:,\s*|\band\b)\s*",
+            including_match.group(2),
+            flags=re.IGNORECASE,
+        )
+        dimensions = [item.strip() for item in dimensions if item.strip()]
+        if len(dimensions) > 1:
+            return [f"{base}, specifically {dimension}"
+                    for dimension in dimensions]
     # Preserve the compared subjects while turning requested dimensions into
     # independent requirements, e.g. "differ in preparation and use".
     dimension_match = re.match(
@@ -297,6 +331,13 @@ def question_facets(question: str) -> list[str]:
         parts[1] = f"{parts[0]}, {parts[1]}"
         parts = parts[1:]
     facets = [part.strip(" ,;:?.!") for part in parts if part.strip(" ,;:?.!")]
+    if (
+        len(facets) > 1
+        and facets[0].lower().startswith("when ")
+        and re.match(r"^(?:how|what|which)\b", facets[1], re.IGNORECASE)
+    ):
+        facets[1] = f"{facets[0]}, {facets[1]}"
+        facets = facets[1:]
     paired = paired_subject_terms(normalized)
     if paired and len(facets) > 1:
         paired_text = " and ".join(sorted(paired))
@@ -307,6 +348,40 @@ def question_facets(question: str) -> list[str]:
                 facet,
                 flags=re.IGNORECASE,
             )
+            for facet in facets[1:]
+        ]
+    shared_subject = re.search(
+        r"\b(?:(?:thick|thin)\s+)?blood[- ]films?\b",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if shared_subject and len(facets) > 1:
+        subject_text = shared_subject.group(0).replace("-", " ")
+        contextualized = [facets[0]]
+        for facet in facets[1:]:
+            updated = re.sub(
+                r"\bfrom it\b", f"from the {subject_text}",
+                facet, flags=re.IGNORECASE,
+            )
+            if (
+                not re.search(r"\bblood[- ]films?\b", updated, re.IGNORECASE)
+                and re.search(
+                    r"\b(?:specimen|preparation|fixation|staining|drying|"
+                    r"washing|density)\b",
+                    updated,
+                    re.IGNORECASE,
+                )
+            ):
+                updated = f"{updated} for {subject_text}"
+            contextualized.append(updated)
+        facets = contextualized
+    condition = re.match(r"^(when\s+.+?),\s*(?:how|what|which)\b", normalized,
+                         flags=re.IGNORECASE)
+    if condition and len(facets) > 1:
+        condition_text = condition.group(1)
+        facets = [facets[0]] + [
+            facet if condition_text.lower() in facet.lower()
+            else f"{facet} {condition_text}"
             for facet in facets[1:]
         ]
     return facets if len(facets) > 1 else [normalized]
@@ -331,6 +406,10 @@ def answer_plan(question: str) -> dict[str, Any]:
         return {"mode": "procedure", "max_claims": 24, "stop_on_complete": False}
     if requested_type == "materials":
         return {"mode": "multi", "max_claims": 30, "stop_on_complete": False}
+    if re.search(
+        r"\b(?:characteristics?|criteria|features?|signs?)\b", lowered
+    ):
+        return {"mode": "multi", "max_claims": 10, "stop_on_complete": False}
     if requested_type in {"time", "comparison"} or explicit_multi:
         return {"mode": "multi", "max_claims": 6, "stop_on_complete": False}
     if requested_type in {"purpose", "reason"}:
@@ -365,6 +444,44 @@ def explicit_list_request(question: str) -> bool:
         r"advantages|disadvantages|differences|features|steps)\b",
         lowered,
     ))
+
+
+def execution_facets(question: str) -> list[tuple[str, str]]:
+    """Return labelled, independently executable facets.
+
+    Procedural comparisons are executed by side rather than by dimension:
+    each method/subject is retrieved completely first, then the two verified
+    procedures are presented together for comparison.
+    """
+    lowered = normalize_space(question).lower()
+    paired = paired_subject_terms(question)
+    if (
+        question_type(question) == "comparison"
+        and paired == {"thick", "thin"}
+        and "field" in lowered
+        and re.search(r"\b(?:stain|procedure|method)\b", lowered)
+    ):
+        return [
+            ("Thick-film Field procedure",
+             "How should a thick blood film be stained with Field stain?"),
+            ("Thin-film Field procedure",
+             "How should a thin blood film be stained with Field stain?"),
+        ]
+    method_pair = re.search(
+        r"\b(?:the\s+)?([a-z-]+)(?:\s+[a-z-]+){0,3}\s+method\s+"
+        r"differ(?:s)?\s+from\s+(?:the\s+)?([a-z-]+)\s+method\b",
+        lowered,
+    )
+    if method_pair:
+        first, second = method_pair.group(1), method_pair.group(2)
+        stain = "Giemsa " if "giemsa" in lowered else ""
+        return [
+            (f"{first.title()} method",
+             f"How should blood films be stained using the {first} {stain}method?"),
+            (f"{second.title()} method",
+             f"How should blood films be stained using the {second} {stain}method?"),
+        ]
+    return [("", facet) for facet in question_facets(question)]
 
 
 def small_talk_answer(text: str) -> str | None:
@@ -663,6 +780,11 @@ class GraphV2QA:
         if (
             question_type(question) in {"reason", "comparison"}
             or len(question_facets(question)) > 1
+            or re.search(
+                r"\b(?:precautions?|prevent|avoid)\b",
+                question,
+                flags=re.IGNORECASE,
+            )
         ):
             units.extend(
                 f"{segments[index]} {segments[index + 1]}"
@@ -913,6 +1035,55 @@ class GraphV2QA:
             )
         lowered_question = normalize_space(question).lower()
         normalized_passage = normalize_space(passage)
+        if "parasite density" in lowered_question and re.search(
+            r"\b(?:determin|estimat|calculat|measur|count)",
+            lowered_question,
+        ):
+            if not re.search(
+                r"\b(?:two methods?|parasites? per (?:micro)?litre|"
+                r"standard (?:number|concentration) of leukocytes|"
+                r"plus system|multiply|divid|formula)\b",
+                normalized_passage,
+                flags=re.IGNORECASE,
+            ):
+                return False
+        if re.search(r"\b(?:heat fixation|heat-fixed)\b", lowered_question):
+            if not re.search(
+                r"\bavoid overheating\b|\botherwise\b.{0,80}\bheat-fixed\b",
+                normalized_passage,
+                flags=re.IGNORECASE,
+            ):
+                return False
+        if (
+            "urgent" in lowered_question
+            and "thin" in lowered_question
+            and re.search(r"\b(?:treated|fix|fixed|fixation)\b", lowered_question)
+        ):
+            if not (
+                re.search(r"\bthin film\b", normalized_passage, re.IGNORECASE)
+                and re.search(r"\bfix\b|\bfixed\b", normalized_passage, re.IGNORECASE)
+                and re.search(r"\bmethanol\b", normalized_passage, re.IGNORECASE)
+            ):
+                return False
+        if re.search(
+            r"\b1\s*[–—-]\s*2\s+hours?\b", lowered_question,
+            flags=re.IGNORECASE,
+        ):
+            delayed_rule_supported = (
+                re.search(
+                    r"\b1\s*[–—-]\s*2\s+hours?\b",
+                    normalized_passage,
+                    flags=re.IGNORECASE,
+                )
+                and re.search(
+                    r"\bEDTA dipotassium salt solution\b",
+                    normalized_passage,
+                    flags=re.IGNORECASE,
+                )
+            )
+            if not delayed_rule_supported:
+                return False
+            return True
         # A colon-ended lead-in announces an answer but contains none of its
         # payload.  It can only be verified after the following list is joined.
         if normalized_passage.endswith(":"):
@@ -921,6 +1092,18 @@ class GraphV2QA:
             r"\b(?:characteristics?|criteria|features?|signs?)\b",
             lowered_question,
         ):
+            if re.search(
+                r"\b(?:satisfactory|well-spread|proper spreading)\b",
+                lowered_question,
+            ):
+                preparation_markers = re.findall(
+                    r"\b(?:no lines?|smooth at the end|not ragged|"
+                    r"not too long|not too thick|no holes?|must not contain holes?)\b",
+                    normalized_passage,
+                    flags=re.IGNORECASE,
+                )
+                if len({item.lower() for item in preparation_markers}) < 2:
+                    return False
             quality_markers = re.findall(
                 r"\b(?:characteristics?|criteria|features?|satisfactory|"
                 r"should|must|smooth|ragged|lines?|holes?|"
@@ -945,6 +1128,13 @@ class GraphV2QA:
             )
         direct = GraphV2QA._direct_answerability(question, passage)
         passage_terms = set(content_terms(passage))
+        question_numbers = set(re.findall(r"(?<!\d)\d+(?:\.\d+)?", question))
+        uncited_passage = re.sub(r"\[S\d+\]", "", passage)
+        passage_numbers = set(re.findall(
+            r"(?<!\d)\d+(?:\.\d+)?", uncited_passage
+        ))
+        if question_numbers and not question_numbers.issubset(passage_numbers):
+            return False
         # Relation words describe the requested answer shape; they are not
         # the subject. Require the evidence to match the remaining subject
         # anchors so an unrelated duration, purpose or definition cannot pass.
@@ -1241,19 +1431,115 @@ class GraphV2QA:
         text_terms = set(content_terms(row.get("text") or ""))
         entity_overlap = len(query_terms & entity_terms)
         text_overlap = len(query_terms & text_terms)
-        return entity_overlap > 0 or text_overlap >= 2
+        if entity_overlap > 0 or text_overlap >= 2:
+            return True
+        return bool(
+            text_overlap >= 1
+            and question_type(question) == "reason"
+            and re.search(
+                r"\b(?:because|therefore|alter(?:s|ed)?|affect(?:s|ed)?|"
+                r"should not|must not|avoid|prevent|results? in|leads? to)\b",
+                row.get("text") or "",
+                flags=re.IGNORECASE,
+            )
+        )
 
     @staticmethod
     def _step_numbers(text: str) -> list[int]:
         return [
             int(value) for value in re.findall(
-                r"(?<![\d.])(\d{1,2})\.\s+", text or ""
+                r"(?:^|\n)\s*(\d{1,2})\.\s+", text or ""
             )
         ]
 
     @staticmethod
+    def _procedure_anchor_constraints(question: str) -> list[set[str]]:
+        """Return hard lexical constraints for a procedure's start Chunk."""
+        lowered = normalize_space(question).lower()
+        constraints: list[set[str]] = []
+        named_methods = {
+            "field": {"field"},
+            "giemsa": {"giemsa"},
+            "leishman": {"leishman"},
+            "may-grünwald": {"may", "grünwald"},
+            "may-grunwald": {"may", "grunwald"},
+        }
+        for marker, terms in named_methods.items():
+            if marker in lowered:
+                constraints.append(terms)
+        for qualifier in ("rapid", "routine", "thick", "thin"):
+            if re.search(rf"\b{qualifier}\b", lowered):
+                constraints.append({qualifier})
+        return constraints
+
+    @staticmethod
+    def _valid_procedure_anchors(
+        question: str, rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        constraints = GraphV2QA._procedure_anchor_constraints(question)
+        if not constraints:
+            return rows
+        valid = []
+        for row in rows:
+            source = row.get("text") or ""
+            terms = set(content_terms(source))
+            if "field" in normalize_space(question).lower() and not re.search(
+                r"\bStaining blood films with Field stain\b|"
+                r"\bField\s+stain\s+[AB]\b",
+                source,
+                flags=re.IGNORECASE,
+            ):
+                continue
+            if all(group & terms for group in constraints):
+                valid.append(row)
+        return valid
+
+    @staticmethod
+    def _procedure_scope(question: str, text: str) -> str:
+        """Limit a Chunk containing several methods to the requested method."""
+        lowered = normalize_space(question).lower()
+        source = text or ""
+        if "field" in lowered and "thick" in lowered:
+            start = re.search(
+                r"Method for staining thick films\s*", source,
+                flags=re.IGNORECASE,
+            )
+            if start:
+                scoped = source[start.end():]
+                return re.split(
+                    r"\n\s*Method for staining thin films\s*\n",
+                    scoped, maxsplit=1, flags=re.IGNORECASE,
+                )[0]
+        if "field" in lowered and "thin" in lowered:
+            start = re.search(
+                r"Method for staining thin films\s*", source,
+                flags=re.IGNORECASE,
+            )
+            if start:
+                return source[start.end():]
+        if "rapid" in lowered:
+            start = re.search(
+                r"Rapid method for staining thick and thin blood films\s*",
+                source, flags=re.IGNORECASE,
+            )
+            if start:
+                return source[start.end():]
+        if "routine" in lowered:
+            start = re.search(
+                r"Routine method for staining thick and thin blood films\s*",
+                source, flags=re.IGNORECASE,
+            )
+            if start:
+                scoped = source[start.end():]
+                return re.split(
+                    r"\n\s*Rapid method for staining thick and thin blood films",
+                    scoped, maxsplit=1, flags=re.IGNORECASE,
+                )[0]
+        return source
+
+    @staticmethod
     def _procedure_chain(
-        anchor: dict[str, Any], ranked_rows: list[dict[str, Any]]
+        question: str, anchor: dict[str, Any], ranked_rows: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Follow a numbered procedure across Chunk and page boundaries."""
         anchor_page = anchor.get("pdf_page")
@@ -1279,7 +1565,9 @@ class GraphV2QA:
         started = False
         highest_step = 0
         first_step_page = None
-        anchor_text = anchor.get("text") or ""
+        anchor_text = GraphV2QA._procedure_scope(
+            question, anchor.get("text") or ""
+        )
         method_headings = list(re.finditer(
             r"(?:^|\n)\s*(?:Rapid method|Staining .+? with .+? stain|"
             r"Method for .+?)\s*(?:\n|$)",
@@ -1287,14 +1575,16 @@ class GraphV2QA:
             flags=re.IGNORECASE,
         ))
         step_markers = list(re.finditer(
-            r"(?<![\d.])\d{1,2}\.\s+", anchor_text
+            r"(?:^|\n)\s*\d{1,2}\.\s+", anchor_text
         ))
         wait_for_new_step_one = bool(
             method_headings and step_markers
             and method_headings[-1].start() > step_markers[-1].start()
         )
         for row in window:
-            row_text = row.get("text") or ""
+            row_text = GraphV2QA._procedure_scope(
+                question, row.get("text") or ""
+            )
             if wait_for_new_step_one and str(row.get("chunk_id") or "") == anchor_id:
                 continue
             numbers = GraphV2QA._step_numbers(row_text)
@@ -1324,7 +1614,7 @@ class GraphV2QA:
                     flags=re.IGNORECASE,
                 )
                 if boundary and re.search(
-                    r"(?<![\d.])1\.\s+", row_text[boundary.end():]
+                    r"(?:^|\n)\s*1\.\s+", row_text[boundary.end():]
                 ):
                     preceding = row_text[:boundary.start()].strip()
                     if preceding:
@@ -1335,8 +1625,16 @@ class GraphV2QA:
                     break
             if min(numbers) > highest_step + 1 and highest_step:
                 continue
-            chain.append(row)
+            scoped_row = dict(row)
+            scoped_row["text"] = row_text
+            chain.append(scoped_row)
             highest_step = max(highest_step, max(numbers))
+            if (
+                "field" in question.lower()
+                and "thick" in question.lower()
+                and highest_step >= 5
+            ):
+                break
         return chain
 
     @staticmethod
@@ -1430,21 +1728,75 @@ class GraphV2QA:
                     return [material_row]
 
         if requested_type == "procedure":
-            exact_rows = [row for row in grounded if row.get("exact_phrase")]
+            anchor_rows = GraphV2QA._valid_procedure_anchors(
+                question, grounded
+            )
+            if not anchor_rows:
+                return []
+            exact_rows = [
+                row for row in anchor_rows if row.get("exact_phrase")
+            ]
             anchor = exact_rows[0] if exact_rows else max(
-                grounded,
+                anchor_rows,
                 key=lambda row: (
                     row.get("answerability", 0.0),
                     row.get("score", 0.0),
                 ),
             )
-            chain = GraphV2QA._procedure_chain(anchor, ranked_rows)
+            chain = GraphV2QA._procedure_chain(
+                question, anchor, ranked_rows
+            )
             if chain:
                 return chain
 
         # A locally complete passage is stronger than any combination of
         # partial passages. This decision must happen before page anchoring.
         if requested_type != "procedure":
+            question_numbers = set(re.findall(
+                r"(?<!\d)\d+(?:\.\d+)?", question
+            ))
+            if question_numbers:
+                numeric_grounded = []
+                for row in grounded:
+                    row_numbers = set(re.findall(
+                        r"(?<!\d)\d+(?:\.\d+)?",
+                        row.get("text") or "",
+                    ))
+                    if question_numbers.issubset(row_numbers):
+                        numeric_grounded.append(row)
+                if numeric_grounded:
+                    grounded = numeric_grounded
+            if re.search(
+                r"\b1\s*[–—-]\s*2\s+hours?\b", question,
+                flags=re.IGNORECASE,
+            ):
+                exact_delay_rows = [
+                    row for row in grounded
+                    if re.search(
+                        r"\b1\s*[–—-]\s*2\s+hours?\b",
+                        row.get("text") or "",
+                        flags=re.IGNORECASE,
+                    )
+                ]
+                if exact_delay_rows:
+                    grounded = exact_delay_rows
+            # Re-evaluate every grounded row with the final composer.  Ranking
+            # time completeness deliberately uses local units and may miss a
+            # valid conditional sentence; it must not force an unnecessary,
+            # unrelated second Chunk into the answer.
+            for grounded_row in grounded:
+                proposed_answer, proposed_sources = (
+                    GraphV2QA.compose_extract_answer(
+                        question, [grounded_row]
+                    )
+                )
+                if (
+                    proposed_answer and proposed_sources
+                    and GraphV2QA._requirements_satisfied(
+                        question, proposed_answer
+                    )
+                ):
+                    return [grounded_row]
             complete_rows = [
                 row for row in grounded
                 if row.get("requirements_complete")
@@ -1548,9 +1900,13 @@ class GraphV2QA:
 
         # Procedures may span consecutive Chunks. Anchor only this intent to
         # a coherent page window so steps from different methods are not mixed.
-        exact_rows = [row for row in grounded if row.get("exact_phrase")]
+        anchor_rows = GraphV2QA._valid_procedure_anchors(question, grounded)
+        if requested_type == "procedure" and not anchor_rows:
+            return []
+        anchor_rows = anchor_rows or grounded
+        exact_rows = [row for row in anchor_rows if row.get("exact_phrase")]
         anchor = exact_rows[0] if exact_rows else max(
-            grounded,
+            anchor_rows,
             key=lambda row: (
                 row.get("answerability", 0.0),
                 row.get("score", 0.0),
@@ -1611,8 +1967,8 @@ class GraphV2QA:
         )
         variants: dict[int, list[dict[str, Any]]] = {}
         step_pattern = re.compile(
-            r"(?<![\d.])(\d{1,2})\.\s+(.*?)"
-            r"(?=\s+\d{1,2}\.\s+|$)",
+            r"(?:^|\n)\s*(\d{1,2})\.\s+(.*?)"
+            r"(?=\n\s*\d{1,2}\.\s+|$)",
             flags=re.IGNORECASE | re.DOTALL,
         )
         stop_heading = re.compile(
@@ -1767,7 +2123,8 @@ class GraphV2QA:
         action_pattern = re.compile(
             r"\b(stain|prepare|add|mix|wash|dry|fix|place|transfer|"
             r"incubate|centrifuge|allow|remove|filter|heat|cool|dilute|"
-            r"discard|collect|examine|read|measure|pour|rinse)\b",
+            r"discard|collect|examine|read|measure|count|determine|estimate|"
+            r"pour|rinse)\b",
             flags=re.IGNORECASE,
         )
         statement_pattern = re.compile(
@@ -1776,7 +2133,9 @@ class GraphV2QA:
             r"characterized|contains|consists|stain|stained|prepare|prepared|"
             r"add|mix|wash|dry|fix|place|transfer|incubate|centrifuge|"
             r"allow|remove|filter|heat|cool|dilute|discard|collect|read|"
-            r"measure|pour|rinse)\b",
+            r"measure|measured|determine|determined|estimate|estimated|"
+            r"calculate|calculated|count|counted|multiply|multiplying|"
+            r"divide|dividing|pour|rinse)\b",
             flags=re.IGNORECASE,
         )
         header_noise = re.compile(
@@ -1858,6 +2217,8 @@ class GraphV2QA:
                 # A section title that merely repeats the question is evidence
                 # location, not an answer statement.
                 if normalized_sentence == normalized_question:
+                    continue
+                if re.match(r"^(?:Fig\.|Figure)\s*\d", sentence, re.IGNORECASE):
                     continue
                 # OCR often concatenates navigation headings. Such fragments
                 # must not become answers even when they repeat the question.
@@ -2463,12 +2824,129 @@ class GraphV2QA:
             },
         }
 
+    def compose_faceted_answer(
+        self, question: str, facets: list[str]
+    ) -> tuple[str, list[dict[str, Any]], int]:
+        """Execute retrieval, extraction and verification per facet.
+
+        No specialized answer path may satisfy or short-circuit another
+        facet.  Every facet searches the complete Chunk index independently,
+        produces its own verified answer, and is cited again in the combined
+        result.
+        """
+        executions = execution_facets(question)
+        side_comparison = any(label for label, _ in executions)
+        facet_results: list[tuple[str, str, list[dict[str, Any]]]] = []
+        total_candidates = 0
+        for label, facet in executions:
+            ranked = self.ranked_chunks(facet)
+            selected = self.select_consistent_candidates(facet, ranked)
+            total_candidates += len(selected)
+            if not selected:
+                return "", [], total_candidates
+            facet_answer, facet_rows = self.compose_extract_answer(
+                facet, selected
+            )
+            if not (
+                facet_answer
+                and facet_rows
+                and self._requirements_satisfied(facet, facet_answer)
+            ):
+                return "", [], total_candidates
+            facet_results.append((label, facet_answer, facet_rows))
+
+        global_rows: list[dict[str, Any]] = []
+        global_source_number: dict[str, int] = {}
+        combined_parts: list[str] = []
+        seen_parts: set[str] = set()
+        for label, facet_answer, facet_rows in facet_results:
+            local_to_global: dict[int, int] = {}
+            for local_number, row in enumerate(facet_rows, 1):
+                chunk_id = str(row.get("chunk_id") or "")
+                if chunk_id not in global_source_number:
+                    global_source_number[chunk_id] = len(global_rows) + 1
+                    global_rows.append(row)
+                local_to_global[local_number] = global_source_number[chunk_id]
+
+            remapped = re.sub(
+                r"\[S(\d+)\]",
+                lambda match: (
+                    f"[S{local_to_global.get(int(match.group(1)), 1)}]"
+                ),
+                facet_answer,
+            ).strip()
+            if label:
+                remapped = f"{label}: {remapped}"
+            elif combined_parts:
+                # Facets from the same source often return a shared context
+                # sentence followed by the newly requested fact. Keep the
+                # question order but remove that repeated prefix.
+                remapped_plain = re.sub(
+                    r"\s*\[S\d+\]", "", normalize_space(remapped)
+                ).strip()
+                for existing in combined_parts:
+                    existing_plain = re.sub(
+                        r"\s*\[S\d+\]", "", normalize_space(existing)
+                    ).strip()
+                    if (
+                        existing_plain
+                        and remapped_plain.lower().startswith(
+                            existing_plain.lower()
+                        )
+                        and len(remapped_plain) > len(existing_plain)
+                    ):
+                        remainder = remapped_plain[len(existing_plain):].strip()
+                        citations = re.findall(r"\[S\d+\]", remapped)
+                        remapped = remainder
+                        if citations:
+                            remapped = f"{remapped} {citations[-1]}"
+                        break
+            key = re.sub(r"\s*\[S\d+\]", "", normalize_space(remapped)).lower()
+            if key not in seen_parts:
+                combined_parts.append(remapped)
+                seen_parts.add(key)
+
+        combined = "\n".join(combined_parts)
+        if (
+            not side_comparison
+            and not self._requirements_satisfied(question, combined)
+        ):
+            return "", [], total_candidates
+        return combined, global_rows, total_candidates
+
 
     def answer(self, question: str) -> dict[str, Any]:
         # Neo4j supplies Chunk text, Page location, mentioned Entities,
         # explicit Entity relations and verified Chunk-to-Image links.
         chunks = self.ranked_chunks(question)
         chunks_scanned = len(chunks)
+        facets = question_facets(question)
+        if len(facets) > 1:
+            faceted_answer, faceted_rows, facet_candidates = (
+                self.compose_faceted_answer(question, facets)
+            )
+            if not faceted_answer:
+                return self.response(
+                    "not_found", question,
+                    "Relevant evidence was found, but no complete and context-consistent answer could be verified. The system will not guess.",
+                    [], [], chunks_scanned, facet_candidates,
+                )
+            # Preserve citation order. The UI displays the first two cited
+            # Chunks while the Neo4j query includes every answer-bearing one.
+            ordered_rows = faceted_rows
+            chunk_ids = [
+                row.get("chunk_id") for row in ordered_rows
+                if row.get("chunk_id")
+            ]
+            image_rows = self.verified_images(
+                question, None, chunk_ids
+            )
+            sources = [serializable_source(row) for row in ordered_rows]
+            return self.response(
+                "domain_answer", question, faceted_answer,
+                sources, image_rows, chunks_scanned, facet_candidates,
+                synthesis_mode="verified_faceted_extract",
+            )
         consistent = self.select_consistent_candidates(question, chunks)
         relation_type = relation_intent(question)
 
