@@ -144,6 +144,8 @@ def content_terms(text: str) -> list[str]:
 def question_type(question: str) -> str:
     """Return the kind of evidence an answer must contain."""
     lowered = normalize_space(question).lower()
+    if re.search(r"\bpurpose\b|\bused for\b|\buse of\b|\bfunction of\b", lowered):
+        return "purpose"
     if re.search(r"\bwhy\b|\breason\b", lowered):
         return "reason"
     if re.search(r"\bwhen\b|\bhow long\b|\bduration\b", lowered):
@@ -154,7 +156,20 @@ def question_type(question: str) -> str:
         return "comparison"
     if re.search(r"\bwhere\b", lowered):
         return "location"
+    if re.search(r"\bwhat (?:is|are)\b|\bdefine\b|\bdefinition\b", lowered):
+        return "definition"
     return "fact"
+
+
+def paired_subject_terms(question: str) -> set[str]:
+    """Capture contrasted modifiers such as 'thick and thin blood films'."""
+    lowered = normalize_space(question).lower()
+    match = re.search(
+        r"\b([a-z][a-z-]+)\s+and\s+([a-z][a-z-]+)\s+"
+        r"(?:blood\s+)?(?:films?|smears?|methods?|tests?|stains?|samples?)\b",
+        lowered,
+    )
+    return {normalize_token(match.group(1)), normalize_token(match.group(2))} if match else set()
 
 
 def small_talk_answer(text: str) -> str | None:
@@ -419,6 +434,11 @@ class GraphV2QA:
             return 0.0
         requested_type = question_type(question)
         type_patterns = {
+            "purpose": re.compile(
+                r"\b(?:purpose|used for|used to|serves? to|function(?:s)? as|"
+                r"allows?|enables?)\b",
+                flags=re.IGNORECASE,
+            ),
             "reason": re.compile(
                 r"\b(?:because|therefore|thus|hence|due to|so that|"
                 r"in order to|to (?:permit|prevent|avoid|ensure|allow))\b",
@@ -439,6 +459,10 @@ class GraphV2QA:
             ),
             "location": re.compile(
                 r"\b(?:in|inside|within|located|found|present)\b",
+                flags=re.IGNORECASE,
+            ),
+            "definition": re.compile(
+                r"\b(?:is|are|means?|defined as|refers? to|consists? of)\b",
                 flags=re.IGNORECASE,
             ),
         }
@@ -468,10 +492,40 @@ class GraphV2QA:
                 score += 0.08
             if requested_type == "reason" and not type_match:
                 score *= 0.45
+            elif requested_type in {
+                "purpose", "comparison", "time", "location", "definition"
+            } and not type_match:
+                score *= 0.55
             if "not" in query_terms and not polarity_match:
                 score *= 0.55
             best = max(best, score)
         return min(best, 1.0)
+
+    @staticmethod
+    def _requirements_satisfied(question: str, passage: str) -> bool:
+        """Check completeness for the relation explicitly requested."""
+        requested_type = question_type(question)
+        direct = GraphV2QA._direct_answerability(question, passage)
+        passage_terms = set(content_terms(passage))
+        paired_terms = paired_subject_terms(question)
+        if paired_terms and not paired_terms.issubset(passage_terms):
+            return False
+        relation_patterns = {
+            "purpose": r"\b(?:purpose|used for|used to|serves? to|function(?:s)? as)\b",
+            "reason": r"\b(?:because|therefore|thus|hence|due to|so that|in order to|to (?:permit|prevent|avoid|ensure|allow))\b",
+            "comparison": r"\b(?:whereas|while|unlike|compared|difference|both)\b",
+            "time": r"\b(?:when|before|after|during|for\s+\d|minutes?|hours?|days?)\b",
+            "location": r"\b(?:inside|within|located|found|present|occurs?)\b",
+            "definition": r"\b(?:is|are|means?|defined as|refers? to|consists? of)\b",
+        }
+        pattern = relation_patterns.get(requested_type)
+        if pattern and not re.search(pattern, passage, flags=re.IGNORECASE):
+            return False
+        thresholds = {
+            "purpose": 0.48, "reason": 0.58, "comparison": 0.48,
+            "time": 0.45, "location": 0.45, "definition": 0.42,
+        }
+        return direct >= thresholds.get(requested_type, 0.55)
 
     @staticmethod
     def _focused_answer_passages(
@@ -487,6 +541,7 @@ class GraphV2QA:
             for index in range(len(segments) - 1)
         )
         scored = []
+        requested_type = question_type(question)
         query_terms = set(content_terms(question))
         for position, passage in enumerate(units):
             passage = normalize_space(passage)
@@ -500,11 +555,38 @@ class GraphV2QA:
             similarity = float(
                 GraphV2QA._similarities(question, [passage])[0]
             )
-            scored.append((direct, similarity, overlap, -position, passage))
-        scored.sort(reverse=True)
+            scored.append({
+                "direct": direct,
+                "similarity": similarity,
+                "overlap": overlap,
+                "position": position,
+                "passage": passage,
+                "complete": GraphV2QA._requirements_satisfied(
+                    question, passage
+                ),
+            })
+        if requested_type in {"purpose", "definition", "time", "location"}:
+            scored.sort(
+                key=lambda item: (
+                    item["complete"], -len(item["passage"]),
+                    item["direct"], item["similarity"],
+                ),
+                reverse=True,
+            )
+        else:
+            scored.sort(
+                key=lambda item: (
+                    item["complete"], item["direct"],
+                    item["similarity"], item["overlap"],
+                    -item["position"],
+                ),
+                reverse=True,
+            )
         selected = []
         seen = set()
-        for direct, _, _, _, passage in scored:
+        for item in scored:
+            direct = item["direct"]
+            passage = item["passage"]
             if direct < 0.35:
                 continue
             key = passage.lower()
@@ -549,6 +631,7 @@ class GraphV2QA:
         # immediately before key words such as "methanol". Preserve only
         # blank-line paragraph boundaries.
         cleaned = re.sub(r"(?<!\n)\n(?!\n)", " ", cleaned)
+        cleaned = re.sub(r"\.{2,}", ".", cleaned)
         return [
             normalize_space(part)
             for part in re.split(r"(?<=[.!?;])\s+|\n{2,}", cleaned)
@@ -795,7 +878,7 @@ class GraphV2QA:
         for row in rows:
             segments = GraphV2QA._evidence_segments(row.get("text") or "")
             evidence_units = list(segments)
-            if requested_type == "reason":
+            if requested_type in {"reason", "comparison"}:
                 evidence_units.extend(
                     f"{segments[index]} {segments[index + 1]}"
                     for index in range(len(segments) - 1)
@@ -866,12 +949,24 @@ class GraphV2QA:
                     "sentence": sentence,
                     "row": row,
                     "position": position,
+                    "covered_terms": query_terms & sentence_terms,
+                    "requirements_complete": (
+                        GraphV2QA._requirements_satisfied(
+                            question, sentence
+                        )
+                    ),
                 })
 
-        candidates.sort(key=lambda item: item["score"], reverse=True)
+        candidates.sort(
+            key=lambda item: (
+                item["requirements_complete"], item["score"]
+            ),
+            reverse=True,
+        )
         selected = []
         seen_sentences = set()
         used_chunk_ids = set()
+        covered_terms: set[str] = set()
         for item in candidates:
             full_sentence_key = item["sentence"].lower()
             sentence_key = full_sentence_key[:220]
@@ -888,12 +983,20 @@ class GraphV2QA:
             if (chunk_id not in used_chunk_ids
                     and len(used_chunk_ids) >= MAX_EVIDENCE_CHUNKS):
                 continue
+            new_terms = item["covered_terms"] - covered_terms
+            if selected and not new_terms and not procedure_question:
+                continue
             selected.append(item)
             seen_sentences.add(sentence_key)
             used_chunk_ids.add(chunk_id)
-            if requested_type == "reason":
+            covered_terms.update(item["covered_terms"])
+            if item["requirements_complete"]:
                 break
-            if len(selected) == 4:
+            if requested_type in {
+                "reason", "purpose", "definition", "time", "location"
+            } and len(selected) == 2:
+                break
+            if len(selected) == 6:
                 break
 
         if not selected:
@@ -949,11 +1052,16 @@ class GraphV2QA:
     ) -> str:
         parts = []
         used = 0
+        requested_type = question_type(question)
         for index, row in enumerate(rows[:MAX_SYNTHESIS_CHUNKS], 1):
             text = normalize_space(row.get("text") or "")
-            if question_type(question) == "reason":
+            passages = [text]
+            if requested_type != "procedure":
+                passage_limit = 1 if requested_type in {
+                    "reason", "purpose", "definition", "time", "location"
+                } else 3
                 passages = GraphV2QA._focused_answer_passages(
-                    question, text, limit=1
+                    question, text, limit=passage_limit
                 )
                 text = " ".join(passages)
             if not text:
@@ -966,6 +1074,11 @@ class GraphV2QA:
                 break
             parts.append(piece)
             used += len(piece)
+            if requested_type != "procedure" and any(
+                GraphV2QA._requirements_satisfied(question, passage)
+                for passage in passages
+            ):
+                break
         return "\n".join(parts)
 
     def synthesize_answer(
@@ -1217,12 +1330,32 @@ class GraphV2QA:
             "chunk_id": row.get("chunk_id"),
             "url": f"/image/{row['id']}",
         } for row in image_rows]
+        chunk_ids = [
+            str(source.get("chunk_id"))
+            for source in sources[:MAX_EVIDENCE_CHUNKS]
+            if source.get("chunk_id")
+        ]
+        cypher_ids = ", ".join(
+            "'" + chunk_id.replace("'", "\\'") + "'"
+            for chunk_id in chunk_ids
+        )
+        neo4j_query = ""
+        if cypher_ids:
+            neo4j_query = (
+                "MATCH pagePath = (page:Page)-[:HAS_CHUNK]->(chunk:Chunk)\n"
+                f"WHERE chunk.id IN [{cypher_ids}]\n"
+                "OPTIONAL MATCH entityPath = (chunk)-[:MENTIONS]->(:Entity)\n"
+                "OPTIONAL MATCH imagePath = (chunk)-[:ILLUSTRATED_BY]->(:Image)\n"
+                "RETURN pagePath, collect(DISTINCT entityPath) AS entityPaths, "
+                "collect(DISTINCT imagePath) AS imagePaths;"
+            )
         return {
             "kind": kind,
             "question": question,
             "answer": answer,
             "sources": sources[:MAX_EVIDENCE_CHUNKS],
             "images": images,
+            "neo4j_query": neo4j_query,
             "retrieval_summary": {
                 "chunks_scanned": chunks_scanned,
                 "consistent_candidates": candidates_considered,
