@@ -135,6 +135,7 @@ def normalize_token(token: str) -> str:
         "parasites": "parasite", "bacteria": "bacterium",
         "diagnostic": "diagnosis",
         "important": "importance",
+        "collection": "collect",
     }
     if token in replacements:
         return replacements[token]
@@ -161,7 +162,11 @@ def content_terms(text: str) -> list[str]:
 def question_type(question: str) -> str:
     """Return the kind of evidence an answer must contain."""
     lowered = normalize_space(question).lower()
-    if re.search(r"\bpurpose\b|\bused for\b|\buse of\b|\bfunction of\b", lowered):
+    if re.search(
+        r"\bpurpose\b|\bused for\b|\buses? of\b|"
+        r"\brespective uses?\b|\bfunction of\b",
+        lowered,
+    ):
         return "purpose"
     if re.search(r"\bwhy\b|\breason\b", lowered):
         return "reason"
@@ -711,6 +716,27 @@ class GraphV2QA:
         requested_type = question_type(question)
         direct = GraphV2QA._direct_answerability(question, passage)
         passage_terms = set(content_terms(passage))
+        # Relation words describe the requested answer shape; they are not
+        # the subject. Require the evidence to match the remaining subject
+        # anchors so an unrelated duration, purpose or definition cannot pass.
+        relation_terms = {
+            "purpose", "use", "uses", "used", "function", "respective",
+            "reason", "cause", "why", "time", "duration", "when",
+            "difference", "different", "differ", "compare", "comparison",
+            "method", "procedure", "step", "steps", "explain", "describe",
+            "characteristic", "characteristics", "criteria", "feature",
+            "features", "sign", "signs", "identify", "indicate",
+        }
+        subject_terms = set(content_terms(question)) - relation_terms
+        subject_overlap = len(subject_terms & passage_terms)
+        minimum_subject_overlap = 1 if len(subject_terms) <= 2 else 2
+        if subject_terms and subject_overlap < minimum_subject_overlap:
+            return False
+        if requested_type == "procedure":
+            # A reconstructed multi-step answer is complete at answer level
+            # even when no individual step repeats every subject keyword.
+            if len(GraphV2QA._step_numbers(passage)) >= 2:
+                return True
         paired_terms = paired_subject_terms(question)
         if paired_terms and not paired_terms.issubset(passage_terms):
             return False
@@ -985,8 +1011,22 @@ class GraphV2QA:
                     ),
                     reverse=True,
                 )
-                # One complete local passage is the minimum sufficient set.
-                return [complete_rows[0]]
+                # A score-time completeness flag is only a proposal. Accept
+                # it only if the same row can produce an answer that passes
+                # the final facet verifier; otherwise continue searching.
+                for complete_row in complete_rows:
+                    proposed_answer, proposed_sources = (
+                        GraphV2QA.compose_extract_answer(
+                            question, [complete_row]
+                        )
+                    )
+                    if (
+                        proposed_answer and proposed_sources
+                        and GraphV2QA._requirements_satisfied(
+                            question, proposed_answer
+                        )
+                    ):
+                        return [complete_row]
 
             # No single passage is complete: greedily build a minimal set of
             # complementary passages across the full candidate list. Do not
@@ -1486,7 +1526,7 @@ class GraphV2QA:
             r"\b(?:characteristics?|criteria|features?|signs?|list|all)\b",
             facet,
             flags=re.IGNORECASE,
-        ) for facet in facets)
+        ) or question_type(facet) == "time" for facet in facets)
         for item in candidates:
             full_sentence_key = item["sentence"].lower()
             sentence_key = full_sentence_key[:220]
