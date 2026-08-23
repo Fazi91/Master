@@ -24,15 +24,16 @@ ROOT = Path(__file__).resolve().parents[1]
 INDEX_FILE = ROOT / "webapp" / "index.html"
 load_dotenv(ROOT / ".env")
 
-MAX_SOURCES = 4
 MAX_IMAGES = 2
 MAX_EVIDENCE_CHUNKS = 2
-FALLBACK_MIN_SCORE = 0.16
 FACT_MIN_SCORE = 0.14
 IMAGE_MIN_SCORE = 0.35
 LOCAL_ANSWER_MODEL = os.getenv(
     "LOCAL_ANSWER_MODEL", "Qwen/Qwen2.5-1.5B-Instruct"
 )
+ENABLE_LOCAL_SYNTHESIS = os.getenv(
+    "ENABLE_LOCAL_SYNTHESIS", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
 MAX_SYNTHESIS_CHUNKS = 8
 MAX_SYNTHESIS_CONTEXT_CHARS = 12000
 NLI_VERIFIER_MODEL = os.getenv(
@@ -226,7 +227,9 @@ def question_facets(question: str) -> list[str]:
         if len(dimensions) > 1:
             return [f"{prefix} in {dimension}" for dimension in dimensions]
     parts = re.split(
-        r"\s*(?:,\s*)?\band\s+(?=(?:why|how|what|when|where|which|who)\b)",
+        r"(?:\s*,\s*(?:and\s+)?|\s*;\s*|\s+\band\s+)"
+        r"(?=(?:why|how|what|when|where|which|who|"
+        r"explain|describe|list|state|name|give|compare)\b)",
         normalized,
         flags=re.IGNORECASE,
     )
@@ -251,11 +254,11 @@ def answer_plan(question: str) -> dict[str, Any]:
     compound = len(question_facets(question)) > 1
     if compound:
         return {
-            "mode": "multi", "max_claims": 8,
+            "mode": "multi", "max_claims": 24,
             "stop_on_complete": False, "required_facets": len(question_facets(question)),
         }
     if requested_type == "procedure":
-        return {"mode": "procedure", "max_claims": 8, "stop_on_complete": False}
+        return {"mode": "procedure", "max_claims": 24, "stop_on_complete": False}
     if requested_type in {"time", "comparison"} or explicit_multi:
         return {"mode": "multi", "max_claims": 6, "stop_on_complete": False}
     if requested_type in {"purpose", "reason"}:
@@ -919,7 +922,7 @@ class GraphV2QA:
         window = [
             row for row in ranked_rows
             if isinstance(row.get("pdf_page"), int)
-            and anchor_page <= row["pdf_page"] <= anchor_page + 4
+            and row["pdf_page"] >= anchor_page
         ]
         window.sort(key=lambda row: (
             row.get("pdf_page") or 0,
@@ -990,8 +993,7 @@ class GraphV2QA:
         """Select the smallest evidence set satisfying the question."""
         grounded = [
             row for row in ranked_rows
-            if row.get("score", 0.0) >= FALLBACK_MIN_SCORE
-            and not row.get("reference_page")
+            if not row.get("reference_page")
             and GraphV2QA.chunk_is_grounded(question, row)
         ]
         if not grounded:
@@ -1010,7 +1012,7 @@ class GraphV2QA:
             )
             chain = GraphV2QA._procedure_chain(anchor, ranked_rows)
             if chain:
-                return chain[:MAX_SYNTHESIS_CHUNKS]
+                return chain
 
         # A locally complete passage is stronger than any combination of
         # partial passages. This decision must happen before page anchoring.
@@ -1055,7 +1057,7 @@ class GraphV2QA:
             covered_facets: set[int] = set()
             selected: list[dict[str, Any]] = []
             remaining = []
-            for row in grounded[:80]:
+            for row in grounded:
                 row_text = row.get("text") or ""
                 facet_passages = [
                     GraphV2QA._focused_answer_passages(
@@ -1085,7 +1087,7 @@ class GraphV2QA:
                     item["requirement_facets"] = facet_coverage
                     remaining.append(item)
 
-            while remaining and len(selected) < MAX_SYNTHESIS_CHUNKS:
+            while remaining:
                 remaining.sort(
                     key=lambda row: (
                         len(row["requirement_facets"] - covered_facets),
@@ -1253,8 +1255,6 @@ class GraphV2QA:
             if not candidate["complete"] or candidate["figure_noise"] >= 3:
                 continue
             chosen.append(candidate)
-            if len(chosen) == 8:
-                break
 
         if len(chosen) < 2:
             return "", []
@@ -1264,8 +1264,6 @@ class GraphV2QA:
         for item in chosen:
             chunk_id = item["row"].get("chunk_id")
             if chunk_id not in source_number:
-                if len(source_rows) >= MAX_SYNTHESIS_CHUNKS:
-                    continue
                 source_number[chunk_id] = len(source_rows) + 1
                 source_rows.append(item["row"])
 
@@ -1555,10 +1553,6 @@ class GraphV2QA:
                 or chosen["sentence"].lower() in full_sentence_key
                 for chosen in selected
             ):
-                continue
-            # The answer may use at most two mutually consistent Chunks.
-            if (chunk_id not in used_chunk_ids
-                    and len(used_chunk_ids) >= MAX_EVIDENCE_CHUNKS):
                 continue
             if (
                 len(facets) > 1 and not exhaustive_compound
@@ -1940,7 +1934,7 @@ class GraphV2QA:
         } for row in image_rows]
         chunk_ids = [
             str(source.get("chunk_id"))
-            for source in sources[:MAX_SYNTHESIS_CHUNKS]
+            for source in sources
             if source.get("chunk_id")
         ]
         cypher_ids = ", ".join(
@@ -2045,7 +2039,7 @@ class GraphV2QA:
             extract_rows if direct_complete else []
         )
 
-        if not direct_complete:
+        if not direct_complete and ENABLE_LOCAL_SYNTHESIS:
             try:
                 generated_answer = self.synthesize_answer(
                     question, consistent
@@ -2072,15 +2066,14 @@ class GraphV2QA:
                 )
 
         if not final_answer:
-            if not extract_answer or not extract_rows:
-                return self.response(
-                    "not_found", question,
-                    "Relevant evidence was found, but no complete and context-consistent answer could be verified. The system will not guess.",
-                    [], [], chunks_scanned, len(consistent),
-                    synthesis_mode="verification_failed",
-                )
-            final_answer = extract_answer
-            answer_rows = extract_rows
+            # Never expose a partial extract merely because generation is
+            # disabled or rejected. Completeness is a hard output invariant.
+            return self.response(
+                "not_found", question,
+                "Relevant evidence was found, but no complete and context-consistent answer could be verified. The system will not guess.",
+                [], [], chunks_scanned, len(consistent),
+                synthesis_mode="verification_failed",
+            )
 
         sources = [
             serializable_source({
@@ -2088,7 +2081,7 @@ class GraphV2QA:
                 "evidence": row.get("text"),
                 "confidence": row.get("score"),
             })
-            for row in answer_rows[:MAX_SYNTHESIS_CHUNKS]
+            for row in answer_rows
         ]
         chunk_ids = [
             row["chunk_id"] for row in answer_rows[:MAX_EVIDENCE_CHUNKS]
@@ -2137,10 +2130,25 @@ def ask(request: QuestionRequest) -> dict[str, Any]:
     direct_answer = small_talk_answer(question)
     if direct_answer is not None:
         return GraphV2QA.response("small_talk", question, direct_answer, [], [])
-    if not content_terms(question):
+    terms = content_terms(question)
+    if not terms:
         return GraphV2QA.response(
             "ambiguous", question,
             "Please ask a more specific question about the laboratory manual.", [], []
+        )
+    if (
+        len(terms) == 1
+        and len(re.findall(r"[A-Za-z0-9]+", question)) <= 2
+        and not re.search(
+            r"\b(?:what|why|how|when|where|which|who)\b",
+            question,
+            flags=re.IGNORECASE,
+        )
+    ):
+        return GraphV2QA.response(
+            "ambiguous", question,
+            "Please specify what you want to know about this laboratory topic.",
+            [], [],
         )
     try:
         return get_engine().answer(question)
