@@ -163,25 +163,30 @@ def content_terms(text: str) -> list[str]:
 def question_type(question: str) -> str:
     """Return the kind of evidence an answer must contain."""
     lowered = normalize_space(question).lower()
+    # Explicit comparison wording takes precedence over requested dimensions
+    # such as "uses" or "functions".
+    if re.search(
+        r"\bdiffer(?:s|ed|ence|ences|ent)?\b|\bcompare\b|\bcomparison\b|"
+        r"\bcontrast\b|\bdistinction\b|\bversus\b|\bvs\.?\b",
+        lowered,
+    ):
+        return "comparison"
     if re.search(
         r"\bpurpose\b|\bused for\b|\buses? of\b|"
-        r"\brespective uses?\b|\bfunction of\b|"
+        r"\brespective uses?\b|\bfunctions? of\b|\broles? of\b|"
+        r"\bwhat (?:is|are) .+? used to\b|"
         r"\bhow (?:is|are|was|were) .+? used\b",
         lowered,
     ):
         return "purpose"
     if re.search(r"\bwhy\b|\breason\b", lowered):
         return "reason"
-    if re.search(r"\bwhen\b|\bhow long\b|\bduration\b", lowered):
-        return "time"
-    # Comparison wording takes precedence over an initial "how". Otherwise
-    # "How do X and Y differ ...?" is incorrectly routed as a procedure.
     if re.search(
-        r"\bdiffer(?:s|ed|ence|ences|ent)?\b|\bcompare\b|"
-        r"\bversus\b|\bvs\.?\b",
+        r"\bwhen\b|\bhow long\b|\bduration\b|\bat what (?:time|point)\b|"
+        r"\b(?:best|suitable|recommended) time\b",
         lowered,
     ):
-        return "comparison"
+        return "time"
     if re.search(r"\bhow\b|\bprocedure\b|\bmethod\b|\bsteps?\b", lowered):
         return "procedure"
     if not re.search(r"\bwhat (?:is|are)\b", lowered) and re.search(
@@ -204,7 +209,18 @@ def paired_subject_terms(question: str) -> set[str]:
         r"(?:blood\s+)?(?:films?|smears?|methods?|tests?|stains?|samples?)\b",
         lowered,
     )
-    return {normalize_token(match.group(1)), normalize_token(match.group(2))} if match else set()
+    if match:
+        return {normalize_token(match.group(1)), normalize_token(match.group(2))}
+    repeated_noun = re.search(
+        r"\b([a-z][a-z-]+)\s+(?:blood\s+)?(?:film|smear)\s+and\s+"
+        r"(?:the\s+)?([a-z][a-z-]+)\s+(?:blood\s+)?(?:film|smear)s?\b",
+        lowered,
+    )
+    return (
+        {normalize_token(repeated_noun.group(1)),
+         normalize_token(repeated_noun.group(2))}
+        if repeated_noun else set()
+    )
 
 
 def question_facets(question: str) -> list[str]:
@@ -227,6 +243,24 @@ def question_facets(question: str) -> list[str]:
         dimensions = [item.strip() for item in dimensions if item.strip()]
         if len(dimensions) > 1:
             return [f"{prefix} in {dimension}" for dimension in dimensions]
+    compare_dimensions = re.match(
+        r"^(compare|contrast|describe the differences? in)\s+(?:the\s+)?"
+        r"(.+?)\s+of\s+(.+)$",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if compare_dimensions:
+        dimensions = re.split(
+            r"\s*(?:,\s*|\band\b)\s*",
+            compare_dimensions.group(2),
+            flags=re.IGNORECASE,
+        )
+        dimensions = [item.strip() for item in dimensions if item.strip()]
+        if len(dimensions) > 1:
+            verb = compare_dimensions.group(1)
+            subjects = compare_dimensions.group(3)
+            return [f"{verb} the {dimension} of {subjects}"
+                    for dimension in dimensions]
     parts = re.split(
         r"(?:\s*,\s*(?:and\s+)?|\s*;\s*|\s+\band\s+)"
         r"(?=(?:why|how|what|when|where|which|who|"
@@ -255,12 +289,7 @@ def answer_plan(question: str) -> dict[str, Any]:
     """Plan answer cardinality and stopping rules from the question form."""
     lowered = normalize_space(question).lower()
     requested_type = question_type(question)
-    explicit_multi = bool(re.search(
-        r"\b(?:list|enumerate|name all|what are|which are|types|kinds|ways|"
-        r"methods|conditions|criteria|reasons|causes|purposes|uses|advantages|disadvantages|"
-        r"differences|features|steps)\b",
-        lowered,
-    ))
+    explicit_multi = explicit_list_request(question)
     explanatory = bool(re.search(
         r"\b(?:explain|describe|discuss|why|how does|how do)\b",
         lowered,
@@ -296,6 +325,17 @@ def answer_plan(question: str) -> dict[str, Any]:
         "max_claims": 6 if explicit_multi else 2,
         "stop_on_complete": not explicit_multi,
     }
+
+
+def explicit_list_request(question: str) -> bool:
+    """Whether the wording explicitly asks for multiple answer items."""
+    lowered = normalize_space(question).lower()
+    return bool(re.search(
+        r"\b(?:list|enumerate|name all|what are|which are|types|kinds|ways|"
+        r"methods|conditions|criteria|reasons|causes|purposes|uses|"
+        r"advantages|disadvantages|differences|features|steps)\b",
+        lowered,
+    ))
 
 
 def small_talk_answer(text: str) -> str | None:
@@ -805,14 +845,6 @@ class GraphV2QA:
                 return False
             subject_terms = set(content_terms(question)) & set(content_terms(passage))
             return bool(subject_terms)
-        if re.search(
-            r"\b(?:what are|which are|list|enumerate|name all|uses?)\b",
-            lowered_question,
-        ) and re.search(r"\b(?:used for|include(?:s)?)\b", normalized_passage,
-                        flags=re.IGNORECASE):
-            # A list answer needs payload, not only the introductory phrase.
-            if ";" not in normalized_passage:
-                return False
         requested_type = question_type(question)
         direct = GraphV2QA._direct_answerability(question, passage)
         passage_terms = set(content_terms(passage))
@@ -841,6 +873,19 @@ class GraphV2QA:
                 return True
         paired_terms = paired_subject_terms(question)
         if paired_terms and not paired_terms.issubset(passage_terms):
+            return False
+        if (
+            paired_terms
+            and requested_type in {"purpose", "comparison"}
+            and re.search(
+                r"\b(?:use|uses|used|purpose|function|role|detect|identify|"
+                r"detection|identifying)\b",
+                lowered_question,
+            )
+            and not GraphV2QA._paired_role_mapping_satisfied(
+                paired_terms, passage, purpose_only=True
+            )
+        ):
             return False
         if requested_type == "comparison" and paired_terms:
             lowered_question = normalize_space(question).lower()
@@ -901,6 +946,86 @@ class GraphV2QA:
             "time": 0.45, "location": 0.45, "definition": 0.42,
         }
         return direct >= thresholds.get(requested_type, 0.55)
+
+    @staticmethod
+    def _paired_role_mapping_satisfied(
+        paired_terms: set[str], passage: str, purpose_only: bool = False
+    ) -> bool:
+        """Require a distinct supported role for both compared subjects.
+
+        Merely saying that one reagent is used for "both thin and thick
+        films" does not answer the respective purposes of thick and thin
+        films.  Each subject must be tied to its own role, or the source must
+        state an explicit within-sentence contrast with two role predicates.
+        """
+        if len(paired_terms) != 2:
+            return True
+        first, second = sorted(paired_terms)
+        if purpose_only:
+            role_pattern = re.compile(
+                r"\b(?:used?\b|uses?\b|detect(?:s|ed|ion)?\b|"
+                r"identif(?:y|ies|ied|ying|ication)\b|"
+                r"examin(?:e|es|ed|ing|ation)\b|"
+                r"count(?:s|ed|ing)?\b|estimat(?:e|es|ed|ing|ion)\b)",
+                flags=re.IGNORECASE,
+            )
+        else:
+            role_pattern = re.compile(
+                r"\b(?:used?\b|uses?\b|detect(?:s|ed|ion)?\b|"
+                r"identif(?:y|ies|ied|ying|ication)\b|"
+                r"fix(?:es|ed|ing|ation)?\b|prepare(?:s|d|ing|ation)?\b)",
+                flags=re.IGNORECASE,
+            )
+        clauses = [
+            normalize_space(clause)
+            for clause in re.split(r"[.;]|\bwhereas\b|\bwhile\b", passage,
+                                   flags=re.IGNORECASE)
+            if normalize_space(clause)
+        ]
+        def subject_role_clause(clause: str, term: str) -> bool:
+            subject = re.search(
+                rf"\b{re.escape(term)}\b", clause, re.IGNORECASE
+            )
+            role = role_pattern.search(clause)
+            if not (subject and role):
+                return False
+            if purpose_only:
+                # The compared item must be the grammatical role-bearer.
+                # Reject "stain X is used for both thin and thick films",
+                # where the films are objects rather than separate subjects.
+                return subject.start() < role.start()
+            return True
+        first_clauses = [
+            clause for clause in clauses
+            if subject_role_clause(clause, first)
+        ]
+        second_clauses = [
+            clause for clause in clauses
+            if subject_role_clause(clause, second)
+        ]
+        if any(a != b for a in first_clauses for b in second_clauses):
+            return True
+
+        lowered = normalize_space(passage).lower()
+        contains_both = all(
+            re.search(rf"\b{re.escape(term)}\b", lowered)
+            for term in paired_terms
+        )
+        if not contains_both:
+            return False
+        explicit_contrast = bool(re.search(r"\b(?:while|whereas|but)\b", lowered))
+        role_count = len(role_pattern.findall(lowered))
+        distinct_outcomes = bool(
+            re.search(r"\bdetect(?:ion|s|ed)?\b", lowered)
+            and re.search(r"\bidentif(?:y|ies|ied|ying|ication)\b", lowered)
+        )
+        polarity_contrast = bool(
+            re.search(r"\bnot\b", lowered)
+            and re.search(r"\bfix(?:ed|ation)?\b", lowered)
+        )
+        return role_count >= 2 and (
+            explicit_contrast or distinct_outcomes or polarity_contrast
+        )
 
     @staticmethod
     def _focused_answer_passages(
@@ -1580,9 +1705,10 @@ class GraphV2QA:
                     score += 0.25
                 if re.search(r"\b\d+(?:\.\d+)?\b|\bpH\b|\bminutes?\b", sentence):
                     score += 0.12
-                if ";" in sentence and re.search(
-                    r"\b(?:what are|which are|list|enumerate|uses?)\b",
-                    lowered_question,
+                if (
+                    ";" in sentence
+                    and len(facets) == 1
+                    and explicit_list_request(question)
                 ):
                     # Prefer the complete joined list over a locally similar
                     # single item or an unrelated sentence containing "used".
@@ -1637,10 +1763,9 @@ class GraphV2QA:
             facet,
             flags=re.IGNORECASE,
         ) or question_type(facet) == "time" for facet in facets)
-        structured_list_question = bool(re.search(
-            r"\b(?:what are|which are|list|enumerate|name all|uses?)\b",
-            lowered_question,
-        ))
+        structured_list_question = (
+            len(facets) == 1 and explicit_list_request(question)
+        )
         for item in candidates:
             full_sentence_key = item["sentence"].lower()
             sentence_key = full_sentence_key[:220]
