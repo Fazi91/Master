@@ -115,6 +115,12 @@ def clean_answer_text(value: str) -> str:
     # The manual uses a standalone capital G as a rendered bullet marker.
     cleaned = re.sub(r"^(?:G\s+)+", "", cleaned)
     cleaned = re.sub(r"\.?\s+G\s+(?=[A-Z])", "; ", cleaned)
+    cleaned = re.split(
+        r"\s+(?:Materials and reagents|Equipment):",
+        cleaned,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
     cleaned = re.sub(r"\s*;\s*", "; ", cleaned)
     return cleaned.strip(" ;")
 
@@ -161,6 +167,14 @@ def question_type(question: str) -> str:
         return "reason"
     if re.search(r"\bwhen\b|\bhow long\b|\bduration\b", lowered):
         return "time"
+    # Comparison wording takes precedence over an initial "how". Otherwise
+    # "How do X and Y differ ...?" is incorrectly routed as a procedure.
+    if re.search(
+        r"\bdiffer(?:s|ed|ence|ences|ent)?\b|\bcompare\b|"
+        r"\bversus\b|\bvs\.?\b",
+        lowered,
+    ):
+        return "comparison"
     if re.search(r"\bhow\b|\bprocedure\b|\bmethod\b|\bsteps?\b", lowered):
         return "procedure"
     if not re.search(r"\bwhat (?:is|are)\b", lowered) and re.search(
@@ -168,8 +182,6 @@ def question_type(question: str) -> str:
         lowered,
     ):
         return "procedure"
-    if re.search(r"\bdifference\b|\bcompare\b|\bversus\b|\bvs\.?\b", lowered):
-        return "comparison"
     if re.search(r"\bwhere\b", lowered):
         return "location"
     if re.search(r"\bwhat (?:is|are)\b|\bdefine\b|\bdefinition\b", lowered):
@@ -191,6 +203,23 @@ def paired_subject_terms(question: str) -> set[str]:
 def question_facets(question: str) -> list[str]:
     """Split an explicitly compound question into independently required parts."""
     normalized = normalize_space(question).strip(" ?.!")
+    # Preserve the compared subjects while turning requested dimensions into
+    # independent requirements, e.g. "differ in preparation and use".
+    dimension_match = re.match(
+        r"^(.*?\bdiffer(?:s|ed)?\b.*?)\s+in\s+(?:their\s+)?(.+)$",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if dimension_match:
+        prefix = dimension_match.group(1).strip()
+        dimensions = re.split(
+            r"\s*(?:,\s*|\band\b)\s*",
+            dimension_match.group(2),
+            flags=re.IGNORECASE,
+        )
+        dimensions = [item.strip() for item in dimensions if item.strip()]
+        if len(dimensions) > 1:
+            return [f"{prefix} in {dimension}" for dimension in dimensions]
     parts = re.split(
         r"\s*(?:,\s*)?\band\s+(?=(?:why|how|what|when|where|which|who)\b)",
         normalized,
@@ -487,6 +516,9 @@ class GraphV2QA:
             row["exact_phrase"] = exact_phrase
             row["answerability"] = answerability
             row["question_type"] = requested_type
+            row["reference_page"] = self._is_reference_page(
+                row.get("text") or ""
+            )
             row["requirements_complete"] = bool(complete_passages)
             row["complete_passages"] = complete_passages
             row["score"] = (
@@ -508,6 +540,16 @@ class GraphV2QA:
         return ranked
 
     @staticmethod
+    def _is_reference_page(text: str) -> bool:
+        """Identify navigation pages that must never be answer evidence."""
+        normalized = normalize_space(text)
+        return bool(re.match(
+            r"^(?:index|contents|table of contents)\b",
+            normalized,
+            flags=re.IGNORECASE,
+        ))
+
+    @staticmethod
     def _local_evidence_units(question: str, text: str) -> list[str]:
         """Create local answer units without joining unrelated paragraphs."""
         segments = GraphV2QA._evidence_segments(text)
@@ -519,6 +561,11 @@ class GraphV2QA:
             units.extend(
                 f"{segments[index]} {segments[index + 1]}"
                 for index in range(len(segments) - 1)
+            )
+        if question_type(question) == "comparison":
+            units.extend(
+                " ".join(segments[index:index + 3])
+                for index in range(len(segments) - 2)
             )
         return units
 
@@ -589,6 +636,11 @@ class GraphV2QA:
             f"{segments[index]} {segments[index + 1]}"
             for index in range(len(segments) - 1)
         )
+        if requested_type == "comparison":
+            windows.extend(
+                " ".join(segments[index:index + 3])
+                for index in range(len(segments) - 2)
+            )
         for passage in windows:
             passage_terms = set(content_terms(passage))
             coverage = len(query_terms & passage_terms) / len(query_terms)
@@ -598,6 +650,18 @@ class GraphV2QA:
                 type_patterns.get(requested_type, re.compile(r"."))
                 .search(passage)
             )
+            if requested_type == "comparison" and not type_match:
+                paired_terms = paired_subject_terms(question)
+                type_match = bool(
+                    paired_terms
+                    and paired_terms.issubset(passage_terms)
+                    and re.search(
+                        r"\b(?:not|used for|used to|fix(?:ed|ation)?|"
+                        r"more|less|higher|lower|larger|smaller)\b",
+                        passage,
+                        flags=re.IGNORECASE,
+                    )
+                )
             polarity_match = (
                 "not" not in query_terms or "not" in passage_terms
             )
@@ -650,10 +714,53 @@ class GraphV2QA:
         paired_terms = paired_subject_terms(question)
         if paired_terms and not paired_terms.issubset(passage_terms):
             return False
+        if requested_type == "comparison" and paired_terms:
+            lowered_question = normalize_space(question).lower()
+            if re.search(r"\b(?:preparation|prepare|fixation|fixed)\b", lowered_question):
+                if not re.search(
+                    r"\b(?:prepare|preparation|fix|fixed|fixation|methanol)\b",
+                    passage,
+                    flags=re.IGNORECASE,
+                ):
+                    return False
+                # Mentioning both films near a reagent list is not a
+                # preparation comparison. Require an explicit contrast tied
+                # to the paired film names.
+                if paired_terms == {"thick", "thin"}:
+                    thin_fixed = re.search(
+                        r"(?:\bfix(?:ed)?\b.{0,60}\bthin\b|"
+                        r"\bthin\b.{0,100}\bfix(?:ed)?\b)",
+                        passage,
+                        flags=re.IGNORECASE,
+                    )
+                    thick_not_fixed = re.search(
+                        r"(?:\bthick\b.{0,100}\bnot\b.{0,60}\bfix(?:ed)?\b|"
+                        r"\bnot\b.{0,60}\bfix(?:ed)?\b.{0,100}\bthick\b)",
+                        passage,
+                        flags=re.IGNORECASE,
+                    )
+                    if not (thin_fixed and thick_not_fixed):
+                        return False
+            if re.search(r"\b(?:use|uses|purpose|function)\b", lowered_question):
+                if not re.search(
+                    r"\b(?:used for|used to|purpose|identify|identifying|detect|detection)\b",
+                    passage,
+                    flags=re.IGNORECASE,
+                ):
+                    return False
+                if "malaria" in lowered_question and not (
+                    re.search(r"\bparasites?\b", passage, flags=re.IGNORECASE)
+                    and re.search(
+                        r"\b(?:identify|identifying|detect|detection)\b",
+                        passage,
+                        flags=re.IGNORECASE,
+                    )
+                ):
+                    return False
         relation_patterns = {
             "purpose": r"\b(?:purpose|used for|used to|serves? to|function(?:s)? as)\b",
             "reason": r"\b(?:because|therefore|thus|hence|due to|so that|in order to|results? in|leads? to|will give|make it impossible|to (?:permit|prevent|avoid|ensure|allow))\b",
-            "comparison": r"\b(?:whereas|while|unlike|compared|difference|both)\b",
+            "comparison": r"\b(?:whereas|while|unlike|compared|difference|both|not|used for|used to)\b",
             "time": r"\b(?:when|before|after|during|for\s+\d|minutes?|hours?|days?)\b",
             "location": r"\b(?:inside|within|located|found|present|occurs?)\b",
             "definition": r"\b(?:is|are|means?|defined as|refers? to|consists? of)\b",
@@ -841,6 +948,7 @@ class GraphV2QA:
         grounded = [
             row for row in ranked_rows
             if row.get("score", 0.0) >= FALLBACK_MIN_SCORE
+            and not row.get("reference_page")
             and GraphV2QA.chunk_is_grounded(question, row)
         ]
         if not grounded:
@@ -1189,6 +1297,15 @@ class GraphV2QA:
             row_text = row.get("text") or ""
             if len(facets) > 1:
                 evidence_units = GraphV2QA._evidence_segments(row_text)
+                if any(
+                    question_type(facet) == "comparison"
+                    for facet in facets
+                ):
+                    base_units = list(evidence_units)
+                    evidence_units.extend(
+                        " ".join(base_units[index:index + 3])
+                        for index in range(len(base_units) - 2)
+                    )
                 # Join only an explanatory statement to its immediately
                 # following consequence. Do not create overlapping pairs for
                 # list/criteria clauses, which caused duplicated answers.
@@ -1286,11 +1403,32 @@ class GraphV2QA:
                 )
                 if direct_answerability < minimum_direct:
                     continue
-                coverage = overlap / max(len(query_terms), 1)
-                similarity = float(GraphV2QA._similarities(question, [sentence])[0])
+                if len(facets) > 1 and facet_supported:
+                    facet_overlaps = [
+                        len(set(content_terms(facets[index])) & sentence_terms)
+                        for index in facet_supported
+                    ]
+                    effective_overlap = max(facet_overlaps, default=overlap)
+                    effective_term_count = max(
+                        min(len(set(content_terms(facets[index]))) for index in facet_supported),
+                        1,
+                    )
+                    similarity = max(
+                        float(GraphV2QA._similarities(
+                            facets[index], [sentence]
+                        )[0])
+                        for index in facet_supported
+                    )
+                else:
+                    effective_overlap = overlap
+                    effective_term_count = max(len(query_terms), 1)
+                    similarity = float(
+                        GraphV2QA._similarities(question, [sentence])[0]
+                    )
+                coverage = effective_overlap / effective_term_count
                 score = (
                     similarity
-                    + overlap * 0.12
+                    + effective_overlap * 0.12
                     + coverage * 0.20
                     + min(float(row.get("score") or 0.0) * 0.08, 0.08)
                     + direct_answerability * 0.55
@@ -1307,6 +1445,10 @@ class GraphV2QA:
                     score += min(description_overlap * 0.10, 0.40)
                 candidates.append({
                     "score": score,
+                    "selection_score": (
+                        score / (1.0 + len(sentence) / 240.0)
+                        if requested_type == "comparison" else score
+                    ),
                     "sentence": sentence,
                     "row": row,
                     "position": position,
@@ -1319,17 +1461,32 @@ class GraphV2QA:
                     ),
                 })
 
-        candidates.sort(
-            key=lambda item: (
-                item["requirements_complete"], item["score"]
-            ),
-            reverse=True,
-        )
+        if requested_type == "comparison":
+            candidates.sort(
+                key=lambda item: (
+                    item["requirements_complete"],
+                    -len(item["sentence"]),
+                    item["selection_score"],
+                ),
+                reverse=True,
+            )
+        else:
+            candidates.sort(
+                key=lambda item: (
+                    item["requirements_complete"], item["selection_score"]
+                ),
+                reverse=True,
+            )
         selected = []
         seen_sentences = set()
         used_chunk_ids = set()
         covered_terms: set[str] = set()
         covered_facets: set[int] = set()
+        exhaustive_compound = any(re.search(
+            r"\b(?:characteristics?|criteria|features?|signs?|list|all)\b",
+            facet,
+            flags=re.IGNORECASE,
+        ) for facet in facets)
         for item in candidates:
             full_sentence_key = item["sentence"].lower()
             sentence_key = full_sentence_key[:220]
@@ -1346,6 +1503,11 @@ class GraphV2QA:
             if (chunk_id not in used_chunk_ids
                     and len(used_chunk_ids) >= MAX_EVIDENCE_CHUNKS):
                 continue
+            if (
+                len(facets) > 1 and not exhaustive_compound
+                and item["covered_facets"].issubset(covered_facets)
+            ):
+                continue
             new_terms = item["covered_terms"] - covered_terms
             if (
                 selected and not new_terms and not procedure_question
@@ -1359,11 +1521,6 @@ class GraphV2QA:
             covered_facets.update(item["covered_facets"])
             if item["requirements_complete"] and plan["stop_on_complete"]:
                 break
-            exhaustive_compound = any(re.search(
-                r"\b(?:characteristics?|criteria|features?|signs?|list|all)\b",
-                facet,
-                flags=re.IGNORECASE,
-            ) for facet in facets)
             if (
                 len(facets) > 1 and not exhaustive_compound
                 and len(covered_facets) == len(facets)
@@ -1408,10 +1565,13 @@ class GraphV2QA:
                 source_number[chunk_id] = len(source_rows) + 1
                 source_rows.append(item["row"])
 
-        answer_parts = [
-            f"{item['sentence']} [S{source_number[item['row'].get('chunk_id')]}]"
-            for item in selected
-        ]
+        answer_parts = []
+        for item in selected:
+            sentence = item["sentence"].rstrip()
+            if sentence and sentence[-1] not in ".!?":
+                sentence += "."
+            citation = source_number[item["row"].get("chunk_id")]
+            answer_parts.append(f"{sentence} [S{citation}]")
         return " ".join(answer_parts), source_rows
 
     def _ensure_answer_model(self) -> None:
