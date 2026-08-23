@@ -152,6 +152,11 @@ def question_type(question: str) -> str:
         return "time"
     if re.search(r"\bhow\b|\bprocedure\b|\bmethod\b|\bsteps?\b", lowered):
         return "procedure"
+    if not re.search(r"\bwhat (?:is|are)\b", lowered) and re.search(
+        r"\b(?:staining|preparing|collecting|examining|counting|testing)\b",
+        lowered,
+    ):
+        return "procedure"
     if re.search(r"\bdifference\b|\bcompare\b|\bversus\b|\bvs\.?\b", lowered):
         return "comparison"
     if re.search(r"\bwhere\b", lowered):
@@ -403,17 +408,23 @@ class GraphV2QA:
             answerability = self._direct_answerability(
                 question, row.get("text") or ""
             )
+            complete_passages = self._complete_answer_passages(
+                question, row.get("text") or ""
+            )
             row["semantic_score"] = float(semantic_score)
             row["keyword_overlap"] = overlap
             row["keyword_coverage"] = coverage
             row["exact_phrase"] = exact_phrase
             row["answerability"] = answerability
             row["question_type"] = requested_type
+            row["requirements_complete"] = bool(complete_passages)
+            row["complete_passages"] = complete_passages
             row["score"] = (
                 0.30 * float(semantic_score)
                 + min(overlap * 0.08, 0.32)
                 + min(coverage * 0.18, 0.18)
                 + 0.90 * answerability
+                + (1.20 if complete_passages else 0.0)
                 + (0.08 if exact_phrase else 0.0)
             )
             ranked.append(row)
@@ -425,6 +436,37 @@ class GraphV2QA:
             reverse=True,
         )
         return ranked
+
+    @staticmethod
+    def _local_evidence_units(question: str, text: str) -> list[str]:
+        """Create local answer units without joining unrelated paragraphs."""
+        segments = GraphV2QA._evidence_segments(text)
+        units = list(segments)
+        if question_type(question) in {"reason", "comparison"}:
+            units.extend(
+                f"{segments[index]} {segments[index + 1]}"
+                for index in range(len(segments) - 1)
+            )
+        return units
+
+    @staticmethod
+    def _complete_answer_passages(question: str, text: str) -> list[str]:
+        """Return only local passages satisfying all explicit requirements."""
+        passages = []
+        for unit in GraphV2QA._local_evidence_units(question, text):
+            unit = normalize_space(unit)
+            if not unit or len(unit) > 1400:
+                continue
+            if GraphV2QA._requirements_satisfied(question, unit):
+                passages.append(unit)
+        passages.sort(
+            key=lambda passage: (
+                -len(passage),
+                GraphV2QA._direct_answerability(question, passage),
+            ),
+            reverse=True,
+        )
+        return passages[:3]
 
     @staticmethod
     def _direct_answerability(question: str, text: str) -> float:
@@ -532,14 +574,9 @@ class GraphV2QA:
         question: str, text: str, limit: int = 4
     ) -> list[str]:
         """Return local passages that directly answer the question."""
-        segments = GraphV2QA._evidence_segments(text)
-        if not segments:
+        units = GraphV2QA._local_evidence_units(question, text)
+        if not units:
             return []
-        units = list(segments)
-        units.extend(
-            f"{segments[index]} {segments[index + 1]}"
-            for index in range(len(segments) - 1)
-        )
         scored = []
         requested_type = question_type(question)
         query_terms = set(content_terms(question))
@@ -642,7 +679,7 @@ class GraphV2QA:
     def select_consistent_candidates(
         question: str, ranked_rows: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """Keep one coherent page/section cluster instead of mixing contexts."""
+        """Select the smallest evidence set satisfying the question."""
         grounded = [
             row for row in ranked_rows
             if row.get("score", 0.0) >= FALLBACK_MIN_SCORE
@@ -651,6 +688,69 @@ class GraphV2QA:
         if not grounded:
             return []
 
+        requested_type = question_type(question)
+
+        # A locally complete passage is stronger than any combination of
+        # partial passages. This decision must happen before page anchoring.
+        if requested_type != "procedure":
+            complete_rows = [
+                row for row in grounded
+                if row.get("requirements_complete")
+            ]
+            if complete_rows:
+                complete_rows.sort(
+                    key=lambda row: (
+                        row.get("answerability", 0.0),
+                        row.get("score", 0.0),
+                        row.get("keyword_coverage", 0.0),
+                    ),
+                    reverse=True,
+                )
+                # One complete local passage is the minimum sufficient set.
+                return [complete_rows[0]]
+
+            # No single passage is complete: greedily build a minimal set of
+            # complementary passages across the full candidate list. Do not
+            # discard a correct distant page merely because another page had
+            # a higher initial similarity score.
+            query_terms = set(content_terms(question))
+            covered_terms: set[str] = set()
+            selected: list[dict[str, Any]] = []
+            remaining = []
+            for row in grounded[:80]:
+                passages = GraphV2QA._focused_answer_passages(
+                    question, row.get("text") or "", limit=2
+                )
+                passage_terms = set(content_terms(" ".join(passages)))
+                contribution = query_terms & passage_terms
+                if passages and contribution:
+                    item = dict(row)
+                    item["evidence_passages"] = passages
+                    item["requirement_terms"] = contribution
+                    remaining.append(item)
+
+            while remaining and len(selected) < MAX_SYNTHESIS_CHUNKS:
+                remaining.sort(
+                    key=lambda row: (
+                        len(row["requirement_terms"] - covered_terms),
+                        row.get("answerability", 0.0),
+                        row.get("score", 0.0),
+                    ),
+                    reverse=True,
+                )
+                best = remaining.pop(0)
+                new_terms = best["requirement_terms"] - covered_terms
+                if not new_terms:
+                    break
+                selected.append(best)
+                covered_terms.update(new_terms)
+                if query_terms and len(covered_terms) / len(query_terms) >= 0.80:
+                    break
+            if selected:
+                return selected
+
+        # Procedures may span consecutive Chunks. Anchor only this intent to
+        # a coherent page window so steps from different methods are not mixed.
         exact_rows = [row for row in grounded if row.get("exact_phrase")]
         anchor = exact_rows[0] if exact_rows else max(
             grounded,
@@ -669,7 +769,7 @@ class GraphV2QA:
             same_section_window = (
                 isinstance(anchor_page, int)
                 and isinstance(page, int)
-                and abs(anchor_page - page) <= 2
+                and anchor_page <= page <= anchor_page + 1
             )
             same_page = page == anchor_page
             strong_term_match = row.get("keyword_overlap", 0) >= minimum_overlap
@@ -876,13 +976,9 @@ class GraphV2QA:
 
         candidates = []
         for row in rows:
-            segments = GraphV2QA._evidence_segments(row.get("text") or "")
-            evidence_units = list(segments)
-            if requested_type in {"reason", "comparison"}:
-                evidence_units.extend(
-                    f"{segments[index]} {segments[index + 1]}"
-                    for index in range(len(segments) - 1)
-                )
+            evidence_units = GraphV2QA._local_evidence_units(
+                question, row.get("text") or ""
+            )
             for position, sentence in enumerate(evidence_units):
                 if not 30 <= len(sentence) <= 700:
                     continue
