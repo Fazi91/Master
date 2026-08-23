@@ -177,6 +177,47 @@ def paired_subject_terms(question: str) -> set[str]:
     return {normalize_token(match.group(1)), normalize_token(match.group(2))} if match else set()
 
 
+def answer_plan(question: str) -> dict[str, Any]:
+    """Plan answer cardinality and stopping rules from the question form."""
+    lowered = normalize_space(question).lower()
+    requested_type = question_type(question)
+    explicit_multi = bool(re.search(
+        r"\b(?:list|enumerate|name all|what are|which are|types|kinds|ways|"
+        r"methods|conditions|criteria|reasons|causes|purposes|uses|advantages|disadvantages|"
+        r"differences|features|steps)\b",
+        lowered,
+    ))
+    explanatory = bool(re.search(
+        r"\b(?:explain|describe|discuss|why|how does|how do)\b",
+        lowered,
+    ))
+    if requested_type == "procedure":
+        return {"mode": "procedure", "max_claims": 8, "stop_on_complete": False}
+    if requested_type in {"time", "comparison"} or explicit_multi:
+        return {"mode": "multi", "max_claims": 6, "stop_on_complete": False}
+    if requested_type in {"purpose", "reason"}:
+        return {
+            "mode": "explanatory",
+            "max_claims": 4 if explicit_multi else 2,
+            "stop_on_complete": not explicit_multi,
+        }
+    if explanatory:
+        return {"mode": "explanatory", "max_claims": 4, "stop_on_complete": False}
+    if requested_type == "definition":
+        return {"mode": "concise", "max_claims": 2, "stop_on_complete": True}
+    if requested_type == "location":
+        return {
+            "mode": "multi" if explicit_multi else "concise",
+            "max_claims": 4 if explicit_multi else 2,
+            "stop_on_complete": not explicit_multi,
+        }
+    return {
+        "mode": "multi" if explicit_multi else "concise",
+        "max_claims": 6 if explicit_multi else 2,
+        "stop_on_complete": not explicit_multi,
+    }
+
+
 def small_talk_answer(text: str) -> str | None:
     normalized = normalize_space(text).lower()
     for pattern, answer in SMALL_TALK:
@@ -621,10 +662,14 @@ class GraphV2QA:
             )
         selected = []
         seen = set()
+        minimum_direct = {
+            "purpose": 0.48, "reason": 0.58, "comparison": 0.48,
+            "time": 0.45, "location": 0.45, "definition": 0.42,
+        }.get(requested_type, 0.35)
         for item in scored:
             direct = item["direct"]
             passage = item["passage"]
-            if direct < 0.35:
+            if direct < minimum_direct:
                 continue
             key = passage.lower()
             if key in seen:
@@ -929,13 +974,8 @@ class GraphV2QA:
         query_terms = set(content_terms(question))
         lowered_question = question.lower()
         requested_type = question_type(question)
-        procedure_question = any(
-            phrase in lowered_question
-            for phrase in (
-                "how", "procedure", "method", "prepare", "stain", "examine",
-                "perform", "steps", "treatment", "technique",
-            )
-        )
+        plan = answer_plan(question)
+        procedure_question = requested_type == "procedure"
         appearance_question = any(
             phrase in lowered_question
             for phrase in ("appearance", "look like", "microscopic appearance", "show")
@@ -1080,19 +1120,18 @@ class GraphV2QA:
                     and len(used_chunk_ids) >= MAX_EVIDENCE_CHUNKS):
                 continue
             new_terms = item["covered_terms"] - covered_terms
-            if selected and not new_terms and not procedure_question:
+            if (
+                selected and not new_terms and not procedure_question
+                and plan["mode"] == "concise"
+            ):
                 continue
             selected.append(item)
             seen_sentences.add(sentence_key)
             used_chunk_ids.add(chunk_id)
             covered_terms.update(item["covered_terms"])
-            if item["requirements_complete"]:
+            if item["requirements_complete"] and plan["stop_on_complete"]:
                 break
-            if requested_type in {
-                "reason", "purpose", "definition", "time", "location"
-            } and len(selected) == 2:
-                break
-            if len(selected) == 6:
+            if len(selected) == plan["max_claims"]:
                 break
 
         if not selected:
@@ -1101,6 +1140,12 @@ class GraphV2QA:
         # Present procedural evidence in manual order after relevance-based
         # selection so the resulting instructions remain readable.
         if procedure_question:
+            selected.sort(key=lambda item: (
+                item["row"].get("pdf_page") or 0,
+                item["row"].get("chunk_id") or "",
+                item["position"],
+            ))
+        elif requested_type == "time":
             selected.sort(key=lambda item: (
                 item["row"].get("pdf_page") or 0,
                 item["row"].get("chunk_id") or "",
@@ -1149,13 +1194,15 @@ class GraphV2QA:
         parts = []
         used = 0
         requested_type = question_type(question)
+        plan = answer_plan(question)
         for index, row in enumerate(rows[:MAX_SYNTHESIS_CHUNKS], 1):
             text = normalize_space(row.get("text") or "")
             passages = [text]
             if requested_type != "procedure":
-                passage_limit = 1 if requested_type in {
-                    "reason", "purpose", "definition", "time", "location"
-                } else 3
+                passage_limit = (
+                    1 if plan["stop_on_complete"]
+                    else min(int(plan["max_claims"]), 6)
+                )
                 passages = GraphV2QA._focused_answer_passages(
                     question, text, limit=passage_limit
                 )
@@ -1170,7 +1217,7 @@ class GraphV2QA:
                 break
             parts.append(piece)
             used += len(piece)
-            if requested_type != "procedure" and any(
+            if plan["stop_on_complete"] and any(
                 GraphV2QA._requirements_satisfied(question, passage)
                 for passage in passages
             ):
