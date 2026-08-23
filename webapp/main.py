@@ -292,6 +292,11 @@ def small_talk_answer(text: str) -> str | None:
 def relation_intent(question: str) -> str | None:
     lowered = normalize_space(question).lower()
 
+    # Graph facts are atomic. A compound question must go through Chunk
+    # retrieval so every facet can be satisfied and jointly verified.
+    if len(question_facets(question)) > 1:
+        return None
+
     # A reagent name inside a procedure question does not mean that the user
     # is asking for a USES_REAGENT graph fact. Route procedural wording to
     # chunk retrieval, where the complete manual instruction can be returned.
@@ -317,6 +322,15 @@ def relation_intent(question: str) -> str | None:
         if relation_type == "USES_REAGENT":
             if explicit_reagent_question:
                 return relation_type
+            continue
+        if relation_type == "HAS_MEASUREMENT" and not re.search(
+            r"\b(?:how long|what (?:is|are) (?:the )?(?:time|duration|"
+            r"measurement|temperature|speed)|(?:time|duration|measurement|"
+            r"temperature|speed) (?:of|for|is|are))\b",
+            lowered,
+        ):
+            # A number or time limit embedded in a condition is not a request
+            # for a graph measurement fact.
             continue
         if any(phrase in lowered for phrase in phrases):
             return relation_type
@@ -609,7 +623,9 @@ class GraphV2QA:
             "reason": re.compile(
                 r"\b(?:because|therefore|thus|hence|due to|so that|"
                 r"in order to|results? in|leads? to|will give|"
-                r"make it impossible|to (?:permit|prevent|avoid|ensure|allow))\b",
+                r"make it impossible|alter(?:s|ed)?|affect(?:s|ed)?|"
+                r"chang(?:e|es|ed)|damage(?:s|d)?|"
+                r"to (?:permit|prevent|avoid|ensure|allow))\b",
                 flags=re.IGNORECASE,
             ),
             "procedure": re.compile(
@@ -726,6 +742,7 @@ class GraphV2QA:
             "method", "procedure", "step", "steps", "explain", "describe",
             "characteristic", "characteristics", "criteria", "feature",
             "features", "sign", "signs", "identify", "indicate",
+            "not",
         }
         subject_terms = set(content_terms(question)) - relation_terms
         subject_overlap = len(subject_terms & passage_terms)
@@ -785,7 +802,7 @@ class GraphV2QA:
                     return False
         relation_patterns = {
             "purpose": r"\b(?:purpose|used for|used to|serves? to|function(?:s)? as)\b",
-            "reason": r"\b(?:because|therefore|thus|hence|due to|so that|in order to|results? in|leads? to|will give|make it impossible|to (?:permit|prevent|avoid|ensure|allow))\b",
+            "reason": r"\b(?:because|therefore|thus|hence|due to|so that|in order to|results? in|leads? to|will give|make it impossible|alter(?:s|ed)?|affect(?:s|ed)?|chang(?:e|es|ed)|damage(?:s|d)?|to (?:permit|prevent|avoid|ensure|allow))\b",
             "comparison": r"\b(?:whereas|while|unlike|compared|difference|both|not|used for|used to)\b",
             "time": r"\b(?:when|before|after|during|for\s+\d|minutes?|hours?|days?)\b",
             "location": r"\b(?:inside|within|located|found|present|occurs?)\b",
@@ -1981,17 +1998,25 @@ class GraphV2QA:
                     row for row in facts if row.get("source_id") == source_id
                 ][:MAX_EVIDENCE_CHUNKS]
                 fact_answer = self.compose_fact_answer(relation_type, selected)
-                sources = [serializable_source(row) for row in selected]
-                chunk_ids = [
-                    row["chunk_id"] for row in selected if row.get("chunk_id")
-                ]
-                image_rows = self.verified_images(
-                    question, relation_type, chunk_ids
-                )
-                return self.response(
-                    "domain_answer", question, fact_answer, sources, image_rows,
-                    chunks_scanned, len(consistent),
-                )
+                fact_evidence = normalize_space(" ".join(
+                    row.get("evidence") or row.get("text") or ""
+                    for row in selected
+                ))
+                if self._requirements_satisfied(
+                    question, f"{fact_answer} {fact_evidence}"
+                ):
+                    sources = [serializable_source(row) for row in selected]
+                    chunk_ids = [
+                        row["chunk_id"] for row in selected if row.get("chunk_id")
+                    ]
+                    image_rows = self.verified_images(
+                        question, relation_type, chunk_ids
+                    )
+                    return self.response(
+                        "domain_answer", question, fact_answer, sources, image_rows,
+                        chunks_scanned, len(consistent),
+                        synthesis_mode="verified_graph_fact",
+                    )
 
         if not consistent:
             return self.response(
