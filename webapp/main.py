@@ -165,7 +165,8 @@ def question_type(question: str) -> str:
     lowered = normalize_space(question).lower()
     if re.search(
         r"\bpurpose\b|\bused for\b|\buses? of\b|"
-        r"\brespective uses?\b|\bfunction of\b",
+        r"\brespective uses?\b|\bfunction of\b|"
+        r"\bhow (?:is|are|was|were) .+? used\b",
         lowered,
     ):
         return "purpose"
@@ -233,6 +234,19 @@ def question_facets(question: str) -> list[str]:
         normalized,
         flags=re.IGNORECASE,
     )
+    # A leading context phrase is part of the question, not an independent
+    # facet: "After staining, what ..." and "In malaria microscopy, how ...".
+    if (
+        len(parts) > 1
+        and not re.search(
+            r"\b(?:why|how|what|when|where|which|who|explain|describe|"
+            r"list|state|name|give|compare)\b",
+            parts[0],
+            flags=re.IGNORECASE,
+        )
+    ):
+        parts[1] = f"{parts[0]}, {parts[1]}"
+        parts = parts[1:]
     facets = [part.strip(" ,;:?.!") for part in parts if part.strip(" ,;:?.!")]
     return facets if len(facets) > 1 else [normalized]
 
@@ -576,6 +590,7 @@ class GraphV2QA:
         """Create local answer units without joining unrelated paragraphs."""
         segments = GraphV2QA._evidence_segments(text)
         units = list(segments)
+        units.extend(GraphV2QA._list_evidence_units(segments))
         if (
             question_type(question) in {"reason", "comparison"}
             or len(question_facets(question)) > 1
@@ -589,6 +604,59 @@ class GraphV2QA:
                 " ".join(segments[index:index + 3])
                 for index in range(len(segments) - 2)
             )
+        return units
+
+    @staticmethod
+    def _list_evidence_units(segments: list[str]) -> list[str]:
+        """Join a list lead-in to all of its payload items.
+
+        PDF paragraph boundaries separate phrases such as ``used for:`` from
+        the bullets that actually answer the question.  Treating the lead-in
+        as a standalone sentence produced confident but empty answers.
+        """
+        units: list[str] = []
+        bullet = re.compile(r"^(?:[—–-]|[•▪]|G\s+)")
+        heading = re.compile(
+            r"^(?:\d+(?:\.\d+)+\s+)?(?:materials and reagents|equipment|"
+            r"method|procedure|principle|preparation|examination)\b",
+            flags=re.IGNORECASE,
+        )
+        for index, lead in enumerate(segments):
+            normalized_lead = normalize_space(lead)
+            if not normalized_lead.endswith(":"):
+                continue
+            if not re.search(
+                r"\b(?:used for|include|includes|following|as follows)\s*:$",
+                normalized_lead,
+                flags=re.IGNORECASE,
+            ):
+                continue
+            items: list[str] = []
+            for candidate in segments[index + 1:]:
+                candidate = normalize_space(candidate)
+                if not candidate or heading.match(candidate):
+                    break
+                if not bullet.match(candidate):
+                    # A wrapped explanatory sentence may immediately follow
+                    # the final bullet (for example, the use of Field stains).
+                    # Attach it only when it repeats the final item's subject.
+                    if items:
+                        last_terms = content_terms(items[-1])[:2]
+                        candidate_terms = set(content_terms(candidate))
+                        if last_terms and all(
+                            term in candidate_terms for term in last_terms
+                        ):
+                            items[-1] = (
+                                f"{items[-1].rstrip(' .')}. {candidate}"
+                            )
+                    break
+                cleaned = bullet.sub("", candidate, count=1).strip()
+                if cleaned:
+                    items.append(cleaned.rstrip(" .;"))
+            if items:
+                units.append(
+                    f"{normalized_lead.rstrip(':')} " + "; ".join(items)
+                )
         return units
 
     @staticmethod
@@ -620,7 +688,7 @@ class GraphV2QA:
         type_patterns = {
             "purpose": re.compile(
                 r"\b(?:purpose|used for|used to|serves? to|function(?:s)? as|"
-                r"allows?|enables?)\b",
+                r"used (?:alone|with|in|as)|allows?|enables?|include(?:s)?)\b",
                 flags=re.IGNORECASE,
             ),
             "reason": re.compile(
@@ -717,6 +785,11 @@ class GraphV2QA:
                 for facet in facets
             )
         lowered_question = normalize_space(question).lower()
+        normalized_passage = normalize_space(passage)
+        # A colon-ended lead-in announces an answer but contains none of its
+        # payload.  It can only be verified after the following list is joined.
+        if normalized_passage.endswith(":"):
+            return False
         if re.search(
             r"\b(?:characteristics?|criteria|features?|signs?)\b",
             lowered_question,
@@ -732,6 +805,14 @@ class GraphV2QA:
                 return False
             subject_terms = set(content_terms(question)) & set(content_terms(passage))
             return bool(subject_terms)
+        if re.search(
+            r"\b(?:what are|which are|list|enumerate|name all|uses?)\b",
+            lowered_question,
+        ) and re.search(r"\b(?:used for|include(?:s)?)\b", normalized_passage,
+                        flags=re.IGNORECASE):
+            # A list answer needs payload, not only the introductory phrase.
+            if ";" not in normalized_passage:
+                return False
         requested_type = question_type(question)
         direct = GraphV2QA._direct_answerability(question, passage)
         passage_terms = set(content_terms(passage))
@@ -746,6 +827,7 @@ class GraphV2QA:
             "characteristic", "characteristics", "criteria", "feature",
             "features", "sign", "signs", "identify", "indicate",
             "not",
+            "each", "one",
         }
         subject_terms = set(content_terms(question)) - relation_terms
         subject_overlap = len(subject_terms & passage_terms)
@@ -804,7 +886,7 @@ class GraphV2QA:
                 ):
                     return False
         relation_patterns = {
-            "purpose": r"\b(?:purpose|used for|used to|serves? to|function(?:s)? as)\b",
+            "purpose": r"\b(?:purpose|used for|used to|used (?:alone|with|in|as)|serves? to|function(?:s)? as|include(?:s)?)\b",
             "reason": r"\b(?:because|therefore|thus|hence|due to|so that|in order to|results? in|leads? to|will give|make it impossible|alter(?:s|ed)?|affect(?:s|ed)?|chang(?:e|es|ed)|damage(?:s|d)?|to (?:permit|prevent|avoid|ensure|allow))\b",
             "comparison": r"\b(?:whereas|while|unlike|compared|difference|both|not|used for|used to)\b",
             "time": r"\b(?:when|before|after|during|for\s+\d|minutes?|hours?|days?)\b",
@@ -1352,6 +1434,9 @@ class GraphV2QA:
             row_text = row.get("text") or ""
             if len(facets) > 1:
                 evidence_units = GraphV2QA._evidence_segments(row_text)
+                evidence_units.extend(
+                    GraphV2QA._list_evidence_units(evidence_units)
+                )
                 if any(
                     question_type(facet) == "comparison"
                     for facet in facets
@@ -1400,6 +1485,9 @@ class GraphV2QA:
                     flags=re.IGNORECASE,
                 ):
                     # Reject text cut off at a Chunk boundary.
+                    continue
+                if sentence.endswith(":"):
+                    # Never expose an empty list lead-in as an answer.
                     continue
                 if not statement_pattern.search(sentence):
                     continue
@@ -1492,6 +1580,13 @@ class GraphV2QA:
                     score += 0.25
                 if re.search(r"\b\d+(?:\.\d+)?\b|\bpH\b|\bminutes?\b", sentence):
                     score += 0.12
+                if ";" in sentence and re.search(
+                    r"\b(?:what are|which are|list|enumerate|uses?)\b",
+                    lowered_question,
+                ):
+                    # Prefer the complete joined list over a locally similar
+                    # single item or an unrelated sentence containing "used".
+                    score += min(sentence.count(";") * 0.22, 0.88)
                 if appearance_question:
                     words = set(re.findall(r"[a-z]+", sentence.lower()))
                     description_overlap = len(words & descriptive_terms)
@@ -1542,6 +1637,10 @@ class GraphV2QA:
             facet,
             flags=re.IGNORECASE,
         ) or question_type(facet) == "time" for facet in facets)
+        structured_list_question = bool(re.search(
+            r"\b(?:what are|which are|list|enumerate|name all|uses?)\b",
+            lowered_question,
+        ))
         for item in candidates:
             full_sentence_key = item["sentence"].lower()
             sentence_key = full_sentence_key[:220]
@@ -1570,6 +1669,12 @@ class GraphV2QA:
             used_chunk_ids.add(chunk_id)
             covered_terms.update(item["covered_terms"])
             covered_facets.update(item["covered_facets"])
+            if (
+                structured_list_question
+                and item["requirements_complete"]
+                and ";" in item["sentence"]
+            ):
+                break
             if item["requirements_complete"] and plan["stop_on_complete"]:
                 break
             if (
