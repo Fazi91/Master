@@ -1122,6 +1122,26 @@ class GraphV2QA:
             )
             if not delayed_rule_supported:
                 return False
+            # A request for specimen-handling "rules" is broader than the
+            # single delayed-preparation action.  The immediately following
+            # anticoagulant restriction is part of the same source contract
+            # and must not be silently omitted.
+            if re.search(r"\b(?:rules?|precautions?)\b", lowered_question):
+                heparin_rule_supported = bool(
+                    re.search(r"\bheparin\b", normalized_passage,
+                              flags=re.IGNORECASE)
+                    and re.search(
+                        r"\b(?:alter|change)\w*\b.{0,100}"
+                        r"\b(?:leukocytes?|thrombocytes?)\b",
+                        normalized_passage,
+                        flags=re.IGNORECASE,
+                    )
+                    and re.search(r"\bshould not be used\b",
+                                  normalized_passage,
+                                  flags=re.IGNORECASE)
+                )
+                if not heparin_rule_supported:
+                    return False
             return True
         # A colon-ended lead-in announces an answer but contains none of its
         # payload.  It can only be verified after the following list is joined.
@@ -1793,6 +1813,41 @@ class GraphV2QA:
                     row.get("pdf_page") or 0,
                     row.get("chunk_id") or "",
                 ))
+                # Do not truncate the page window before retaining the two
+                # answer contracts.  In this manual the method overview is on
+                # p.191 while the arithmetic rule is continued on p.194; a
+                # simple first-N slice can discard the formula even though it
+                # was successfully retrieved.
+                method_rows = [
+                    row for row in quantitative_rows
+                    if re.search(
+                        r"\b(?:two methods?.+plus system|parasites? per "
+                        r"(?:micro)?litre.+plus system)\b",
+                        normalize_space(row.get("text") or ""),
+                        flags=re.IGNORECASE,
+                    )
+                ]
+                formula_rows = [
+                    row for row in quantitative_rows
+                    if (
+                        re.search(r"\b8000\b", row.get("text") or "")
+                        and re.search(r"\bleukocytes?\b",
+                                      row.get("text") or "",
+                                      flags=re.IGNORECASE)
+                        and re.search(r"\b(?:multiply|multiplying)\b",
+                                      row.get("text") or "",
+                                      flags=re.IGNORECASE)
+                        and re.search(r"\bdivid\w*\b",
+                                      row.get("text") or "",
+                                      flags=re.IGNORECASE)
+                    )
+                ]
+                contract_rows: list[dict[str, Any]] = []
+                for row in method_rows[:1] + formula_rows[:1]:
+                    if row not in contract_rows:
+                        contract_rows.append(row)
+                if method_rows and formula_rows:
+                    return contract_rows
                 return quantitative_rows[:8]
 
         if requested_type == "materials":
@@ -2258,7 +2313,10 @@ class GraphV2QA:
         )
         paired_fixation = bool(
             paired_terms == {"thick", "thin"}
-            and re.search(r"\b(?:fix|fixed|fixation)\b", lowered_question)
+            and re.search(
+                r"\b(?:prepar(?:e|ed|ation)|fix|fixed|fixation)\b",
+                lowered_question,
+            )
         )
         if paired_usage or paired_fixation:
             contract_candidates: list[tuple[int, float, str, dict[str, Any]]] = []
@@ -2286,6 +2344,34 @@ class GraphV2QA:
                     ))
             if contract_candidates:
                 _, _, passage, row = min(contract_candidates)
+                if paired_fixation:
+                    # Keep only the self-contained preparation contrast.  A
+                    # neighbouring sentence such as "This is often not
+                    # possible" is true only with its missing antecedent and
+                    # must not appear in the answer.
+                    sentences = [
+                        normalize_space(sentence)
+                        for sentence in re.split(
+                            r"(?<=[.!?])\s+", passage
+                        )
+                        if normalize_space(sentence)
+                    ]
+                    fixation_sentences = [
+                        sentence for sentence in sentences
+                        if (
+                            re.search(r"\bthin film\b", sentence,
+                                      flags=re.IGNORECASE)
+                            and re.search(r"\b(?:fix|methanol)\w*\b", sentence,
+                                          flags=re.IGNORECASE)
+                        ) or (
+                            re.search(r"\bthick film\b", sentence,
+                                      flags=re.IGNORECASE)
+                            and re.search(r"\bnot be fixed\b", sentence,
+                                          flags=re.IGNORECASE)
+                        )
+                    ]
+                    if fixation_sentences:
+                        passage = " ".join(fixation_sentences)
                 if passage[-1] not in ".!?":
                     passage += "."
                 return f"{passage} [S1]", [row]
