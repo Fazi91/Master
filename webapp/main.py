@@ -808,7 +808,7 @@ class GraphV2QA:
             question_type(question) in {"reason", "comparison"}
             or len(question_facets(question)) > 1
             or re.search(
-                r"\b(?:precautions?|prevent|avoid)\b",
+                r"\b(?:precautions?|rules?|handling|delayed?|prevent|avoid)\b",
                 question,
                 flags=re.IGNORECASE,
             )
@@ -1784,71 +1784,50 @@ class GraphV2QA:
             flags=re.IGNORECASE,
         ))
         if quantitative_method and "parasite density" in question.lower():
-            anchor = max(
-                grounded,
-                key=lambda row: (
-                    row.get("answerability", 0.0), row.get("score", 0.0)
-                ),
-            )
-            anchor_page = anchor.get("pdf_page")
-            quantitative_rows = []
+            # Find both ends of the quantitative contract independently.
+            # Whichever page ranks first must not determine a one-directional
+            # window: the method overview can precede the formula by several
+            # pages, as it does on pp.191 and 194 in this manual.
+            method_rows = []
+            formula_rows = []
             for row in ranked_rows:
                 page = row.get("pdf_page")
-                text = row.get("text") or ""
-                if (
-                    isinstance(anchor_page, int)
-                    and isinstance(page, int)
-                    and anchor_page <= page <= anchor_page + 4
-                    and re.search(r"\bparasites?\b", text, re.IGNORECASE)
-                    and re.search(
-                        r"\b(?:density|leukocytes?|plus system|8000|formula)\b",
-                        text,
-                        re.IGNORECASE,
-                    )
-                    and not row.get("reference_page")
-                ):
-                    quantitative_rows.append(row)
-            if quantitative_rows:
-                quantitative_rows.sort(key=lambda row: (
-                    row.get("pdf_page") or 0,
-                    row.get("chunk_id") or "",
-                ))
-                # Do not truncate the page window before retaining the two
-                # answer contracts.  In this manual the method overview is on
-                # p.191 while the arithmetic rule is continued on p.194; a
-                # simple first-N slice can discard the formula even though it
-                # was successfully retrieved.
-                method_rows = [
-                    row for row in quantitative_rows
-                    if re.search(
+                text = normalize_space(row.get("text") or "")
+                if not isinstance(page, int) or row.get("reference_page"):
+                    continue
+                if re.search(
                         r"\b(?:two methods?.+plus system|parasites? per "
                         r"(?:micro)?litre.+plus system)\b",
-                        normalize_space(row.get("text") or ""),
+                        text,
                         flags=re.IGNORECASE,
-                    )
-                ]
-                formula_rows = [
-                    row for row in quantitative_rows
-                    if (
-                        re.search(r"\b8000\b", row.get("text") or "")
-                        and re.search(r"\bleukocytes?\b",
-                                      row.get("text") or "",
+                ):
+                    method_rows.append(row)
+                if (
+                        re.search(r"\b8000\b", text)
+                        and re.search(r"\bleukocytes?\b", text,
                                       flags=re.IGNORECASE)
-                        and re.search(r"\b(?:multiply|multiplying)\b",
-                                      row.get("text") or "",
+                        and re.search(r"\b(?:multiply|multiplying)\b", text,
                                       flags=re.IGNORECASE)
-                        and re.search(r"\bdivid\w*\b",
-                                      row.get("text") or "",
+                        and re.search(r"\bdivid\w*\b", text,
                                       flags=re.IGNORECASE)
-                    )
-                ]
-                contract_rows: list[dict[str, Any]] = []
-                for row in method_rows[:1] + formula_rows[:1]:
-                    if row not in contract_rows:
-                        contract_rows.append(row)
-                if method_rows and formula_rows:
-                    return contract_rows
-                return quantitative_rows[:8]
+                ):
+                    formula_rows.append(row)
+
+            coherent_pairs = [
+                (method_row, formula_row)
+                for method_row in method_rows
+                for formula_row in formula_rows
+                if 0 <= formula_row["pdf_page"] - method_row["pdf_page"] <= 4
+            ]
+            if coherent_pairs:
+                method_row, formula_row = max(
+                    coherent_pairs,
+                    key=lambda pair: (
+                        -abs(pair[1]["pdf_page"] - pair[0]["pdf_page"]),
+                        pair[0].get("score", 0.0) + pair[1].get("score", 0.0),
+                    ),
+                )
+                return [method_row, formula_row]
 
         if requested_type == "materials":
             material_rows = [
