@@ -172,6 +172,19 @@ def clean_answer_text(value: str) -> str:
     # The manual uses a standalone capital G as a rendered bullet marker.
     cleaned = re.sub(r"^(?:G\s+)+", "", cleaned)
     cleaned = re.sub(r"\.?\s+G\s+(?=[A-Z])", "; ", cleaned)
+    cleaned = re.sub(
+        r"\buseful\s+Fig\.\s*\d+\.\d+\s+.*?\s+"
+        r"for the following reasons:?",
+        "useful for the following reasons",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\b(following reasons)\s+consistency of faecal specimens\b",
+        r"\1",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.split(
         r"\s+(?:Materials and reagents|Equipment):",
         cleaned,
@@ -199,6 +212,11 @@ def normalize_token(token: str) -> str:
         "diagnostic": "diagnosis",
         "important": "importance",
         "collection": "collect",
+        "preservation": "preserve", "preservative": "preserve",
+        "preserved": "preserve", "preserving": "preserve",
+        "examined": "examination", "examining": "examination",
+        "faecal": "faeces", "fecal": "faeces", "feces": "faeces",
+        "stool": "faeces", "stools": "faeces",
     }
     if token in replacements:
         return replacements[token]
@@ -252,6 +270,20 @@ def requested_operations(question: str) -> set[str]:
         and re.search(r"\b(?:after|upon)\s+collection\b", lowered)
     ):
         operations.discard("collection")
+    # In a preservation facet, "when immediate examination is not possible"
+    # is the condition that triggers preservation, not a second request for
+    # the examination procedure. Keep examination only when the grammar
+    # explicitly coordinates it as a requested action.
+    if (
+        {"preservation", "examination"}.issubset(operations)
+        and re.search(
+            r"\bpreserv\w*\b.{0,80}\bwhen\b.{0,80}"
+            r"\bexamin\w*\b.{0,30}\bnot possible\b",
+            lowered,
+        )
+        and not re.search(r"\band\s+examin\w*\b", lowered)
+    ):
+        operations.discard("examination")
     # These phrases ask for the emergency spill response, not merely any
     # sentence mentioning that a spill occurred near an instrument.
     if re.search(r"\b(?:infectious material|specimen)\b.{0,50}\bspill\w*\b|"
@@ -745,13 +777,22 @@ def execution_facets(question: str) -> list[tuple[str, str]]:
         target_text = " for parasites" if re.search(
             r"\bparasites?\b", question, re.IGNORECASE
         ) else ""
+        ordered_pair = re.search(
+            r"\b([a-z][a-z-]+)\s+and\s+([a-z][a-z-]+)\s+methods?\b",
+            lowered,
+        )
+        methods = (
+            [normalize_token(ordered_pair.group(1)),
+             normalize_token(ordered_pair.group(2))]
+            if ordered_pair else sorted(paired)
+        )
         return [
             (
                 f"{method.title()} method",
-                f"How are {subject_text} examined{target_text} using the "
-                f"{method} method?",
+                f"What are the uses of the {method} method for "
+                f"{subject_text}{target_text}?",
             )
-            for method in sorted(paired)
+            for method in methods
         ]
     method_pair = re.search(
         r"\b(?:the\s+)?([a-z-]+)(?:\s+[a-z-]+){0,3}\s+method\s+"
@@ -766,6 +807,61 @@ def execution_facets(question: str) -> list[tuple[str, str]]:
              f"How should blood films be stained using the {first} {stain}method?"),
             (f"{second.title()} method",
              f"How should blood films be stained using the {second} {stain}method?"),
+        ]
+    # A single grammatical question can still request several independent
+    # operations (for example collect + preserve + examine). Execute each
+    # operation against the same explicit specimen and condition.
+    operations = requested_operations(question)
+    executable_operations = [
+        operation for operation in (
+            "collection", "preservation", "examination", "labelling",
+            "fixation", "staining", "washing", "drying", "calculation",
+        )
+        if operation in operations
+    ]
+    if (
+        len(executable_operations) > 1
+        and len(question_facets(question)) == 1
+    ):
+        contracts = subject_contracts(question)
+        context_names = {
+            "csf": "cerebrospinal fluid (CSF)",
+            "urine": "the urine specimen",
+            "sputum": "the sputum specimen",
+            "faeces": "the faecal specimen",
+            "blood_film": "the blood film",
+            "blood_specimen": "the blood specimen",
+            "serum": "serum", "plasma": "plasma",
+            "tissue": "the tissue specimen", "swab": "the swab",
+            "semen": "the semen specimen",
+        }
+        subject = (
+            context_names.get(sorted(contracts)[0], "the specimen")
+            if contracts else "the specimen"
+        )
+        condition_match = re.search(
+            r"\bwhen\b.+$|\bif\b.+$", question, flags=re.IGNORECASE
+        )
+        condition = (
+            normalize_space(condition_match.group(0)).rstrip(" ?.!")
+            if condition_match else ""
+        )
+        prompts = {
+            "collection": f"How should {subject} be collected?",
+            "preservation": f"How should {subject} be preserved {condition}?",
+            "examination": f"How should {subject} be examined {condition}?",
+            "labelling": f"How should {subject} be labelled?",
+            "fixation": f"How should {subject} be fixed?",
+            "staining": f"How should {subject} be stained?",
+            "washing": f"How should {subject} be washed after staining?",
+            "drying": f"How should {subject} be dried after staining?",
+            "calculation": (
+                f"How should the requested result for {subject} be calculated?"
+            ),
+        }
+        return [
+            (operation.title(), normalize_space(prompts[operation]))
+            for operation in executable_operations
         ]
     return [("", facet) for facet in question_facets(question)]
 
@@ -1275,15 +1371,27 @@ class GraphV2QA:
         )
         for index, lead in enumerate(segments):
             normalized_lead = normalize_space(lead)
-            if not normalized_lead.endswith(":"):
-                continue
-            if not re.search(
-                r"\b(?:used for|include|includes|following|as follows)\s*:$",
+            inline_first = re.match(
+                r"^(.*\b(?:used for|include|includes|following|as follows)"
+                r"\b.*?:).*?[—–-]\s*(.+)$",
                 normalized_lead,
                 flags=re.IGNORECASE,
-            ):
-                continue
-            items: list[str] = []
+            )
+            if inline_first:
+                normalized_lead = inline_first.group(1)
+                items: list[str] = [
+                    inline_first.group(2).rstrip(" .;")
+                ]
+            else:
+                if not normalized_lead.endswith(":"):
+                    continue
+                if not re.search(
+                    r"\b(?:used for|include|includes|following|as follows)\s*:$",
+                    normalized_lead,
+                    flags=re.IGNORECASE,
+                ):
+                    continue
+                items = []
             for candidate in segments[index + 1:]:
                 candidate = normalize_space(candidate)
                 if not candidate or heading.match(candidate):
@@ -1392,7 +1500,9 @@ class GraphV2QA:
         requested_type = question_type(question)
         type_patterns = {
             "purpose": re.compile(
-                r"\b(?:purpose|used for|used to|serves? to|function(?:s)? as|"
+                r"\b(?:purpose|used for|used to|used when|"
+                r"useful(?:\s|.{1,120})for|"
+                r"recommended for|serves? to|function(?:s)? as|"
                 r"used (?:alone|with|in|as)|allows?|enables?|include(?:s)?)\b",
                 flags=re.IGNORECASE,
             ),
@@ -1504,6 +1614,30 @@ class GraphV2QA:
         # prose bullet rather than numbered steps.
         if "spill_response" in requested_operations(question):
             return True
+        # Collection instructions are often one numbered action followed by
+        # unnumbered handling and quality-control sentences. Accept a prose
+        # procedure only when it preserves the subject contract and contains
+        # multiple concrete collection actions.
+        if (
+            "collection" in requested_operations(question)
+            and question_type(question) == "procedure"
+        ):
+            collection_actions = re.findall(
+                r"\b(?:collect|ask|take|cough|spit|expectorate|place|pass|"
+                r"cover|secure|label|check|bring|send|dispatch|produce)\w*\b",
+                normalized_passage,
+                flags=re.IGNORECASE,
+            )
+            if len({action.lower() for action in collection_actions}) >= 2:
+                return True
+        if "preservation" in requested_operations(question):
+            if re.search(
+                r"\b(?:preserv\w*|acidif\w*|refrigerat\w*|"
+                r"transport\w*.{0,100}preserv\w*)\b",
+                normalized_passage,
+                flags=re.IGNORECASE,
+            ):
+                return True
         # A broad immediate-examination question requires the manual's global
         # testing instruction plus its deterioration reason.  A later assay-
         # specific sentence (for example glucose alone) is relevant but not a
@@ -1567,6 +1701,7 @@ class GraphV2QA:
             )
             if not complete:
                 return False
+            return True
         if re.search(r"\b(?:heat fixation|heat-fixed)\b", lowered_question):
             if not re.search(
                 r"\bavoid overheating\b|\botherwise\b.{0,80}\bheat-fixed\b",
@@ -1690,7 +1825,15 @@ class GraphV2QA:
         }
         subject_terms = set(content_terms(question)) - relation_terms
         subject_overlap = len(subject_terms & passage_terms)
-        minimum_subject_overlap = 1 if len(subject_terms) <= 2 else 2
+        minimum_subject_overlap = (
+            1 if (
+                len(subject_terms) <= 2
+                or (
+                    subject_contracts(question)
+                    and requested_operations(question)
+                )
+            ) else 2
+        )
         if subject_terms and subject_overlap < minimum_subject_overlap:
             return False
         if requested_type == "procedure":
@@ -1790,7 +1933,7 @@ class GraphV2QA:
                 ):
                     return False
         relation_patterns = {
-            "purpose": r"\b(?:purpose|used for|used to|used (?:alone|with|in|as)|serves? to|function(?:s)? as|include(?:s)?)\b",
+            "purpose": r"\b(?:purpose|used for|used to|used when|useful(?:\s|.{1,120})for|recommended for|used (?:alone|with|in|as)|serves? to|function(?:s)? as|include(?:s)?)\b",
             "reason": r"\b(?:because|therefore|thus|hence|due to|so that|in order to|results? in|leads? to|will give|make it impossible|alter(?:s|ed)?|affect(?:s|ed)?|chang(?:e|es|ed)|damage(?:s|d)?|rapidly (?:lysed|destroyed)|to (?:permit|prevent|avoid|ensure|allow))\b",
             "comparison": r"\b(?:whereas|while|unlike|compared|difference|both|not|used for|used to)\b",
             "time": r"\b(?:when|before|after|during|for\s+\d|minutes?|hours?|days?)\b",
@@ -2217,8 +2360,8 @@ class GraphV2QA:
         )
         for heading in section_names:
             cleaned = re.sub(
-                rf"\s+({re.escape(heading)})\s+",
-                rf".\n\1: ",
+                rf"(?:^|\n)\s*({re.escape(heading)})\s*(?=\n)",
+                rf"\n\1:\n",
                 cleaned,
                 flags=re.IGNORECASE,
             )
@@ -2399,6 +2542,26 @@ class GraphV2QA:
             )
             if chain:
                 return chain
+            # Prose procedures and one-step collection instructions have no
+            # multi-step chain. Keep a small adjacent, contract-safe window.
+            prose_rows = []
+            anchor_page = anchor.get("pdf_page")
+            for row in grounded:
+                page = row.get("pdf_page")
+                if (
+                    isinstance(anchor_page, int)
+                    and isinstance(page, int)
+                    and abs(page - anchor_page) <= 1
+                    and evidence_contract_satisfied(
+                        question, row.get("text") or ""
+                    )
+                ):
+                    prose_rows.append(row)
+            prose_rows.sort(key=lambda row: (
+                row.get("pdf_page") or 0, row.get("chunk_id") or ""
+            ))
+            if prose_rows:
+                return prose_rows[:3]
 
         # A locally complete passage is stronger than any combination of
         # partial passages. This decision must happen before page anchoring.
@@ -3085,7 +3248,8 @@ class GraphV2QA:
         action_pattern = re.compile(
             r"\b(stain|prepare|add|mix|wash|dry|fix|place|transfer|"
             r"incubate|centrifuge|allow|remove|filter|heat|cool|dilute|"
-            r"discard|collect|examine|read|measure|count|determine|estimate|"
+            r"discard|collect\w*|preserv\w*|transport\w*|refrigerat\w*|"
+            r"acidif\w*|contain|examine|read|measure|count|determine|estimate|"
             r"pour|rinse)\b",
             flags=re.IGNORECASE,
         )
@@ -3094,7 +3258,8 @@ class GraphV2QA:
             r"appear|appears|seen|found|show|shows|examine|examined|"
             r"characterized|contains|consists|stain|stained|prepare|prepared|"
             r"add|mix|wash|dry|fix|place|transfer|incubate|centrifuge|"
-            r"allow|remove|filter|heat|cool|dilute|discard|collect|read|"
+            r"allow|remove|filter|heat|cool|dilute|discard|collect\w*|"
+            r"preserv\w*|transport\w*|refrigerat\w*|acidif\w*|contain|read|"
             r"measure|measured|determine|determined|estimate|estimated|"
             r"calculate|calculated|count|counted|multiply|multiplying|"
             r"divide|dividing|pour|rinse)\b",
@@ -3156,6 +3321,10 @@ class GraphV2QA:
                 evidence_units = GraphV2QA._local_evidence_units(
                     question, row_text
                 )
+                if explicit_list_request(question):
+                    evidence_units.extend(
+                        GraphV2QA._list_evidence_units(evidence_units)
+                    )
             for position, sentence in enumerate(evidence_units):
                 sentence = clean_answer_text(sentence)
                 if not 30 <= len(sentence) <= 700:
@@ -3182,6 +3351,14 @@ class GraphV2QA:
                 overlap = len(query_terms & sentence_terms)
                 normalized_sentence = normalize_space(sentence).lower().rstrip("?.!:")
                 normalized_question = normalize_space(question).lower().rstrip("?.!:")
+                if re.fullmatch(
+                    r"\d+(?:\.\d+)+\s+[a-z][a-z\s-]{2,80}",
+                    normalized_sentence,
+                    flags=re.IGNORECASE,
+                ):
+                    # A numbered section title identifies evidence location;
+                    # it is not itself an answer claim.
+                    continue
                 # A section title that merely repeats the question is evidence
                 # location, not an answer statement.
                 if normalized_sentence == normalized_question:
@@ -3384,7 +3561,6 @@ class GraphV2QA:
             covered_facets.update(item["covered_facets"])
             if (
                 structured_list_question
-                and item["requirements_complete"]
                 and ";" in item["sentence"]
             ):
                 break
@@ -3815,10 +3991,15 @@ class GraphV2QA:
             facet_answer, facet_rows = self.compose_extract_answer(
                 facet, selected
             )
+            facet_evidence = " ".join(
+                row.get("text") or "" for row in facet_rows
+            )
             if not (
                 facet_answer
                 and facet_rows
-                and self._requirements_satisfied(facet, facet_answer)
+                and self._requirements_satisfied(
+                    facet, f"{facet_answer} {facet_evidence}"
+                )
             ):
                 return "", [], total_candidates
             facet_results.append((label, facet_answer, facet_rows))
@@ -3889,11 +4070,40 @@ class GraphV2QA:
         """Final output gate: completeness, provenance and value fidelity."""
         if not answer or not rows:
             return False, "empty answer or evidence"
-        if not GraphV2QA._requirements_satisfied(question, answer):
-            return False, "question requirements are incomplete"
         evidence = normalize_space(" ".join(
             row.get("text") or "" for row in rows
         ))
+        executions = execution_facets(question)
+        labelled_execution = len(executions) > 1 and any(
+            label for label, _ in executions
+        )
+        if labelled_execution:
+            # The execution planner is the canonical decomposition. Verify
+            # each labelled subanswer with the facet that retrieved it instead
+            # of applying a second incompatible decomposition to the merge.
+            for index, (label, facet) in enumerate(executions):
+                start = re.search(
+                    rf"(?:^|\n){re.escape(label)}:\s*", answer,
+                    flags=re.IGNORECASE,
+                )
+                if not start:
+                    return False, f"missing answer section: {label}"
+                end_at = len(answer)
+                for next_label, _ in executions[index + 1:]:
+                    next_start = re.search(
+                        rf"(?:^|\n){re.escape(next_label)}:\s*",
+                        answer[start.end():], flags=re.IGNORECASE,
+                    )
+                    if next_start:
+                        end_at = start.end() + next_start.start()
+                        break
+                section = answer[start.end():end_at]
+                if not GraphV2QA._requirements_satisfied(
+                    facet, f"{section} {evidence}"
+                ):
+                    return False, f"incomplete answer section: {label}"
+        elif not GraphV2QA._requirements_satisfied(question, answer):
+            return False, "question requirements are incomplete"
         if not evidence_contract_satisfied(question, f"{answer} {evidence}"):
             return False, "subject or requested operation is inconsistent"
         # Ignore citation indices when comparing numeric values.
@@ -3932,7 +4142,8 @@ class GraphV2QA:
         chunks = self.ranked_chunks(question)
         chunks_scanned = len(chunks)
         facets = question_facets(question)
-        if len(facets) > 1:
+        executions = execution_facets(question)
+        if len(facets) > 1 or len(executions) > 1:
             faceted_answer, faceted_rows, facet_candidates = (
                 self.compose_faceted_answer(question, facets)
             )
