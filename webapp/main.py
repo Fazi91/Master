@@ -735,73 +735,97 @@ class EvidenceQA:
         selected: dict[tuple[int, int], tuple[float, str]] = {}
         per_facet_limit = 5 if plan.answer_type == "procedure" else 3
         for facet in plan.facets:
-            section = self._best_section(facet, evidence)
-            if section is not None:
-                section_score, paragraphs = section
-                section_chars = sum(len(item[2]) for item in paragraphs)
-                if section_chars <= 6000:
-                    print(
-                        f"[SECTION] facet={facet.label!r}; "
-                        f"score={section_score:.3f}; paragraphs={len(paragraphs)}"
-                    )
-                    for evidence_index, paragraph_index, paragraph in paragraphs:
-                        selected[(evidence_index, paragraph_index)] = (
-                            section_score, paragraph
+            # A whole subsection is an answer only for a genuinely sequential
+            # procedure.  For facts, reasons, lists and comparisons a section
+            # is merely a search boundary: returning it wholesale is how a
+            # nearby but irrelevant paragraph can masquerade as an answer.
+            procedural_facet = (
+                plan.answer_type == "procedure"
+                and bool(re.search(
+                    r"\b(?:how|steps?|procedure|method|prepare|collect|"
+                    r"perform|carry out)\b",
+                    facet.query, re.IGNORECASE,
+                ))
+                and not bool(re.search(
+                    r"\b(?:why|compare|difference|differ|purpose|reason)\b",
+                    facet.query, re.IGNORECASE,
+                ))
+            )
+            if procedural_facet:
+                section = self._best_section(facet, evidence)
+                if section is not None:
+                    section_score, paragraphs = section
+                    section_chars = sum(len(item[2]) for item in paragraphs)
+                    if section_chars <= 6000:
+                        print(
+                            f"[SECTION] facet={facet.label!r}; "
+                            f"score={section_score:.3f}; "
+                            f"paragraphs={len(paragraphs)}"
                         )
-                    continue
+                        for evidence_index, paragraph_index, paragraph in paragraphs:
+                            selected[(evidence_index, paragraph_index)] = (
+                                section_score, paragraph
+                            )
+                        continue
             vocabulary = self.vectorizer.vocabulary_
+            expanded_query = self._expand_query(facet.query)
+            # The planner may append the complete question as context so a
+            # short facet retains its subject during retrieval.  That context
+            # must not become the sentence-selection objective, otherwise
+            # every facet tends to reproduce the same broad answer.
+            focus_query = re.split(
+                r"\s+Context:\s*", facet.query, maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0]
+            expanded_focus = self._expand_query(focus_query)
             query_terms = [
-                term for term in terms(facet.query) if term in vocabulary
+                term for term in terms(expanded_query) if term in vocabulary
             ]
             rare_terms = sorted(
                 query_terms,
                 key=lambda term: self.vectorizer.idf_[vocabulary[term]],
                 reverse=True,
-            )[:3]
-            primary = rare_terms[0] if rare_terms else ""
-            action_words = re.findall(
-                r"\b[a-z]+(?:ed|ing|tion|sion|ment)\b",
-                facet.query.lower(),
-            )
-            action_roots = roots(" ".join(action_words))
-            row_operation_scores = []
-            for row in evidence:
-                row_roots = roots(row["text"])
-                row_operation_scores.append(len(action_roots.intersection(row_roots)))
-            best_operation = max(row_operation_scores, default=0)
-            units = []
-            for evidence_index, (row, operation_score) in enumerate(
-                zip(evidence, row_operation_scores), 1
-            ):
-                row_units = self._units(row["text"])
-                if primary and primary not in set(terms(row["text"])):
-                    continue
-                if best_operation and operation_score < best_operation:
-                    continue
-                subject_positions = [
-                    index for index, unit in enumerate(row_units)
-                    if not primary or primary in set(terms(unit))
-                ]
-                if subject_positions:
-                    subject_scores = np.asarray(self.reranker.predict(
-                        [[facet.query, row_units[index]] for index in subject_positions],
-                        show_progress_bar=False,
-                    )).reshape(-1)
-                    best_subject = subject_positions[int(np.argmax(subject_scores))]
-                    allowed = range(
-                        max(0, best_subject - 3),
-                        min(len(row_units), best_subject + 7),
-                    )
-                else:
-                    allowed = range(len(row_units))
-                for unit_index in allowed:
-                    units.append((evidence_index, unit_index, row_units[unit_index]))
-            if not units:
-                return None
-            scores = np.asarray(self.reranker.predict(
-                [[facet.query, unit] for _, _, unit in units],
+            )[:6]
+
+            # Rank rows before sentences.  This preserves subject context for
+            # short or referential sentences that are meaningful only inside
+            # the correctly retrieved subject section.
+            row_scores = np.asarray(self.reranker.predict(
+                [[expanded_query, row["text"]] for row in evidence],
                 show_progress_bar=False,
             )).reshape(-1)
+            row_coverages = []
+            for row in evidence:
+                row_terms = set(terms(row["text"]))
+                row_coverages.append(sum(term in row_terms for term in rare_terms))
+            best_row_score = float(np.max(row_scores)) if len(row_scores) else -999.0
+            has_anchored_row = any(row_coverages)
+            units = []
+            for evidence_index, (row, row_score, anchor_coverage) in enumerate(
+                zip(evidence, row_scores, row_coverages), 1
+            ):
+                # Broad semantic similarity alone must not pull another topic
+                # into the answer when subject anchors exist in this window.
+                if has_anchored_row and not anchor_coverage:
+                    continue
+                if float(row_score) < best_row_score - 3.0:
+                    continue
+                row_units = self._units(row["text"])
+                for unit_index, unit in enumerate(row_units):
+                    units.append((
+                        evidence_index, unit_index, unit, float(row_score)
+                    ))
+            if not units:
+                return None
+            sentence_scores = np.asarray(self.reranker.predict(
+                [[expanded_focus, unit] for _, _, unit, _ in units],
+                show_progress_bar=False,
+            )).reshape(-1)
+            # Sentence relevance dominates; row relevance supplies the subject
+            # context for pronouns, numbered steps and short list items.
+            scores = sentence_scores + 0.15 * np.asarray([
+                row_score for _, _, _, row_score in units
+            ])
             order = np.argsort(-scores)
             if not len(order) or float(scores[order[0]]) < MIN_EXTRACT_SCORE:
                 print(
@@ -811,7 +835,13 @@ class EvidenceQA:
                 return None
             kept = 0
             for unit_position in order:
-                evidence_index, unit_index, unit = units[int(unit_position)]
+                evidence_index, unit_index, unit, _ = units[int(unit_position)]
+                # Do not pad an answer with low-relevance sentences merely to
+                # reach the configured limit.
+                if float(scores[unit_position]) < max(
+                    MIN_EXTRACT_SCORE, float(scores[order[0]]) - 2.5
+                ):
+                    continue
                 key = (evidence_index, unit_index)
                 selected[key] = max(
                     selected.get(key, (-float("inf"), unit)),
