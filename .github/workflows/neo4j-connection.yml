@@ -1,0 +1,28 @@
+name: Neo4j Aura Connection Test
+
+on:
+  push:
+    branches: [ "main" ] # Führt den Test aus, wenn Sie Code auf 'main' pushen
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Code auschecken
+      uses: actions/checkout@v4
+
+    - name: Python einrichten
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Neo4j Treiber installieren
+      run: pip install neo4j
+
+    - name: Verbindung ausführen
+      env:
+        NEO4J_URI: ${{ secrets.NEO4J_URI }}
+        NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+        NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+      run: python test_script.py
