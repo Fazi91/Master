@@ -84,6 +84,28 @@ def compact(value: str) -> str:
     return " ".join((value or "").split())
 
 
+def clean_question(value: str) -> str:
+    """Remove presentation wrappers when a rendered result is pasted back."""
+    value = value.strip()
+    value = re.sub(
+        r"^\s*(?:#{1,6}\s*)?(?:your\s+question|question)\s*[:\n]*\s*",
+        "", value, flags=re.IGNORECASE,
+    )
+    value = re.split(
+        r"\s*(?:\n|^)\s*(?:#{1,6}\s*)?"
+        r"(?:answer|source location|related image evidence|"
+        r"neo4j verification query)\s*[:\n]",
+        value, maxsplit=1, flags=re.IGNORECASE,
+    )[0]
+    # A plain-text copy may collapse headings and newlines into one line.
+    value = re.split(
+        r"\s+Answer\s+(?=(?:Relevant evidence|No complete answer|"
+        r"According to|The |A |An ))",
+        value, maxsplit=1, flags=re.IGNORECASE,
+    )[0]
+    return compact(value).strip()
+
+
 def terms(value: str) -> list[str]:
     return list(dict.fromkeys(
         token for token in re.findall(r"[a-z0-9]+", value.lower())
@@ -359,19 +381,27 @@ class EvidenceQA:
                 print(f"[PLAN] model fallback: {error}")
                 parsed = None
             if parsed:
+                planned = []
                 for item in parsed.get("facets", [])[:8]:
                     if not isinstance(item, dict):
                         continue
                     query = compact(str(item.get("query") or ""))
                     if not query:
                         continue
-                    facets.append(Facet(
+                    if re.search(
+                        r"\b(?:your question|relevant evidence|source location|"
+                        r"answer mode)\b", query, re.IGNORECASE,
+                    ):
+                        planned = []
+                        break
+                    planned.append(Facet(
                         compact(str(item.get("label") or "")),
                         query,
                         tuple(compact(str(value)) for value in item.get(
                             "requirements", []
                         ) if compact(str(value))),
                     ))
+                facets = planned
             if not facets:
                 # Structural fallback remains generic and retains the full
                 # question as context, but does not add it as a competing facet.
@@ -1205,7 +1235,7 @@ def health() -> dict[str, str]:
 
 @app.post("/ask")
 def ask(request: QuestionRequest) -> dict[str, Any]:
-    question = compact(request.query)
+    question = clean_question(request.query)
     if not question:
         raise HTTPException(
             status_code=400, detail="Question cannot be empty"
