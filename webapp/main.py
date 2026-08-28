@@ -49,6 +49,7 @@ MAX_EVIDENCE = int(os.getenv("MAX_EVIDENCE_CHUNKS", "10"))
 MAX_DISPLAY_SOURCES = int(os.getenv("MAX_DISPLAY_SOURCES", "6"))
 MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "20000"))
 NLI_MIN = float(os.getenv("NLI_ENTAILMENT_MIN", "0.55"))
+MIN_COVERAGE_SCORE = float(os.getenv("MIN_COVERAGE_SCORE", "-7.0"))
 IMAGE_MIN_SCORE = float(os.getenv("IMAGE_MIN_SCORE", "0.35"))
 
 STOPWORDS = {
@@ -248,59 +249,39 @@ class EvidenceQA:
         ).strip()
 
     def plan(self, question: str) -> Plan:
-        instruction = (
-            "Build a retrieval plan without answering the question. Split only "
-            "independently answerable parts, compared alternatives, requested "
-            "dimensions, or explicit conditions. Preserve all entities, "
-            "modifiers, relationships, technical terms, and numbers. Make each "
-            "query self-contained. Do not add knowledge. Return strict JSON."
-        )
-        schema = {
-            "answer_type": "fact|procedure|comparison|reason|list|calculation",
-            "facets": [{
-                "label": "short neutral label",
-                "query": "self-contained retrieval query",
-                "requirements": ["word or phrase from the question"],
-            }],
-        }
-        try:
-            parsed = parse_json(self.complete(
-                instruction,
-                f"Question: {question}\nOutput schema: "
-                f"{json.dumps(schema)}",
-                500,
-            ))
-        except Exception as error:
-            print(f"[PLAN] fallback: {error}")
-            parsed = None
+        """Create generic retrieval facets without an LLM or domain rules."""
+        cleaned = question.strip().rstrip("?")
+        pieces = [cleaned]
+        # Coordinated clauses and enumerated dimensions are independent search
+        # views. The complete question is retained in every view, so fragments
+        # such as a bare verb or modifier never lose their subject or condition.
+        for piece in re.split(r"\s*[,;]\s*|\s+\band\b\s+|\s+\bwhereas\b\s+|\s+\bwhile\b\s+", cleaned, flags=re.IGNORECASE):
+            piece = compact(piece)
+            piece = re.sub(
+                r"^(?:and|or|whereas|while)\s+", "", piece,
+                flags=re.IGNORECASE,
+            )
+            if piece and terms(piece):
+                pieces.append(piece)
+        unique_pieces = list(dict.fromkeys(pieces))[:8]
         facets = []
-        if parsed:
-            for item in parsed.get("facets", [])[:8]:
-                if not isinstance(item, dict):
-                    continue
-                query = compact(str(item.get("query") or ""))
-                if not query:
-                    continue
-                # The facet supplies focus; the original question preserves
-                # every qualifier even if the planner omits one accidentally.
-                query = f"{query}. Full question: {question}"
-                required = tuple(dict.fromkeys(
-                    compact(str(value))
-                    for value in item.get("requirements", [])
-                    if compact(str(value))
-                ))
-                facets.append(Facet(
-                    compact(str(item.get("label") or "")),
-                    query,
-                    required,
-                ))
-        if not facets:
-            facets = [Facet("", question, tuple(terms(question)))]
-        return Plan(
-            question,
-            compact(str((parsed or {}).get("answer_type") or "fact")),
-            tuple(facets),
-        )
+        for index, piece in enumerate(unique_pieces):
+            query = question if index == 0 else f"{piece}. Context: {question}"
+            label = "complete question" if index == 0 else " ".join(piece.split()[:7])
+            facets.append(Facet(label, query, tuple(terms(piece))))
+        lowered = question.lower()
+        if re.search(r"\b(?:compare|contrast|differ|difference|versus|vs\.?)\b", lowered):
+            answer_type = "comparison"
+        elif re.search(r"\bwhy\b|\breason\b", lowered):
+            answer_type = "reason"
+        elif re.search(r"\bcalculat|\bcount|\bformula\b", lowered):
+            answer_type = "calculation"
+        elif re.search(r"\bhow\b|\bsteps?\b|\bprocedure\b|\bmethod\b", lowered):
+            answer_type = "procedure"
+        else:
+            answer_type = "fact"
+        print(f"[PLAN] type={answer_type}; facets={[facet.query for facet in facets]}")
+        return Plan(question, answer_type, tuple(facets))
 
     def _retrievers(self) -> None:
         with self.lock:
@@ -383,11 +364,13 @@ class EvidenceQA:
         plan: Plan, groups: list[list[dict[str, Any]]]
     ) -> list[dict[str, Any]]:
         chosen: dict[str, dict[str, Any]] = {}
-        quota = max(2, MAX_EVIDENCE // max(1, len(plan.facets)))
+        quota = max(1, MAX_EVIDENCE // max(1, len(plan.facets)))
         for facet_index, candidates in enumerate(groups):
             for row in candidates[:quota]:
                 item = chosen.setdefault(row["chunk_id"], dict(row))
                 item.setdefault("facets", []).append(facet_index)
+                if len(chosen) >= MAX_EVIDENCE:
+                    break
         pool = sorted(
             (row for group in groups for row in group),
             key=lambda row: row["score"],
@@ -422,12 +405,12 @@ class EvidenceQA:
             "requested facet, comparison side, dimension, and condition. "
             "Preserve conditional distinctions. Do not add outside knowledge, "
             "steps, values, explanations, or terminology. If the evidence is "
-            "not complete, set complete to false. Return strict JSON with "
-            "complete, answer, and claims. Cite every answer sentence as [E#]. "
+            "not support a requested detail, omit that detail rather than "
+            "inventing it. Return strict JSON with answer and claims. Cite "
+            "every answer sentence as [E#]. "
             "Each claim contains the exact sentence and its evidence_ids."
         )
         schema = {
-            "complete": True,
             "answer": "answer with [E#] after every sentence",
             "claims": [{
                 "sentence": "one factual answer sentence",
@@ -445,7 +428,6 @@ class EvidenceQA:
         ))
         if (
             not parsed
-            or parsed.get("complete") is not True
             or not compact(str(parsed.get("answer") or ""))
             or not isinstance(parsed.get("claims"), list)
         ):
@@ -526,18 +508,13 @@ class EvidenceQA:
             return False, "NLI label mapping unavailable", []
         if any(float(row[entailment]) < NLI_MIN for row in probabilities):
             return False, "claim is not entailed", []
-        coverage = parse_json(self.complete(
-            "Check only completeness. Does the candidate answer every part, "
-            "side, requested dimension, and condition in the question? Do not "
-            "judge style. Return strict JSON: complete boolean and missing list.",
-            f"Question: {plan.question}\n"
-            f"Candidate answer: {generated['answer']}",
-            300,
-        ))
-        if not coverage or coverage.get("complete") is not True:
-            return False, (
-                f"incomplete: {(coverage or {}).get('missing', [])}"
-            ), []
+        coverage_scores = np.asarray(self.reranker.predict(
+            [[facet.query, generated["answer"]] for facet in plan.facets],
+            show_progress_bar=False,
+        )).reshape(-1)
+        print(f"[COVERAGE] scores={coverage_scores.tolist()}")
+        if any(float(score) < MIN_COVERAGE_SCORE for score in coverage_scores):
+            return False, "one or more requested facets are absent", []
         return True, "verified", list(dict.fromkeys(cited))
 
     @staticmethod
@@ -639,6 +616,11 @@ class EvidenceQA:
     def answer(self, question: str) -> dict[str, Any]:
         plan = self.plan(question)
         groups = [self.retrieve(facet) for facet in plan.facets]
+        for facet, group in zip(plan.facets, groups):
+            print(
+                f"[RETRIEVAL] facet={facet.label!r}; top="
+                f"{[(row['chunk_id'], round(row['score'], 3)) for row in group[:8]]}"
+            )
         if any(not group for group in groups):
             return self.response(
                 "not_found", question,
@@ -646,8 +628,13 @@ class EvidenceQA:
                 [], [], len(self.rows), "retrieval_incomplete",
             )
         evidence = self.evidence(plan, groups)
+        print(
+            "[EVIDENCE] selected="
+            f"{[(row['chunk_id'], round(row['score'], 3)) for row in evidence]}"
+        )
         generated = self.compose(plan, evidence)
         if generated is None:
+            print("[COMPOSE] rejected: invalid or empty structured answer")
             return self.response(
                 "not_found", question,
                 "Relevant evidence was found, but it was incomplete.",
