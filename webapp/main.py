@@ -35,7 +35,7 @@ RERANK_MODEL = os.getenv(
     "RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
 )
 GENERATOR_MODEL = os.getenv(
-    "LOCAL_ANSWER_MODEL", "Qwen/Qwen3-4B-Instruct-2507"
+    "LOCAL_ANSWER_MODEL", "Qwen/Qwen2.5-1.5B-Instruct"
 )
 NLI_MODEL = os.getenv(
     "NLI_VERIFIER_MODEL", "cross-encoder/nli-deberta-v3-small"
@@ -45,11 +45,12 @@ USE_DENSE = os.getenv("USE_NEURAL_RETRIEVAL", "true").lower() in {
 }
 TOP_FIRST_STAGE = int(os.getenv("TOP_FIRST_STAGE", "80"))
 TOP_RERANK = int(os.getenv("TOP_RERANK", "24"))
-MAX_EVIDENCE = int(os.getenv("MAX_EVIDENCE_CHUNKS", "10"))
-MAX_DISPLAY_SOURCES = int(os.getenv("MAX_DISPLAY_SOURCES", "6"))
+MAX_EVIDENCE = int(os.getenv("MAX_EVIDENCE_CHUNKS", "6"))
+MAX_DISPLAY_SOURCES = int(os.getenv("MAX_DISPLAY_SOURCES", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "20000"))
 NLI_MIN = float(os.getenv("NLI_ENTAILMENT_MIN", "0.55"))
 MIN_COVERAGE_SCORE = float(os.getenv("MIN_COVERAGE_SCORE", "-7.0"))
+MIN_EXTRACT_SCORE = float(os.getenv("MIN_EXTRACT_SCORE", "1.0"))
 IMAGE_MIN_SCORE = float(os.getenv("IMAGE_MIN_SCORE", "0.35"))
 
 STOPWORDS = {
@@ -90,6 +91,25 @@ def terms(value: str) -> list[str]:
     ))
 
 
+def roots(value: str) -> set[str]:
+    """Return lightweight morphology roots for generic action matching."""
+    result = set()
+    for word in re.findall(r"[a-z]+", value.lower()):
+        result.add(word)
+        for suffix in (
+            "ization", "isation", "ations", "ation", "itions", "ition",
+            "ctions", "ction", "ments", "ment", "ings", "ing", "ied",
+            "ed", "es", "s",
+        ):
+            if word.endswith(suffix) and len(word) > len(suffix) + 3:
+                base = word[:-len(suffix)]
+                if suffix == "ied":
+                    base += "y"
+                result.add(base)
+                break
+    return result
+
+
 def parse_json(value: str) -> dict[str, Any] | None:
     value = re.sub(r"^```(?:json)?\s*|\s*```$", "", value.strip())
     match = re.search(r"\{.*\}", value, re.DOTALL)
@@ -127,7 +147,24 @@ class EvidenceQA:
         for position, row in enumerate(self.rows):
             for entity in row.get("entities", []):
                 self.entity_positions.setdefault(entity.lower(), []).append(position)
-        corpus = [self._search_text(row) for row in self.rows]
+        self.aliases: dict[str, set[str]] = {}
+        for row in self.rows:
+            for match in re.finditer(
+                r"\b([A-Za-z][A-Za-z -]{4,70}?)\s*\(([A-Z]{2,8})\)",
+                row["text"],
+            ):
+                long_form = compact(match.group(1)).lower()
+                # PDF lines may prepend a heading; the final words nearest the
+                # parentheses are the reliable long form.
+                long_form = " ".join(long_form.split()[-8:])
+                acronym = match.group(2).lower()
+                if len(long_form.split()) >= 2:
+                    self.aliases.setdefault(long_form, set()).add(acronym)
+                    self.aliases.setdefault(acronym, set()).add(long_form)
+        # Entity names are graph expansion keys, not passage text. Appending
+        # them to a passage makes a reranker reward unrelated chunks that only
+        # share a broad entity.
+        corpus = [row["text"] for row in self.rows]
         self.vectorizer = TfidfVectorizer(
             lowercase=True, ngram_range=(1, 2), sublinear_tf=True,
             stop_words="english",
@@ -206,6 +243,14 @@ class EvidenceQA:
         entities = " ".join(row.get("entities", []))
         return f"{row['text']}\n{entities}" if entities else row["text"]
 
+    def _expand_query(self, query: str) -> str:
+        lowered = query.lower()
+        additions = []
+        for source, targets in self.aliases.items():
+            if re.search(rf"(?<!\w){re.escape(source)}(?!\w)", lowered):
+                additions.extend(sorted(targets))
+        return f"{query} {' '.join(dict.fromkeys(additions))}" if additions else query
+
     def _generator(self) -> None:
         if self.generator is not None:
             return
@@ -264,11 +309,20 @@ class EvidenceQA:
             if piece and terms(piece):
                 pieces.append(piece)
         unique_pieces = list(dict.fromkeys(pieces))[:8]
-        facets = []
-        for index, piece in enumerate(unique_pieces):
-            query = question if index == 0 else f"{piece}. Context: {question}"
-            label = "complete question" if index == 0 else " ".join(piece.split()[:7])
-            facets.append(Facet(label, query, tuple(terms(piece))))
+        complex_question = bool(
+            re.search(r"[,;]", cleaned)
+            or re.search(
+                r"\b(?:compare|contrast|differ|difference|versus|vs\.?)\b",
+                cleaned, re.IGNORECASE,
+            )
+            or re.search(
+                r"\band\s+(?:what|why|how|when|where|which|who|"
+                r"should|must|can|[a-z]+(?:ed|ing))\b",
+                cleaned, re.IGNORECASE,
+            )
+        )
+        if not complex_question:
+            unique_pieces = [cleaned]
         lowered = question.lower()
         if re.search(r"\b(?:compare|contrast|differ|difference|versus|vs\.?)\b", lowered):
             answer_type = "comparison"
@@ -280,6 +334,52 @@ class EvidenceQA:
             answer_type = "procedure"
         else:
             answer_type = "fact"
+        facets = []
+        if len(unique_pieces) == 1:
+            facets = [Facet("", question, tuple(terms(question)))]
+        else:
+            instruction = (
+                "Decompose the multi-part question into independently "
+                "answerable retrieval facets. Preserve the shared subject in "
+                "every facet and preserve every method, condition, comparison "
+                "side, requested dimension, technical term, and number. Do "
+                "not answer and do not add knowledge. Return strict JSON with "
+                "facets containing label, query, and requirements."
+            )
+            try:
+                parsed = parse_json(self.complete(
+                    instruction,
+                    f"Question: {question}\n"
+                    "Schema: {\"facets\":[{\"label\":\"short label\","
+                    "\"query\":\"self-contained query\","
+                    "\"requirements\":[\"term\"]}]}",
+                    500,
+                ))
+            except Exception as error:
+                print(f"[PLAN] model fallback: {error}")
+                parsed = None
+            if parsed:
+                for item in parsed.get("facets", [])[:8]:
+                    if not isinstance(item, dict):
+                        continue
+                    query = compact(str(item.get("query") or ""))
+                    if not query:
+                        continue
+                    facets.append(Facet(
+                        compact(str(item.get("label") or "")),
+                        query,
+                        tuple(compact(str(value)) for value in item.get(
+                            "requirements", []
+                        ) if compact(str(value))),
+                    ))
+            if not facets:
+                # Structural fallback remains generic and retains the full
+                # question as context, but does not add it as a competing facet.
+                facets = [Facet(
+                    " ".join(piece.split()[:7]),
+                    f"{piece}. Context: {question}",
+                    tuple(terms(piece)),
+                ) for piece in unique_pieces[1:]]
         print(f"[PLAN] type={answer_type}; facets={[facet.query for facet in facets]}")
         return Plan(question, answer_type, tuple(facets))
 
@@ -290,7 +390,7 @@ class EvidenceQA:
             if USE_DENSE and self.dense is None:
                 self.dense = SentenceTransformer(DENSE_MODEL)
                 self.dense_matrix = self.dense.encode(
-                    [self._search_text(row) for row in self.rows],
+                    [row["text"] for row in self.rows],
                     normalize_embeddings=True,
                     show_progress_bar=False,
                     batch_size=32,
@@ -298,38 +398,95 @@ class EvidenceQA:
 
     def retrieve(self, facet: Facet) -> list[dict[str, Any]]:
         self._retrievers()
-        query_vector = self.vectorizer.transform([facet.query])
+        retrieval_query = self._expand_query(facet.query)
+        query_vector = self.vectorizer.transform([retrieval_query])
         lexical = (self.lexical_matrix @ query_vector.T).toarray().ravel()
-        selected = set(np.argsort(-lexical)[:TOP_FIRST_STAGE].tolist())
+        lexical_order = np.argsort(-lexical)
+        selected = set(lexical_order[:TOP_FIRST_STAGE].tolist())
+        dense_scores = np.zeros(len(self.rows), dtype=float)
+        dense_order = np.array([], dtype=int)
         if self.dense is not None:
             query_dense = self.dense.encode(
-                [facet.query],
+                [retrieval_query],
                 normalize_embeddings=True,
                 show_progress_bar=False,
             )[0]
             dense_scores = self.dense_matrix @ query_dense
-            selected.update(
-                np.argsort(-dense_scores)[:TOP_FIRST_STAGE].tolist()
+            dense_order = np.argsort(-dense_scores)
+            selected.update(dense_order[:TOP_FIRST_STAGE].tolist())
+        lexical_rank = {
+            int(index): rank for rank, index in enumerate(lexical_order, 1)
+        }
+        dense_rank = {
+            int(index): rank for rank, index in enumerate(dense_order, 1)
+        }
+        vocabulary = self.vectorizer.vocabulary_
+        query_terms = [term for term in terms(retrieval_query) if term in vocabulary]
+        rare_terms = sorted(
+            query_terms,
+            key=lambda term: self.vectorizer.idf_[vocabulary[term]],
+            reverse=True,
+        )[:3]
+        coverage = {}
+        for index in selected:
+            passage_terms = set(terms(self.rows[index]["text"]))
+            coverage[index] = (
+                sum(term in passage_terms for term in rare_terms)
+                / max(1, len(rare_terms))
             )
+        # When an exact rare anchor exists in the corpus, candidates with no
+        # such anchor cannot become the primary evidence merely through broad
+        # semantic similarity.
+        if rare_terms and any(value > 0 for value in coverage.values()):
+            primary = rare_terms[0]
+            primary_anchors = {
+                index for index in selected
+                if primary in set(terms(self.rows[index]["text"]))
+            }
+            anchored = (
+                primary_anchors if len(primary_anchors) >= 3
+                else {index for index in selected if coverage[index] > 0}
+            )
+            if len(anchored) >= 4:
+                selected = anchored
         candidates = [self.rows[index] for index in selected]
         scores = self.reranker.predict(
-            [[facet.query, self._search_text(row)] for row in candidates],
+            [[retrieval_query, row["text"]] for row in candidates],
             show_progress_bar=False,
         )
-        ranked = sorted(
-            ({**row, "score": float(score)}
-             for row, score in zip(candidates, scores)),
-            key=lambda row: row["score"],
-            reverse=True,
-        )[:TOP_RERANK]
-        return self.expand(ranked)
+        ranked = []
+        for row, rerank_score in zip(candidates, scores):
+            index = self.positions[row["chunk_id"]]
+            rrf = 1.0 / (60 + lexical_rank.get(index, 10000))
+            if dense_order.size:
+                rrf += 1.0 / (60 + dense_rank.get(index, 10000))
+            final_score = (
+                float(rerank_score)
+                + 1.5 * coverage.get(index, 0.0)
+                + 8.0 * rrf
+                + float(lexical[index])
+                + 0.25 * float(dense_scores[index])
+            )
+            ranked.append({
+                **row,
+                "score": final_score,
+                "rerank_score": float(rerank_score),
+                "anchor_coverage": coverage.get(index, 0.0),
+            })
+        ranked.sort(key=lambda row: row["score"], reverse=True)
+        # One coherent section window is more useful than several unrelated
+        # high-scoring pages. Multi-part questions already retrieve one anchor
+        # independently for every facet.
+        return self.expand(facet, ranked[:1])
 
-    def expand(self, anchors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def expand(
+        self, facet: Facet, anchors: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Add adjacent chunks generically so boundary text is not lost."""
         result: dict[str, dict[str, Any]] = {}
         for rank, anchor in enumerate(anchors):
             position = self.positions[anchor["chunk_id"]]
-            for distance in (-2, -1, 0, 1, 2):
+            for distance in (-3, -2, -1, 0, 1, 2, 3):
                 neighbour_position = position + distance
                 if not 0 <= neighbour_position < len(self.rows):
                     continue
@@ -344,14 +501,18 @@ class EvidenceQA:
                 old = result.get(row["chunk_id"])
                 if old is None or score > old["score"]:
                     result[row["chunk_id"]] = {**row, "score": score}
+            query_tokens = set(terms(facet.query))
             for entity in anchor.get("entities", []):
+                entity_tokens = set(terms(entity))
+                if not entity_tokens or not entity_tokens.intersection(query_tokens):
+                    continue
                 for related_position in self.entity_positions.get(
                     entity.lower(), []
-                )[:12]:
+                )[:6]:
                     row = self.rows[related_position]
                     if row["chunk_id"] == anchor["chunk_id"]:
                         continue
-                    score = anchor["score"] - 0.65 - rank * 0.01
+                    score = anchor["score"] - 1.50 - rank * 0.01
                     old = result.get(row["chunk_id"])
                     if old is None or score > old["score"]:
                         result[row["chunk_id"]] = {**row, "score": score}
@@ -384,6 +545,317 @@ class EvidenceQA:
             row.get("pdf_page") or 0,
             row.get("chunk_index") or 0,
         ))
+
+    @staticmethod
+    def _units(text: str) -> list[str]:
+        text = re.sub(r"(?<=[A-Za-z])-\s+(?=[a-z])", "", text)
+        text = re.sub(r"\n\s*(?=\d+[.)]\s+)", "\n", text)
+        parts = re.split(
+            r"(?<=[.!?])\s+|\n{2,}|(?=\n\s*\d+[.)]\s+)", text
+        )
+        return [compact(part) for part in parts if len(compact(part)) >= 20]
+
+    @staticmethod
+    def _heading(lines: list[str], index: int) -> bool:
+        line = compact(lines[index])
+        if not line or len(line) > 90 or len(line.split()) > 12:
+            return False
+        if re.search(r"[.!?;]$", line) or re.match(
+            r"^(?:\d|[-—•]|G\s|Fig\.?\s)", line, re.IGNORECASE
+        ):
+            return False
+        before_blank = index == 0 or not compact(lines[index - 1])
+        # A final line without a following blank is usually a chunk-boundary
+        # sentence fragment, not a heading.
+        after_blank = index < len(lines) - 1 and not compact(lines[index + 1])
+        return before_blank and after_blank and bool(re.search(r"[A-Za-z]", line))
+
+    def _best_section(
+        self, facet: Facet, evidence: list[dict[str, Any]]
+    ) -> tuple[float, list[tuple[int, int, str]]] | None:
+        records = []
+        headings = []
+        for evidence_index, row in enumerate(evidence, 1):
+            lines = row["text"].splitlines()
+            for line_index, line in enumerate(lines):
+                position = len(records)
+                records.append((evidence_index, line_index, line))
+                if self._heading(lines, line_index):
+                    headings.append((position, compact(line)))
+            records.append((evidence_index, len(lines), ""))
+        if not headings:
+            return None
+        heading_passages = []
+        heading_step_counts = []
+        for heading_index, (position, heading) in enumerate(headings):
+            next_position = (
+                headings[heading_index + 1][0]
+                if heading_index + 1 < len(headings) else len(records)
+            )
+            body_lines = [
+                record[2] for record in records[position + 1:next_position]
+            ]
+            body = compact(" ".join(body_lines))
+            heading_passages.append(f"{heading}. {body}"[:1400])
+            heading_step_counts.append(sum(
+                bool(re.match(r"^\s*\d+[.)]\s+", line))
+                for line in body_lines
+            ))
+        semantic_scores = np.asarray(self.reranker.predict(
+            [[facet.query, passage] for passage in heading_passages],
+            show_progress_bar=False,
+        )).reshape(-1)
+        query_roots = roots(facet.query)
+        lexical_scores = np.asarray([
+            len(query_roots.intersection(roots(heading)))
+            / max(1, len(roots(heading)))
+            for _, heading in headings
+        ])
+        combined_scores = semantic_scores + 4.0 * lexical_scores
+        if re.search(
+            r"\b(?:how|steps?|procedure|method)\b", facet.query,
+            re.IGNORECASE,
+        ):
+            structure_scores = np.asarray([
+                min(3, count) for count in heading_step_counts
+            ], dtype=float)
+            combined_scores += structure_scores
+        # If two nested headings score equally, the later, more specific one
+        # is normally the useful subsection.
+        combined_scores += np.arange(len(headings)) * 1e-6
+        top_heading_indices = np.argsort(-combined_scores)[:5]
+        print("[SECTIONS] candidates=" + str([
+            (headings[int(index)][1], round(float(combined_scores[index]), 3))
+            for index in top_heading_indices
+        ]))
+        best_at = int(np.argmax(combined_scores))
+        best_score = float(combined_scores[best_at])
+        if lexical_scores[best_at] == 0 and semantic_scores[best_at] < MIN_EXTRACT_SCORE:
+            return None
+        start = headings[best_at][0] + 1
+        end = len(records)
+        for position, _ in headings[best_at + 1:]:
+            if position > start:
+                end = position
+                break
+        paragraphs = []
+        current = []
+        current_source = None
+        paragraph_index = 0
+
+        def flush() -> None:
+            nonlocal current, current_source, paragraph_index
+            value = compact(" ".join(current))
+            if value and len(value) >= 20 and current_source is not None:
+                paragraphs.append((current_source, paragraph_index, value))
+                paragraph_index += 1
+            current = []
+            current_source = None
+
+        for evidence_index, _, raw_line in records[start:end]:
+            line = compact(raw_line)
+            if not line:
+                flush()
+                continue
+            if current_source is not None and evidence_index != current_source:
+                flush()
+            if re.match(r"^\d+[.)]\s+", line) and current:
+                flush()
+            current_source = evidence_index
+            current.append(line)
+        flush()
+        cleaned_paragraphs = []
+        seen = set()
+        for evidence_index, paragraph_index, paragraph in paragraphs:
+            paragraph = re.sub(
+                r"(?<=[A-Za-z])-\s+(?=[a-z])", "", paragraph
+            )
+            if re.match(r"^\d+\s+Manual\b", paragraph, re.IGNORECASE):
+                continue
+            if re.match(r"^[a-z]", paragraph) and len(paragraph) < 160:
+                continue
+            if re.search(
+                r"\b(?:and|or|the|of|to|with|in|for)$", paragraph,
+                re.IGNORECASE,
+            ):
+                continue
+            key = re.sub(r"\W+", " ", paragraph.lower()).strip()
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned_paragraphs.append(
+                (evidence_index, paragraph_index, paragraph)
+            )
+        paragraphs = cleaned_paragraphs
+        if not paragraphs:
+            return None
+        return best_score, paragraphs
+
+    def extractive_answer(
+        self, plan: Plan, evidence: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        """Build a fast verbatim answer when every facet has strong text."""
+        selected: dict[tuple[int, int], tuple[float, str]] = {}
+        per_facet_limit = 5 if plan.answer_type == "procedure" else 3
+        for facet in plan.facets:
+            section = self._best_section(facet, evidence)
+            if section is not None:
+                section_score, paragraphs = section
+                section_chars = sum(len(item[2]) for item in paragraphs)
+                if section_chars <= 6000:
+                    print(
+                        f"[SECTION] facet={facet.label!r}; "
+                        f"score={section_score:.3f}; paragraphs={len(paragraphs)}"
+                    )
+                    for evidence_index, paragraph_index, paragraph in paragraphs:
+                        selected[(evidence_index, paragraph_index)] = (
+                            section_score, paragraph
+                        )
+                    continue
+            vocabulary = self.vectorizer.vocabulary_
+            query_terms = [
+                term for term in terms(facet.query) if term in vocabulary
+            ]
+            rare_terms = sorted(
+                query_terms,
+                key=lambda term: self.vectorizer.idf_[vocabulary[term]],
+                reverse=True,
+            )[:3]
+            primary = rare_terms[0] if rare_terms else ""
+            action_words = re.findall(
+                r"\b[a-z]+(?:ed|ing|tion|sion|ment)\b",
+                facet.query.lower(),
+            )
+            action_roots = roots(" ".join(action_words))
+            row_operation_scores = []
+            for row in evidence:
+                row_roots = roots(row["text"])
+                row_operation_scores.append(len(action_roots.intersection(row_roots)))
+            best_operation = max(row_operation_scores, default=0)
+            units = []
+            for evidence_index, (row, operation_score) in enumerate(
+                zip(evidence, row_operation_scores), 1
+            ):
+                row_units = self._units(row["text"])
+                if primary and primary not in set(terms(row["text"])):
+                    continue
+                if best_operation and operation_score < best_operation:
+                    continue
+                subject_positions = [
+                    index for index, unit in enumerate(row_units)
+                    if not primary or primary in set(terms(unit))
+                ]
+                if subject_positions:
+                    subject_scores = np.asarray(self.reranker.predict(
+                        [[facet.query, row_units[index]] for index in subject_positions],
+                        show_progress_bar=False,
+                    )).reshape(-1)
+                    best_subject = subject_positions[int(np.argmax(subject_scores))]
+                    allowed = range(
+                        max(0, best_subject - 3),
+                        min(len(row_units), best_subject + 7),
+                    )
+                else:
+                    allowed = range(len(row_units))
+                for unit_index in allowed:
+                    units.append((evidence_index, unit_index, row_units[unit_index]))
+            if not units:
+                return None
+            scores = np.asarray(self.reranker.predict(
+                [[facet.query, unit] for _, _, unit in units],
+                show_progress_bar=False,
+            )).reshape(-1)
+            order = np.argsort(-scores)
+            if not len(order) or float(scores[order[0]]) < MIN_EXTRACT_SCORE:
+                print(
+                    f"[EXTRACT] facet={facet.label!r}; "
+                    f"best={float(scores[order[0]]) if len(order) else None}; fallback=model"
+                )
+                return None
+            kept = 0
+            for unit_position in order:
+                evidence_index, unit_index, unit = units[int(unit_position)]
+                key = (evidence_index, unit_index)
+                selected[key] = max(
+                    selected.get(key, (-float("inf"), unit)),
+                    (float(scores[unit_position]), unit),
+                )
+                kept += 1
+                if kept >= per_facet_limit:
+                    break
+        ordered = sorted(selected.items(), key=lambda item: item[0])
+        claims = []
+        answer_parts = []
+        for (evidence_index, _), (_, unit) in ordered:
+            answer_parts.append(f"{unit} [E{evidence_index}]")
+            claims.append({
+                "sentence": unit,
+                "evidence_ids": [f"E{evidence_index}"],
+            })
+        answer = "\n".join(answer_parts)
+        coverage = np.asarray(self.reranker.predict(
+            [[facet.query, answer] for facet in plan.facets],
+            show_progress_bar=False,
+        )).reshape(-1)
+        print(f"[EXTRACT] coverage={coverage.tolist()}")
+        if any(float(score) < MIN_COVERAGE_SCORE for score in coverage):
+            return None
+        return {"answer": answer, "claims": claims, "extractive": True}
+
+    def extract_facets(
+        self, plan: Plan, groups: list[list[dict[str, Any]]]
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
+        """Extract and verify each facet against its own evidence window."""
+        global_rows: list[dict[str, Any]] = []
+        global_index: dict[str, int] = {}
+        answer_parts = []
+        global_claims = []
+        for facet, group in zip(plan.facets, groups):
+            local_rows = sorted(group[:7], key=lambda row: (
+                row.get("pdf_page") or 0, row.get("chunk_index") or 0
+            ))
+            local_plan = Plan(plan.question, plan.answer_type, (facet,))
+            result = self.extractive_answer(local_plan, local_rows)
+            if result is None:
+                return None
+            local_map = {}
+            cited_local = list(dict.fromkeys(
+                int(value) for value in re.findall(
+                    r"\[E(\d+)\]", result["answer"]
+                )
+            ))
+            for local_number in cited_local:
+                row = local_rows[local_number - 1]
+                chunk_id = row["chunk_id"]
+                if chunk_id not in global_index:
+                    global_rows.append(row)
+                    global_index[chunk_id] = len(global_rows)
+                local_map[local_number] = global_index[chunk_id]
+            remap = lambda value: local_map[int(value)]
+            answer = re.sub(
+                r"\[E(\d+)\]",
+                lambda match: f"[E{remap(match.group(1))}]",
+                result["answer"],
+            )
+            if len(plan.facets) > 1 and facet.label:
+                answer = f"{facet.label}:\n{answer}"
+            answer_parts.append(answer)
+            for claim in result["claims"]:
+                ids = []
+                for raw in claim.get("evidence_ids", []):
+                    match = re.fullmatch(r"E?(\d+)", str(raw))
+                    if match and int(match.group(1)) in local_map:
+                        ids.append(f"E{local_map[int(match.group(1))]}")
+                if ids:
+                    global_claims.append({
+                        "sentence": claim["sentence"],
+                        "evidence_ids": ids,
+                    })
+        return ({
+            "answer": "\n\n".join(answer_parts),
+            "claims": global_claims,
+            "extractive": True,
+        }, global_rows)
 
     def compose(
         self, plan: Plan, evidence: list[dict[str, Any]]
@@ -452,6 +924,7 @@ class EvidenceQA:
     ) -> tuple[bool, str, list[int]]:
         pairs = []
         cited = []
+        exact_extract = bool(generated.get("extractive"))
         answer_without_citations = compact(re.sub(
             r"\s*\[E\d+\]", "", generated["answer"]
         ))
@@ -475,6 +948,14 @@ class EvidenceQA:
             if not ids:
                 return False, "invalid evidence reference", []
             premise = " ".join(evidence[index - 1]["text"] for index in ids)
+            normalized_premise = compact(re.sub(
+                r"(?<=[A-Za-z])-\s+(?=[a-z])", "", premise
+            ))
+            normalized_sentence = compact(re.sub(
+                r"(?<=[A-Za-z])-\s+(?=[a-z])", "", sentence_without_citation
+            ))
+            if exact_extract and normalized_sentence not in normalized_premise:
+                return False, "extract is not verbatim evidence", []
             claim_numbers = set(re.findall(r"\d+(?:\.\d+)?%?", sentence))
             source_numbers = set(re.findall(r"\d+(?:\.\d+)?%?", premise))
             if claim_numbers - source_numbers:
@@ -490,24 +971,25 @@ class EvidenceQA:
             return False, "answer has an invalid citation", []
         if not set(answer_citations).issubset(set(cited)):
             return False, "answer cites evidence not verified by a claim", []
-        self._nli()
-        raw = np.asarray(self.nli.predict(pairs, show_progress_bar=False))
-        if raw.ndim != 2:
-            return False, "unexpected NLI output", []
-        probabilities = torch.softmax(torch.tensor(raw), dim=1).numpy()
-        labels = [
-            str(label).lower()
-            for label in self.nli.model.config.id2label.values()
-        ]
-        entailment = next(
-            (index for index, label in enumerate(labels)
-             if "entail" in label),
-            None,
-        )
-        if entailment is None:
-            return False, "NLI label mapping unavailable", []
-        if any(float(row[entailment]) < NLI_MIN for row in probabilities):
-            return False, "claim is not entailed", []
+        if not exact_extract:
+            self._nli()
+            raw = np.asarray(self.nli.predict(pairs, show_progress_bar=False))
+            if raw.ndim != 2:
+                return False, "unexpected NLI output", []
+            probabilities = torch.softmax(torch.tensor(raw), dim=1).numpy()
+            labels = [
+                str(label).lower()
+                for label in self.nli.model.config.id2label.values()
+            ]
+            entailment = next(
+                (index for index, label in enumerate(labels)
+                 if "entail" in label),
+                None,
+            )
+            if entailment is None:
+                return False, "NLI label mapping unavailable", []
+            if any(float(row[entailment]) < NLI_MIN for row in probabilities):
+                return False, "claim is not entailed", []
         coverage_scores = np.asarray(self.reranker.predict(
             [[facet.query, generated["answer"]] for facet in plan.facets],
             show_progress_bar=False,
@@ -608,7 +1090,9 @@ class EvidenceQA:
                 ),
                 "synthesis_mode": mode,
                 "local_model": (
-                    GENERATOR_MODEL if kind == "domain_answer" else None
+                    GENERATOR_MODEL
+                    if kind == "domain_answer" and mode == "model_planned_verified"
+                    else None
                 ),
             },
         }
@@ -627,12 +1111,16 @@ class EvidenceQA:
                 "No complete answer could be verified from the corpus.",
                 [], [], len(self.rows), "retrieval_incomplete",
             )
-        evidence = self.evidence(plan, groups)
-        print(
-            "[EVIDENCE] selected="
-            f"{[(row['chunk_id'], round(row['score'], 3)) for row in evidence]}"
-        )
-        generated = self.compose(plan, evidence)
+        extracted = self.extract_facets(plan, groups)
+        if extracted is not None:
+            generated, evidence = extracted
+        else:
+            evidence = self.evidence(plan, groups)
+            print(
+                "[EVIDENCE] selected="
+                f"{[(row['chunk_id'], round(row['score'], 3)) for row in evidence]}"
+            )
+            generated = self.compose(plan, evidence)
         if generated is None:
             print("[COMPOSE] rejected: invalid or empty structured answer")
             return self.response(
@@ -669,10 +1157,14 @@ class EvidenceQA:
             generated["answer"],
         )
         chunk_ids = [row["chunk_id"] for row in used_rows]
+        mode = (
+            "verified_extractive"
+            if generated.get("extractive") else "model_planned_verified"
+        )
         return self.response(
             "domain_answer", question, answer, source_rows,
             self.images(chunk_ids), len(self.rows),
-            "model_planned_verified",
+            mode,
         )
 
     def image_path(self, image_id: str) -> str | None:
