@@ -590,19 +590,26 @@ class EvidenceQA:
         line = compact(lines[index])
         if not line or len(line) > 90 or len(line.split()) > 12:
             return False
-        if re.search(r"[.!?;]$", line) or re.match(
-            r"^(?:\d|[-—•]|G\s|Fig\.?\s)", line, re.IGNORECASE
+        numbered_section = bool(re.match(
+            r"^\d+(?:\.\d+)+\s+[A-Za-z]", line
+        ))
+        if re.search(r"[.!?;]$", line) or (
+            re.match(r"^(?:[-—•]|G\s|Fig\.?\s)", line, re.IGNORECASE)
+            or (re.match(r"^\d", line) and not numbered_section)
         ):
             return False
         before_blank = index == 0 or not compact(lines[index - 1])
         # A final line without a following blank is usually a chunk-boundary
         # sentence fragment, not a heading.
         after_blank = index < len(lines) - 1 and not compact(lines[index + 1])
-        return before_blank and after_blank and bool(re.search(r"[A-Za-z]", line))
+        return (
+            numbered_section or (before_blank and after_blank)
+        ) and bool(re.search(r"[A-Za-z]", line))
 
     def _best_section(
         self, facet: Facet, evidence: list[dict[str, Any]]
     ) -> tuple[float, list[tuple[int, int, str]]] | None:
+        section_query = self._expand_query(facet.query)
         records = []
         headings = []
         for evidence_index, row in enumerate(evidence, 1):
@@ -632,10 +639,10 @@ class EvidenceQA:
                 for line in body_lines
             ))
         semantic_scores = np.asarray(self.reranker.predict(
-            [[facet.query, passage] for passage in heading_passages],
+            [[section_query, passage] for passage in heading_passages],
             show_progress_bar=False,
         )).reshape(-1)
-        query_roots = roots(facet.query)
+        query_roots = roots(section_query)
         lexical_scores = np.asarray([
             len(query_roots.intersection(roots(heading)))
             / max(1, len(roots(heading)))
@@ -1130,6 +1137,28 @@ class EvidenceQA:
     def answer(self, question: str) -> dict[str, Any]:
         plan = self.plan(question)
         groups = [self.retrieve(facet) for facet in plan.facets]
+        # Facets from one question normally share a subject. Share candidate
+        # windows when their query vocabulary overlaps, while retaining each
+        # facet's own ranking and section selection. This prevents a generic
+        # operation facet from losing the subject found by a sibling facet.
+        if len(groups) > 1:
+            original_groups = [list(group) for group in groups]
+            for target_index, target_facet in enumerate(plan.facets):
+                merged = {row["chunk_id"]: dict(row) for row in groups[target_index]}
+                target_terms = set(terms(target_facet.query))
+                for source_index, source_facet in enumerate(plan.facets):
+                    if source_index == target_index:
+                        continue
+                    if len(target_terms.intersection(terms(source_facet.query))) < 2:
+                        continue
+                    for row in original_groups[source_index][:7]:
+                        shared = {**row, "score": float(row["score"]) - 0.25}
+                        old = merged.get(row["chunk_id"])
+                        if old is None or shared["score"] > old["score"]:
+                            merged[row["chunk_id"]] = shared
+                groups[target_index] = sorted(
+                    merged.values(), key=lambda row: row["score"], reverse=True
+                )
         for facet, group in zip(plan.facets, groups):
             print(
                 f"[RETRIEVAL] facet={facet.label!r}; top="
