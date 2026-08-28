@@ -71,6 +71,10 @@ class Facet:
     label: str
     query: str
     requirements: tuple[str, ...]
+    # query is what the generator sees (it may carry the whole question as
+    # context); retrieval_query is the piece alone, so retrieval and rerank
+    # score the facet's own topic instead of the whole question.
+    retrieval_query: str
 
 
 @dataclass(frozen=True)
@@ -358,7 +362,7 @@ class EvidenceQA:
             answer_type = "fact"
         facets = []
         if len(unique_pieces) == 1:
-            facets = [Facet("", question, tuple(terms(question)))]
+            facets = [Facet("", question, tuple(terms(question)), question)]
         else:
             instruction = (
                 "Decompose the multi-part question into independently "
@@ -400,6 +404,10 @@ class EvidenceQA:
                         tuple(compact(str(value)) for value in item.get(
                             "requirements", []
                         ) if compact(str(value))),
+                        # The model was instructed to make each query
+                        # self-contained for its own facet, so it is already
+                        # the right retrieval target without further context.
+                        query,
                     ))
                 facets = planned
             if not facets:
@@ -409,6 +417,7 @@ class EvidenceQA:
                     " ".join(piece.split()[:7]),
                     f"{piece}. Context: {question}",
                     tuple(terms(piece)),
+                    piece,
                 ) for piece in unique_pieces[1:]]
         print(f"[PLAN] type={answer_type}; facets={[facet.query for facet in facets]}")
         return Plan(question, answer_type, tuple(facets))
@@ -428,7 +437,7 @@ class EvidenceQA:
 
     def retrieve(self, facet: Facet) -> list[dict[str, Any]]:
         self._retrievers()
-        retrieval_query = self._expand_query(facet.query)
+        retrieval_query = self._expand_query(facet.retrieval_query)
         query_vector = self.vectorizer.transform([retrieval_query])
         lexical = (self.lexical_matrix @ query_vector.T).toarray().ravel()
         lexical_order = np.argsort(-lexical)
@@ -513,6 +522,19 @@ class EvidenceQA:
         self, facet: Facet, anchors: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Add adjacent chunks generically so boundary text is not lost."""
+        requirement_terms: set[str] = set()
+        for requirement in facet.requirements:
+            requirement_terms.update(terms(requirement))
+
+        def on_topic(text: str) -> bool:
+            # A minimal lexical overlap with the facet's own requirements
+            # keeps a same-page neighbour or a co-mentioned entity chunk from
+            # entering evidence purely on page or entity proximity when its
+            # text has actually drifted to an unrelated subject.
+            return not requirement_terms or bool(
+                requirement_terms.intersection(terms(text))
+            )
+
         result: dict[str, dict[str, Any]] = {}
         for rank, anchor in enumerate(anchors):
             position = self.positions[anchor["chunk_id"]]
@@ -526,6 +548,8 @@ class EvidenceQA:
                     - (anchor.get("pdf_page") or 0)
                 )
                 if page_distance > 1:
+                    continue
+                if distance != 0 and not on_topic(row["text"]):
                     continue
                 score = anchor["score"] - abs(distance) * 0.35 - rank * 0.01
                 old = result.get(row["chunk_id"])
@@ -541,6 +565,8 @@ class EvidenceQA:
                 )[:6]:
                     row = self.rows[related_position]
                     if row["chunk_id"] == anchor["chunk_id"]:
+                        continue
+                    if not on_topic(row["text"]):
                         continue
                     score = anchor["score"] - 1.50 - rank * 0.01
                     old = result.get(row["chunk_id"])
@@ -562,12 +588,40 @@ class EvidenceQA:
                 item.setdefault("facets", []).append(facet_index)
                 if len(chosen) >= MAX_EVIDENCE:
                     break
-        pool = sorted(
-            (row for group in groups for row in group),
-            key=lambda row: row["score"],
-            reverse=True,
-        )
-        for row in pool:
+        # Each facet is reranked in its own retrieval call, so raw scores sit
+        # on independent scales; min-max normalize per facet before pooling
+        # so no facet wins merely because its candidates scored higher on an
+        # absolute scale unrelated to any other facet's.
+        pool: list[tuple[float, dict[str, Any]]] = []
+        for candidates in groups:
+            if not candidates:
+                continue
+            raw_scores = [float(row["score"]) for row in candidates]
+            low, high = min(raw_scores), max(raw_scores)
+            spread = high - low
+            for row, raw_score in zip(candidates, raw_scores):
+                normalized = (
+                    (raw_score - low) / spread if spread > 1e-9 else 1.0
+                )
+                pool.append((normalized, row))
+        pool.sort(key=lambda item: item[0], reverse=True)
+        if plan.answer_type == "procedure":
+            # A procedure's steps are only complete if the chunk_index run
+            # is unbroken. Prefer candidates that extend the sequence already
+            # gathered over a higher-scoring chunk from an unrelated position,
+            # so a numbered step in the middle is not dropped for one from
+            # elsewhere in the document.
+            def continuity_gap(row: dict[str, Any]) -> int:
+                page = row.get("pdf_page")
+                index = row.get("chunk_index") or 0
+                gaps = [
+                    abs(index - (existing.get("chunk_index") or 0))
+                    for existing in chosen.values()
+                    if existing.get("pdf_page") == page
+                ]
+                return min(gaps) if gaps else 1000
+            pool.sort(key=lambda item: (continuity_gap(item[1]), -item[0]))
+        for _, row in pool:
             chosen.setdefault(row["chunk_id"], dict(row))
             if len(chosen) >= MAX_EVIDENCE:
                 break
@@ -939,6 +993,23 @@ class EvidenceQA:
             }
             for facet in plan.facets
         ]
+        if plan.answer_type == "procedure":
+            # A partial or reordered procedure is unusable, so the sequencing
+            # constraint has to be explicit and stricter than the generic
+            # instruction below.
+            type_instruction = (
+                " This is a procedure: reproduce every step from the "
+                "evidence in its exact original order, without skipping, "
+                "merging, reordering, or summarizing any step."
+            )
+        elif plan.answer_type in ("fact", "reason"):
+            type_instruction = (
+                " This is a fact/reason question: answer with the single "
+                "most precise sentence that directly supports each facet; "
+                "do not include surrounding background or introductory text."
+            )
+        else:
+            type_instruction = ""
         instruction = (
             "Answer exclusively from the supplied evidence. Cover every "
             "requested facet, comparison side, dimension, and condition. "
@@ -948,6 +1019,7 @@ class EvidenceQA:
             "inventing it. Return strict JSON with answer and claims. Cite "
             "every answer sentence as [E#]. "
             "Each claim contains the exact sentence and its evidence_ids."
+            + type_instruction
         )
         schema = {
             "answer": "answer with [E#] after every sentence",
