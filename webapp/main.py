@@ -61,6 +61,17 @@ STOPWORDS = {
     "would", "please", "explain", "describe", "tell", "me",
 }
 
+# Words that describe the question's shape (it's a comparison, it wants a
+# reason) rather than its subject. They are rare enough in a typical corpus
+# to look like a strong lexical anchor, which would then wrongly restrict
+# retrieval to any chunk containing the literal word instead of the actual
+# subject being asked about.
+GENERIC_QUERY_WORDS = {
+    "difference", "differences", "compare", "comparison", "contrast",
+    "similarity", "similarities", "reason", "reasons", "purpose",
+    "purposes",
+}
+
 
 class QuestionRequest(BaseModel):
     query: str
@@ -108,6 +119,24 @@ def clean_question(value: str) -> str:
         value, maxsplit=1, flags=re.IGNORECASE,
     )[0]
     return compact(value).strip()
+
+
+def strip_question_stem(value: str) -> str:
+    """Remove a generic leading interrogative/comparison stem so a fallback
+    retrieval query scores the remaining subject phrase, not the question's
+    own boilerplate wording (e.g. "difference", "between" survive STOPWORDS
+    and would otherwise pollute lexical matching for every split piece)."""
+    value = re.sub(
+        r"^(?:what|why|how|when|where|which|who)\s+"
+        r"(?:is|are|was|were|does|do|did|should|would|can|could)\s+",
+        "", value, flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"^(?:the\s+)?(?:difference|differences)\s+between\s+",
+        "", value, flags=re.IGNORECASE,
+    )
+    value = re.sub(r"^(?:compare|contrast)\s+", "", value, flags=re.IGNORECASE)
+    return compact(value)
 
 
 def terms(value: str) -> list[str]:
@@ -384,6 +413,12 @@ class EvidenceQA:
             except Exception as error:
                 print(f"[PLAN] model fallback: {error}")
                 parsed = None
+            if parsed and "facets" not in parsed and "query" in parsed:
+                # The model sometimes returns one facet object directly
+                # instead of wrapping it in the requested {"facets": [...]}
+                # list; treat it as a single-facet plan rather than
+                # discarding it and falling back to naive question-splitting.
+                parsed = {"facets": [parsed]}
             if parsed:
                 planned = []
                 for item in parsed.get("facets", [])[:8]:
@@ -417,7 +452,7 @@ class EvidenceQA:
                     " ".join(piece.split()[:7]),
                     f"{piece}. Context: {question}",
                     tuple(terms(piece)),
-                    piece,
+                    strip_question_stem(piece),
                 ) for piece in unique_pieces[1:]]
         print(f"[PLAN] type={answer_type}; facets={[facet.query for facet in facets]}")
         return Plan(question, answer_type, tuple(facets))
@@ -460,7 +495,10 @@ class EvidenceQA:
             int(index): rank for rank, index in enumerate(dense_order, 1)
         }
         vocabulary = self.vectorizer.vocabulary_
-        query_terms = [term for term in terms(retrieval_query) if term in vocabulary]
+        query_terms = [
+            term for term in terms(retrieval_query)
+            if term in vocabulary and term not in GENERIC_QUERY_WORDS
+        ]
         rare_terms = sorted(
             query_terms,
             key=lambda term: self.vectorizer.idf_[vocabulary[term]],
@@ -522,12 +560,17 @@ class EvidenceQA:
         self, facet: Facet, anchors: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Add adjacent chunks generically so boundary text is not lost."""
-        requirement_terms: set[str] = set()
+        # requirements alone is not a safe filter signal: a planner can
+        # return generic instruction words (e.g. "explain", "compare")
+        # instead of subject terms, which would then reject every real
+        # neighbour. retrieval_query always carries the facet's own subject
+        # words, so union it in as a floor under a weak requirements list.
+        requirement_terms: set[str] = set(terms(facet.retrieval_query))
         for requirement in facet.requirements:
             requirement_terms.update(terms(requirement))
 
         def on_topic(text: str) -> bool:
-            # A minimal lexical overlap with the facet's own requirements
+            # A minimal lexical overlap with the facet's own subject terms
             # keeps a same-page neighbour or a co-mentioned entity chunk from
             # entering evidence purely on page or entity proximity when its
             # text has actually drifted to an unrelated subject.
@@ -631,12 +674,39 @@ class EvidenceQA:
         ))
 
     @staticmethod
+    def _strip_captions(text: str) -> str:
+        # PDF extraction interleaves figure/table captions into running
+        # prose (e.g. "...required amount Fig. 9.6 Materials for of blood
+        # (e.g. at the 5-ml level)."). A caption is never a usable answer,
+        # and left in place it can outrank real content merely by echoing a
+        # query word in its label. A parenthetical reference like
+        # "(Fig. 9.6)" is untouched since a closing paren, not a caption
+        # description, follows the number. Also used to normalize evidence
+        # in verify() so a caption-stripped extract still matches verbatim.
+        return re.sub(
+            r"\b(?:Fig(?:ure)?|Table)\.?\s*\d+(?:\.\d+)?\s+[^.\n]{0,80}\.?",
+            " ", text, flags=re.IGNORECASE,
+        )
+
+    @staticmethod
     def _units(text: str) -> list[str]:
         text = re.sub(r"(?<=[A-Za-z])-\s+(?=[a-z])", "", text)
         text = re.sub(r"\n\s*(?=\d+[.)]\s+)", "\n", text)
+        text = EvidenceQA._strip_captions(text)
+        # A period after a common abbreviation (an inline "(Fig. 9.6)"
+        # reference, "e.g.", "i.e.", "etc.") is not a sentence end; without
+        # this the naive boundary rule below splits mid-reference and
+        # truncates the real sentence around it.
+        text = re.sub(
+            r"\b(?:Fig(?:ure)?s?|Table|e\.g|i\.e|etc|vs|cf|No|approx|"
+            r"Dr|Mr|Mrs)\.(?=\s)",
+            lambda match: match.group(0)[:-1] + "@@ABBR_DOT@@",
+            text, flags=re.IGNORECASE,
+        )
         parts = re.split(
             r"(?<=[.!?])\s+|\n{2,}|(?=\n\s*\d+[.)]\s+)", text
         )
+        parts = [part.replace("@@ABBR_DOT@@", ".") for part in parts]
         return [compact(part) for part in parts if len(compact(part)) >= 20]
 
     @staticmethod
@@ -931,6 +1001,7 @@ class EvidenceQA:
         global_index: dict[str, int] = {}
         answer_parts = []
         global_claims = []
+        any_composed = False
         for facet, group in zip(plan.facets, groups):
             local_rows = sorted(group[:7], key=lambda row: (
                 row.get("pdf_page") or 0, row.get("chunk_index") or 0
@@ -938,7 +1009,35 @@ class EvidenceQA:
             local_plan = Plan(plan.question, plan.answer_type, (facet,))
             result = self.extractive_answer(local_plan, local_rows)
             if result is None:
-                return None
+                # Generating from just this facet's own small evidence
+                # window is far less citation-error-prone than making one
+                # call synthesize every facet's combined evidence at once.
+                composed = self.compose(local_plan, local_rows)
+                if composed is None:
+                    return None
+                verified, _, validated_claims = self.verify(
+                    local_plan, composed, local_rows
+                )
+                if not verified:
+                    return None
+                result = {
+                    "answer": "\n".join(
+                        f"{claim['sentence']} " + "".join(
+                            f"[E{index}]" for index in claim["evidence_ids"]
+                        )
+                        for claim in validated_claims
+                    ).strip(),
+                    "claims": [
+                        {
+                            "sentence": claim["sentence"],
+                            "evidence_ids": [
+                                f"E{index}" for index in claim["evidence_ids"]
+                            ],
+                        }
+                        for claim in validated_claims
+                    ],
+                }
+                any_composed = True
             local_map = {}
             cited_local = list(dict.fromkeys(
                 int(value) for value in re.findall(
@@ -975,7 +1074,7 @@ class EvidenceQA:
         return ({
             "answer": "\n\n".join(answer_parts),
             "claims": global_claims,
-            "extractive": True,
+            "extractive": not any_composed,
         }, global_rows)
 
     def compose(
@@ -1028,25 +1127,34 @@ class EvidenceQA:
                 "evidence_ids": ["E1"],
             }],
         }
-        parsed = parse_json(self.complete(
-            instruction,
+        prompt = (
             f"Question: {plan.question}\n"
             f"Answer type: {plan.answer_type}\n"
             f"Required facets: {json.dumps(facets)}\n"
             f"Output schema: {json.dumps(schema)}\n\n"
-            f"Evidence:\n{context}",
-            1500,
-        ))
-        if (
-            not parsed
-            or not compact(str(parsed.get("answer") or ""))
-            or not isinstance(parsed.get("claims"), list)
-        ):
-            return None
-        return {
-            "answer": compact(str(parsed["answer"])),
-            "claims": parsed["claims"],
-        }
+            f"Evidence:\n{context}"
+        )
+        # A small local model occasionally emits malformed JSON on one
+        # attempt; retry once with a stricter reminder before giving up,
+        # rather than falling straight through to "not found".
+        for attempt in range(2):
+            parsed = parse_json(self.complete(instruction, prompt, 1500))
+            if (
+                parsed
+                and compact(str(parsed.get("answer") or ""))
+                and isinstance(parsed.get("claims"), list)
+            ):
+                return {
+                    "answer": compact(str(parsed["answer"])),
+                    "claims": parsed["claims"],
+                }
+            if attempt == 0:
+                instruction += (
+                    " Your previous response was not valid JSON matching "
+                    "the schema. Return only the JSON object and nothing "
+                    "else."
+                )
+        return None
 
     def _nli(self) -> None:
         if self.nli is not None:
@@ -1060,13 +1168,16 @@ class EvidenceQA:
         plan: Plan,
         generated: dict[str, Any],
         evidence: list[dict[str, Any]],
-    ) -> tuple[bool, str, list[int]]:
-        pairs = []
-        cited = []
+    ) -> tuple[bool, str, list[dict[str, Any]]]:
+        """Validate every claim against its own cited evidence and rebuild
+        the answer text from the claims that pass. The model's own "answer"
+        field is only a hint for the early empty-output check in compose();
+        it is never rendered directly, so the model cannot make an answer
+        say more than what each individual claim was checked against."""
         exact_extract = bool(generated.get("extractive"))
-        answer_without_citations = compact(re.sub(
-            r"\s*\[E\d+\]", "", generated["answer"]
-        ))
+        pairs = []
+        validated_claims: list[dict[str, Any]] = []
+        seen_sentences: set[str] = set()
         for claim in generated["claims"]:
             if not isinstance(claim, dict):
                 return False, "invalid claim", []
@@ -1074,11 +1185,13 @@ class EvidenceQA:
             raw_ids = claim.get("evidence_ids")
             if not sentence or not isinstance(raw_ids, list):
                 return False, "claim has no evidence", []
-            sentence_without_citation = compact(re.sub(
-                r"\s*\[E\d+\]", "", sentence
-            ))
-            if sentence_without_citation not in answer_without_citations:
-                return False, "claim is not present in the answer", []
+            sentence = compact(re.sub(r"\s*\[E\d+\]", "", sentence))
+            # Overlapping evidence windows (from expand(), or from separate
+            # facets) can carry the same sentence twice; render it once.
+            dedup_key = sentence.lower()
+            if dedup_key in seen_sentences:
+                continue
+            seen_sentences.add(dedup_key)
             ids = []
             for raw in raw_ids:
                 match = re.fullmatch(r"E?(\d+)", str(raw).strip())
@@ -1087,12 +1200,14 @@ class EvidenceQA:
             if not ids:
                 return False, "invalid evidence reference", []
             premise = " ".join(evidence[index - 1]["text"] for index in ids)
-            normalized_premise = compact(re.sub(
+            # Mirror _units()'s cleanup (dehyphenation, caption stripping) so
+            # an extract built from cleaned text still matches verbatim.
+            normalized_premise = compact(self._strip_captions(re.sub(
                 r"(?<=[A-Za-z])-\s+(?=[a-z])", "", premise
-            ))
-            normalized_sentence = compact(re.sub(
-                r"(?<=[A-Za-z])-\s+(?=[a-z])", "", sentence_without_citation
-            ))
+            )))
+            normalized_sentence = compact(self._strip_captions(re.sub(
+                r"(?<=[A-Za-z])-\s+(?=[a-z])", "", sentence
+            )))
             if exact_extract and normalized_sentence not in normalized_premise:
                 return False, "extract is not verbatim evidence", []
             claim_numbers = set(re.findall(r"\d+(?:\.\d+)?%?", sentence))
@@ -1100,16 +1215,9 @@ class EvidenceQA:
             if claim_numbers - source_numbers:
                 return False, "unsupported numeric value", []
             pairs.append([compact(premise), sentence])
-            cited.extend(ids)
-        answer_citations = [
-            int(value) for value in re.findall(r"\[E(\d+)\]", generated["answer"])
-        ]
-        if not answer_citations:
+            validated_claims.append({"sentence": sentence, "evidence_ids": ids})
+        if not validated_claims:
             return False, "answer has no citations", []
-        if any(not 1 <= value <= len(evidence) for value in answer_citations):
-            return False, "answer has an invalid citation", []
-        if not set(answer_citations).issubset(set(cited)):
-            return False, "answer cites evidence not verified by a claim", []
         if not exact_extract:
             self._nli()
             raw = np.asarray(self.nli.predict(pairs, show_progress_bar=False))
@@ -1129,14 +1237,20 @@ class EvidenceQA:
                 return False, "NLI label mapping unavailable", []
             if any(float(row[entailment]) < NLI_MIN for row in probabilities):
                 return False, "claim is not entailed", []
+        answer_text = "\n".join(
+            f"{claim['sentence']} " + "".join(
+                f"[E{index}]" for index in claim["evidence_ids"]
+            )
+            for claim in validated_claims
+        ).strip()
         coverage_scores = np.asarray(self.reranker.predict(
-            [[facet.query, generated["answer"]] for facet in plan.facets],
+            [[facet.query, answer_text] for facet in plan.facets],
             show_progress_bar=False,
         )).reshape(-1)
         print(f"[COVERAGE] scores={coverage_scores.tolist()}")
         if any(float(score) < MIN_COVERAGE_SCORE for score in coverage_scores):
             return False, "one or more requested facets are absent", []
-        return True, "verified", list(dict.fromkeys(cited))
+        return True, "verified", validated_claims
 
     @staticmethod
     def source(row: dict[str, Any]) -> dict[str, Any]:
@@ -1247,11 +1361,17 @@ class EvidenceQA:
             original_groups = [list(group) for group in groups]
             for target_index, target_facet in enumerate(plan.facets):
                 merged = {row["chunk_id"]: dict(row) for row in groups[target_index]}
-                target_terms = set(terms(target_facet.query))
+                # retrieval_query, not query: the fallback splitter's query
+                # embeds the whole original question as generation context,
+                # so every facet's query would share most of its vocabulary
+                # with every other facet's and this check would always pass.
+                target_terms = set(terms(target_facet.retrieval_query))
                 for source_index, source_facet in enumerate(plan.facets):
                     if source_index == target_index:
                         continue
-                    if len(target_terms.intersection(terms(source_facet.query))) < 2:
+                    if len(target_terms.intersection(
+                        terms(source_facet.retrieval_query)
+                    )) < 2:
                         continue
                     for row in original_groups[source_index][:7]:
                         shared = {**row, "score": float(row["score"]) - 0.25}
@@ -1289,7 +1409,7 @@ class EvidenceQA:
                 "Relevant evidence was found, but it was incomplete.",
                 [], [], len(self.rows), "evidence_incomplete",
             )
-        verified, diagnostic, cited = self.verify(
+        verified, diagnostic, validated_claims = self.verify(
             plan, generated, evidence
         )
         print(
@@ -1303,20 +1423,23 @@ class EvidenceQA:
                 "fully supported and complete.",
                 [], [], len(self.rows), "verification_failed",
             )
+        cited = list(dict.fromkeys(
+            index
+            for claim in validated_claims
+            for index in claim["evidence_ids"]
+        ))
         used_rows = [evidence[index - 1] for index in cited]
         source_rows = [self.source(row) for row in used_rows]
         citation_map = {
             evidence_index: source_index
             for source_index, evidence_index in enumerate(cited, 1)
         }
-        answer = re.sub(
-            r"\[E(\d+)\]",
-            lambda match: (
-                f"[S{citation_map[int(match.group(1))]}]"
-                if int(match.group(1)) in citation_map else ""
-            ),
-            generated["answer"],
-        )
+        answer = "\n".join(
+            f"{claim['sentence']} " + "".join(
+                f"[S{citation_map[index]}]" for index in claim["evidence_ids"]
+            )
+            for claim in validated_claims
+        ).strip()
         chunk_ids = [row["chunk_id"] for row in used_rows]
         mode = (
             "verified_extractive"
