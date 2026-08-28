@@ -29,10 +29,10 @@ MAX_EVIDENCE_CHUNKS = 2
 FACT_MIN_SCORE = 0.14
 IMAGE_MIN_SCORE = 0.35
 LOCAL_ANSWER_MODEL = os.getenv(
-    "LOCAL_ANSWER_MODEL", "Qwen/Qwen2.5-3B-Instruct"
+    "LOCAL_ANSWER_MODEL", "Qwen/Qwen3-4B-Instruct-2507"
 )
 ENABLE_LOCAL_SYNTHESIS = os.getenv(
-    "ENABLE_LOCAL_SYNTHESIS", "true"
+    "ENABLE_LOCAL_SYNTHESIS", "false"
 ).strip().lower() in {"1", "true", "yes", "on"}
 MAX_SYNTHESIS_CHUNKS = 8
 MAX_SYNTHESIS_CONTEXT_CHARS = 12000
@@ -47,7 +47,7 @@ NLI_CONTRADICTION_MAX = 0.20
 # reranks only the strongest candidates with the complete question.  Both are
 # free local models and remain cached by Hugging Face after the first run.
 DENSE_RETRIEVER_MODEL = os.getenv(
-    "DENSE_RETRIEVER_MODEL", "BAAI/bge-small-en-v1.5"
+    "DENSE_RETRIEVER_MODEL", "BAAI/bge-base-en-v1.5"
 )
 RERANKER_MODEL = os.getenv(
     "RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
@@ -142,6 +142,7 @@ SUBJECT_CONTRACTS = {
 
 OPERATION_PATTERNS = {
     "collection": r"\b(?:collect|collection|obtain|obtained|sampling)\w*\b",
+    "preparation": r"\b(?:prepar|making|make)\w*\b",
     "preservation": (
         r"\b(?:preserv|storage|store|stored|refrigerat|transport)\w*\b"
     ),
@@ -260,7 +261,8 @@ def requested_operations(question: str) -> set[str]:
     # ``laboratory examination`` often states the destination/purpose of a
     # collected specimen, not a second request to explain microscopy.
     if "collection" in operations and re.search(
-        r"\bcollect(?:ed)?\s+for\s+(?:laboratory\s+)?examination\b", lowered
+        r"\bcollect(?:ed)?\s+for\s+(?:[a-z]+\s+){0,3}examination\b",
+        lowered,
     ):
         operations.discard("examination")
     # Here collection is a time boundary, while examination is the requested
@@ -365,6 +367,29 @@ def _operation_contract_satisfied(question: str, evidence: str) -> bool:
 
 def evidence_contract_satisfied(question: str, evidence: str) -> bool:
     """Verify subject identity and requested action before answer scoring."""
+    lowered = normalize_space(question).lower()
+    # Named examination methods are hard identity constraints.  Generic text
+    # about examining the same specimen cannot satisfy a request about a
+    # direct or concentration method.
+    if re.search(r"\bdirect\b.{0,40}\b(?:method|examination)\b", lowered):
+        if not re.search(
+            r"\bdirect\b.{0,60}\b(?:microscop|examination|method)\w*\b",
+            evidence,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            return False
+    if re.search(
+        r"\bconcentrat\w*\b.{0,40}"
+        r"\b(?:method|examination|techniques?)\b",
+        lowered,
+    ):
+        if not re.search(
+            r"\bconcentrat\w*\b.{0,60}"
+            r"\b(?:techniques?|method|preparation|parasite)\w*\b",
+            evidence,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            return False
     return (
         _subject_contract_satisfied(question, evidence)
         and _operation_contract_satisfied(question, evidence)
@@ -713,7 +738,8 @@ def explicit_list_request(question: str) -> bool:
     return bool(re.search(
         r"\b(?:list|enumerate|name all|what are|which are|types|kinds|ways|"
         r"methods|conditions|criteria|reasons|causes|purposes|uses|"
-        r"advantages|disadvantages|differences|features|steps)\b",
+        r"advantages|disadvantages|differences|features|steps|"
+        r"indications|limitations|findings|detectable forms)\b",
         lowered,
     ))
 
@@ -786,14 +812,25 @@ def execution_facets(question: str) -> list[tuple[str, str]]:
              normalize_token(ordered_pair.group(2))]
             if ordered_pair else sorted(paired)
         )
-        return [
-            (
-                f"{method.title()} method",
-                f"What are the uses of the {method} method for "
-                f"{subject_text}{target_text}?",
-            )
-            for method in methods
-        ]
+        method_facets = []
+        for method in methods:
+            if method == "direct":
+                prompt = (
+                    f"What are the purposes of direct microscopic "
+                    f"examination of {subject_text}{target_text}?"
+                )
+            elif method in {"concentration", "concentrate"}:
+                prompt = (
+                    f"When are concentration techniques used for "
+                    f"{subject_text}{target_text}?"
+                )
+            else:
+                prompt = (
+                    f"What is the purpose of the {method} examination "
+                    f"technique for {subject_text}{target_text}?"
+                )
+            method_facets.append((f"{method.title()} method", prompt))
+        return method_facets
     method_pair = re.search(
         r"\b(?:the\s+)?([a-z-]+)(?:\s+[a-z-]+){0,3}\s+method\s+"
         r"differ(?:s)?\s+from\s+(?:the\s+)?([a-z-]+)\s+method\b",
@@ -814,7 +851,7 @@ def execution_facets(question: str) -> list[tuple[str, str]]:
     operations = requested_operations(question)
     executable_operations = [
         operation for operation in (
-            "collection", "preservation", "examination", "labelling",
+            "collection", "preparation", "preservation", "examination", "labelling",
             "fixation", "staining", "washing", "drying", "calculation",
         )
         if operation in operations
@@ -848,8 +885,14 @@ def execution_facets(question: str) -> list[tuple[str, str]]:
         )
         prompts = {
             "collection": f"How should {subject} be collected?",
+            "preparation": f"How should {subject} be prepared?",
             "preservation": f"How should {subject} be preserved {condition}?",
-            "examination": f"How should {subject} be examined {condition}?",
+            "examination": (
+                f"How should {subject} be examined "
+                "microscopically after delayed examination?"
+                if "preservation" in operations else
+                f"How should {subject} be examined?"
+            ),
             "labelling": f"How should {subject} be labelled?",
             "fixation": f"How should {subject} be fixed?",
             "staining": f"How should {subject} be stained?",
@@ -971,6 +1014,7 @@ class GraphV2QA:
         self._word_matrix = None
         self._char_matrix = None
         self._chunk_documents = None
+        self._reference_pdf_pages: set[int] = set()
         self._dense_model = None
         self._chunk_embeddings = None
         self._retrieval_reranker = None
@@ -1092,6 +1136,15 @@ class GraphV2QA:
             self._word_matrix = self._word_vectorizer.fit_transform(documents)
             self._char_matrix = self._char_vectorizer.fit_transform(documents)
             self._chunk_documents = documents
+            # Index/contents headings may occur only in the first Chunk of a
+            # page while later Chunks contain bare alphabetical continuations.
+            # Exclude the entire page, not only the heading-bearing Chunk.
+            self._reference_pdf_pages = {
+                int(row["pdf_page"])
+                for row in chunks
+                if isinstance(row.get("pdf_page"), int)
+                and self._is_reference_page(row.get("text") or "")
+            }
             self._chunks = chunks
 
     def _ensure_neural_retrieval(self) -> bool:
@@ -1260,8 +1313,20 @@ class GraphV2QA:
             row["exact_phrase"] = exact_phrase
             row["answerability"] = answerability
             row["question_type"] = requested_type
-            row["reference_page"] = self._is_reference_page(
-                row.get("text") or ""
+            reference_pages = getattr(
+                self, "_reference_pdf_pages", set()
+            )
+            if not reference_pages:
+                reference_pages = {
+                    int(item["pdf_page"])
+                    for item in self._chunks
+                    if isinstance(item.get("pdf_page"), int)
+                    and self._is_reference_page(item.get("text") or "")
+                }
+                self._reference_pdf_pages = reference_pages
+            row["reference_page"] = (
+                row.get("pdf_page") in reference_pages
+                or self._is_reference_page(row.get("text") or "")
             )
             row["requirements_complete"] = bool(complete_passages)
             row["complete_passages"] = complete_passages
@@ -1322,11 +1387,24 @@ class GraphV2QA:
     def _is_reference_page(text: str) -> bool:
         """Identify navigation pages that must never be answer evidence."""
         normalized = normalize_space(text)
-        return bool(re.match(
-            r"^(?:index|contents|table of contents)\b",
+        navigation = bool(re.match(
+            r"^(?:\d+\s+)?(?:index|contents|table of contents)\b",
             normalized,
             flags=re.IGNORECASE,
         ))
+        table_ocr = bool(
+            re.search(
+                r"\bTable\s+\d+(?:\.\d+)?\b",
+                normalized,
+                flags=re.IGNORECASE,
+            )
+            and len(re.findall(
+                r"\b(?:Type of|specimen|examination|preservation|amount)\b",
+                normalized,
+                flags=re.IGNORECASE,
+            )) >= 6
+        )
+        return navigation or table_ocr
 
     @staticmethod
     def _local_evidence_units(question: str, text: str) -> list[str]:
@@ -1337,6 +1415,7 @@ class GraphV2QA:
         if (
             question_type(question) in {"reason", "comparison"}
             or len(question_facets(question)) > 1
+            or "preservation" in requested_operations(question)
             or re.search(
                 r"\b(?:precautions?|rules?|handling|delayed?|prevent|avoid|spill)\w*\b",
                 question,
@@ -1631,13 +1710,20 @@ class GraphV2QA:
             if len({action.lower() for action in collection_actions}) >= 2:
                 return True
         if "preservation" in requested_operations(question):
-            if re.search(
-                r"\b(?:preserv\w*|acidif\w*|refrigerat\w*|"
-                r"transport\w*.{0,100}preserv\w*)\b",
+            preservation_action = re.search(
+                r"\b(?:acidif\w*|"
+                r"(?:should|may|can|must)\s+be\s+refrigerat\w*|"
+                r"add(?:ing|ed)?\b.{0,100}"
+                r"(?:formaldehyde|formalin|acid|preservative)|"
+                r"preserv\w*\b.{0,100}\bby\s+add\w*|"
+                r"contain\w*\b.{0,80}\bpreservative)\b",
                 normalized_passage,
-                flags=re.IGNORECASE,
-            ):
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if preservation_action:
                 return True
+            if re.search(r"\bhow\b", lowered_question):
+                return False
         # A broad immediate-examination question requires the manual's global
         # testing instruction plus its deterioration reason.  A later assay-
         # specific sentence (for example glucose alone) is relevant but not a
@@ -1645,19 +1731,22 @@ class GraphV2QA:
         if (
             question_type(question) == "reason"
             and re.search(r"\bimmediate(?:ly)?\b", lowered_question)
-            and re.search(
-                r"\b(?:do not delay(?: in)? (?:testing|examining)|"
-                r"test|examine)\b",
+        ):
+            immediate_instruction = re.search(
+                r"\bdo not delay\b.{0,80}\b(?:test|examin)",
                 normalized_passage,
-                flags=re.IGNORECASE,
+                flags=re.IGNORECASE | re.DOTALL,
             )
-            and re.search(
+            deterioration_reason = re.search(
                 r"\brapidly\b.{0,80}\b(?:lys(?:e|ed)|destroy(?:ed)?)\b",
                 normalized_passage,
-                flags=re.IGNORECASE,
+                flags=re.IGNORECASE | re.DOTALL,
             )
-        ):
-            return True
+            # This is a hard completeness contract.  Do not fall through to
+            # generic reason matching, which previously accepted a later
+            # assay-specific glucose sentence as the reason the whole CSF
+            # specimen must be examined immediately.
+            return bool(immediate_instruction and deterioration_reason)
         if "parasite density" in lowered_question and re.search(
             r"\b(?:determin|estimat|calculat|measur|count)",
             lowered_question,
@@ -2146,11 +2235,19 @@ class GraphV2QA:
 
     @staticmethod
     def _step_numbers(text: str) -> list[int]:
-        return [
-            int(value) for value in re.findall(
-                r"(?:^|\n)\s*(\d{1,2})\.\s+", text or ""
-            )
-        ]
+        numbers = []
+        chapter_heading = re.compile(
+            r"(?:General laboratory procedures|Parasitology|Bacteriology|"
+            r"Examination of urine|Haematology|Clinical chemistry)\b",
+            flags=re.IGNORECASE,
+        )
+        for match in re.finditer(
+            r"(?:^|\n)\s*(\d{1,2})\.\s+([^\n]{0,80})", text or ""
+        ):
+            if chapter_heading.match(match.group(2).strip()):
+                continue
+            numbers.append(int(match.group(1)))
+        return numbers
 
     @staticmethod
     def _procedure_anchor_constraints(question: str) -> list[set[str]]:
@@ -2185,6 +2282,13 @@ class GraphV2QA:
         for row in rows:
             source = row.get("text") or ""
             terms = set(content_terms(source))
+            if "preparation" in requested_operations(question) and not re.search(
+                r"(?:^|\n)\s*Preparation of (?:the\s+)?(?:film|smear|"
+                r"specimen)\b|\bcollect a drop of blood\b",
+                source,
+                flags=re.IGNORECASE,
+            ):
+                continue
             if "field" in normalize_space(question).lower() and not re.search(
                 r"\bStaining blood films with Field stain\b",
                 source,
@@ -2373,8 +2477,16 @@ class GraphV2QA:
         cleaned = re.sub(r"\.{2,}", ".", cleaned)
         # Do not split a sentence immediately after the figure abbreviation.
         cleaned = re.sub(r"\bFig\.", "Fig§", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"\breagent\s+no\.(?=\s*\d)",
+            "reagent no§",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
         return [
-            normalize_space(part).replace("Fig§", "Fig.")
+            normalize_space(part).replace("Fig§", "Fig.").replace(
+                "no§", "no."
+            )
             for part in re.split(r"(?<=[.!?;])\s+|\n{2,}", cleaned)
             if normalize_space(part)
         ]
@@ -2527,6 +2639,46 @@ class GraphV2QA:
             )
             if not anchor_rows:
                 return []
+            # Collection chapters often contain a numbered recipe for making
+            # the container immediately before the patient/specimen method.
+            # Prefer an anchor that grammatically instructs collection of the
+            # requested specimen; a heading such as "boxes for collecting
+            # sputum" is context, not the collection procedure itself.
+            if "collection" in requested_operations(question):
+                required_subjects = subject_contracts(question)
+                subject_patterns = [
+                    pattern
+                    for name in required_subjects
+                    for pattern in SUBJECT_CONTRACTS.get(name, ())
+                ]
+                if subject_patterns:
+                    subject_pattern = "(?:" + "|".join(
+                        subject_patterns
+                    ) + ")"
+                    subsection_pattern = re.compile(
+                        rf"(?:^|\n)\s*(?:Collection of\s+)?"
+                        rf"{subject_pattern}(?:\s+specimens?)?\s*"
+                        r"(?:\n|$)",
+                        flags=re.IGNORECASE | re.DOTALL,
+                    )
+                    patient_instruction = re.compile(
+                        rf"\b(?:ask|instruct)\s+(?:the\s+)?patient\b"
+                        rf".{{0,220}}(?:{subject_pattern}|\bcontainer\b)",
+                        flags=re.IGNORECASE | re.DOTALL,
+                    )
+                    procedural_anchors = [
+                        row for row in anchor_rows
+                        if (
+                            subsection_pattern.search(
+                                row.get("text") or ""
+                            )
+                            or patient_instruction.search(
+                                row.get("text") or ""
+                            )
+                        )
+                    ]
+                    if procedural_anchors:
+                        anchor_rows = procedural_anchors
             exact_rows = [
                 row for row in anchor_rows if row.get("exact_phrase")
             ]
@@ -2537,8 +2689,18 @@ class GraphV2QA:
                     row.get("score", 0.0),
                 ),
             )
-            chain = GraphV2QA._procedure_chain(
-                question, anchor, ranked_rows
+            anchor_scope = GraphV2QA._procedure_scope(
+                question, anchor.get("text") or ""
+            )
+            chain = (
+                GraphV2QA._procedure_chain(
+                    question, anchor, ranked_rows
+                )
+                if (
+                    1 in GraphV2QA._step_numbers(anchor_scope)
+                    and "preservation" not in requested_operations(question)
+                )
+                else []
             )
             if chain:
                 return chain
@@ -2804,7 +2966,7 @@ class GraphV2QA:
 
     @staticmethod
     def compose_numbered_procedure(
-        rows: list[dict[str, Any]]
+        question: str, rows: list[dict[str, Any]]
     ) -> tuple[str, list[dict[str, Any]]]:
         """Reconstruct numbered source steps without generating new facts."""
         ordered_rows = sorted(
@@ -2830,7 +2992,14 @@ class GraphV2QA:
         )
 
         for row in ordered_rows:
-            text = row.get("text") or ""
+            # A Chunk can contain the end of the preceding subsection and the
+            # beginning of the requested method.  Parsing every number in the
+            # raw Chunk previously mixed unrelated procedures (for example,
+            # cotton-swab preparation with sputum collection).  Scope each
+            # source to the question before reconstructing numbered steps.
+            text = GraphV2QA._procedure_scope(
+                question, row.get("text") or ""
+            )
             stop = stop_heading.search(text)
             if stop:
                 text = text[:stop.start()]
@@ -2838,6 +3007,14 @@ class GraphV2QA:
                 number = int(match.group(1))
                 raw_step = normalize_space(match.group(2))
                 if not raw_step:
+                    continue
+                if re.match(
+                    r"(?:General laboratory procedures|Parasitology|"
+                    r"Bacteriology|Examination of urine|Haematology|"
+                    r"Clinical chemistry)\b",
+                    raw_step,
+                    flags=re.IGNORECASE,
+                ):
                     continue
                 cleaned = re.sub(
                     r"\s*\(Fig\.\s*\d+\.\d+\)",
@@ -2923,7 +3100,20 @@ class GraphV2QA:
                 source_number[chunk_id] = len(source_rows) + 1
                 source_rows.append(item["row"])
 
-        answer_lines = ["According to the manual's numbered procedure:"]
+        if "preparation" in requested_operations(question):
+            film_label = (
+                "thin blood film " if re.search(
+                    r"\bthin\b", question, flags=re.IGNORECASE
+                ) else "thick blood film " if re.search(
+                    r"\bthick\b", question, flags=re.IGNORECASE
+                ) else ""
+            )
+            procedure_label = (
+                f"numbered {film_label}preparation procedure"
+            )
+        else:
+            procedure_label = "numbered procedure"
+        answer_lines = [f"According to the manual's {procedure_label}:"]
         included_numbers = []
         for item in chosen:
             chunk_id = item["row"].get("chunk_id")
@@ -2934,21 +3124,6 @@ class GraphV2QA:
             answer_lines.append(
                 f"{item['number']}. {item['text']} [S{citation}]"
             )
-        if included_numbers:
-            missing = [
-                number
-                for number in range(
-                    min(included_numbers), max(included_numbers) + 1
-                )
-                if number not in included_numbers
-            ]
-            if missing:
-                labels = ", ".join(str(number) for number in missing)
-                answer_lines.append(
-                    "Source step(s) "
-                    f"{labels} contained interleaved figure-caption OCR and "
-                    "were not restated to avoid introducing unsupported text."
-                )
         return "\n".join(answer_lines), source_rows
 
     @staticmethod
@@ -3226,9 +3401,12 @@ class GraphV2QA:
                 "satisfactory",
             )
         )
-        if procedure_question:
+        if (
+            procedure_question
+            and "preservation" not in requested_operations(question)
+        ):
             procedure_answer, procedure_rows = (
-                GraphV2QA.compose_numbered_procedure(rows)
+                GraphV2QA.compose_numbered_procedure(question, rows)
             )
             if procedure_answer:
                 return procedure_answer, procedure_rows
@@ -3761,9 +3939,10 @@ class GraphV2QA:
             self._nli_contradiction_index = contradiction
 
     def verify_synthesis(
-        self, answer: str, evidence_rows: list[dict[str, Any]]
+        self, question: str, answer: str,
+        evidence_rows: list[dict[str, Any]],
     ) -> tuple[bool, str]:
-        """Apply deterministic value gates, then claim-level NLI."""
+        """Verify completeness and provenance, then claim-level NLI."""
         normalized = normalize_space(answer)
         if not normalized:
             return False, "empty generation"
@@ -3778,11 +3957,24 @@ class GraphV2QA:
         if not evidence_text:
             return False, "empty evidence"
 
+        # Evidence overlap alone cannot establish that a generated paragraph
+        # answers the user's actual question.  Reuse the final output gate so
+        # subject, requested operations, facets and values are checked before
+        # the more expensive claim-level NLI pass.
+        bundle_verified, bundle_diagnostic = self.verify_answer_bundle(
+            question, normalized, evidence_rows
+        )
+        if not bundle_verified:
+            return False, f"answer bundle: {bundle_diagnostic}"
+
         number_pattern = re.compile(
             r"(?<![A-Za-z])\d+(?:\.\d+)?%?"
         )
         source_numbers = set(number_pattern.findall(evidence_text))
-        answer_numbers = set(number_pattern.findall(normalized))
+        numeric_answer = re.sub(
+            r"(?m)^\s*\d{1,2}[.)]\s+", "", normalized
+        )
+        answer_numbers = set(number_pattern.findall(numeric_answer))
         novel_numbers = sorted(answer_numbers - source_numbers)
         if novel_numbers:
             return False, f"unsupported numeric values: {novel_numbers}"
@@ -4108,6 +4300,9 @@ class GraphV2QA:
             return False, "subject or requested operation is inconsistent"
         # Ignore citation indices when comparing numeric values.
         uncited = re.sub(r"\[S\d+\]", "", answer)
+        # Reconstructed list ordinals are presentation structure, not factual
+        # measurements introduced by the answer.
+        uncited = re.sub(r"(?m)^\s*\d{1,2}\.\s+", "", uncited)
         number_pattern = re.compile(r"(?<![A-Za-z])\d+(?:\.\d+)?%?")
         novel_numbers = (
             set(number_pattern.findall(uncited))
@@ -4250,7 +4445,7 @@ class GraphV2QA:
                 )
                 print(f"[SYNTHESIS] Generated: {generated_answer}")
                 verified, diagnostic = self.verify_synthesis(
-                    generated_answer, consistent
+                    question, generated_answer, consistent
                 )
                 print(
                     f"[SYNTHESIS] Verified={verified}; "
