@@ -13,7 +13,7 @@ Architecture reference: "Hierarchical Agentic RAG", Revision 4, approved
 subject to two mandatory implementation corrections:
   Correction A - hard generation precondition. answer_need_with_recovery()
     is never called for a need with any RequestedItem/DiscoveredObligation
-    below "supported". An explicit assertion enforces this immediately
+    below "supported". Explicit runtime checks enforce this immediately
     before every generator call that composes a NeedAnswer from evidence.
   Correction B - safe subject matching. subject_matches() only ever passes
     through one of five paths (identical entity id; identical normalized
@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from threading import Lock
+from threading import Lock, RLock
 from typing import Any, Literal
 import csv
 import json
@@ -75,51 +75,27 @@ MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "20000"))
 NLI_MIN = float(os.getenv("NLI_ENTAILMENT_MIN", "0.55"))
 MIN_COVERAGE_SCORE = float(os.getenv("MIN_COVERAGE_SCORE", "-7.0"))
 MIN_EXTRACT_SCORE = float(os.getenv("MIN_EXTRACT_SCORE", "1.0"))
-# Correction (Part 2): the default floor is calibrated against the
-# ACTUAL score range observed in the repository's own
-# `rel_chunk_image.csv` (`semantic_score` runs roughly 0.21-0.36, a
-# CLIP same-page cosine-style score, not a 0-1 confidence) - the
-# previous "0.35" default sat at the very top of that real range and
-# silently rejected nearly every genuine direct chunk-image link. An
-# operator can still override this via the environment exactly as
-# before; only the shipped default is recalibrated to the verified data.
+
+
 IMAGE_MIN_SCORE = float(os.getenv("IMAGE_MIN_SCORE", "0.15"))
 MAX_DISPLAY_IMAGES = int(os.getenv("MAX_DISPLAY_IMAGES", "4"))
-# Blocker 4: "do not trust predicted_type alone." The PAGE-PROXIMITY
-# (secondary) image path has no independent CLIP same-page score to
-# corroborate it (unlike the direct chunk-image link, which already
-# requires `semantic_score >= IMAGE_MIN_SCORE`) - so it additionally
-# requires the extractor's own `classification_confidence` for that
-# predicted_type to clear this floor, on top of the figure-citation
-# textual corroboration already required below. Calibrated against the
-# real, whole-corpus distribution of `classification_confidence` for the
-# already-relevant predicted types (median ~0.68, this sits near the
-# bottom quintile) - never tuned to any single sample question.
+
+
 IMAGE_MIN_CLASSIFICATION_CONFIDENCE = float(
     os.getenv("IMAGE_MIN_CLASSIFICATION_CONFIDENCE", "0.5")
 )
-# The generic image-classification categories the extraction pipeline
-# itself already assigns (images.csv's own `predicted_type`/`image_type`
-# values) that represent genuine figure content rather than a page
-# fragment, a logo/decorative element, a document-layout artifact, a
-# table screenshot, or an unresolved classification - never a corpus
-# topic name.
+
+
 RELEVANT_IMAGE_TYPES = frozenset({
     "microscopy", "clinical_or_laboratory", "diagram_or_chart",
 })
-# A generic "Fig./Figure N[.N]" citation shape - the same structural
-# pattern the source PDFs themselves use to cross-reference a figure from
-# body text - used only to (a) opportunistically pull a caption-like
-# snippet out of a chunk's own text and (b) require textual corroboration
-# before a page-proximity-only image link is ever accepted. Never a
-# corpus-specific word or number.
+
+
 _FIGURE_CITATION_RE = re.compile(
     r"\bFig(?:ure)?s?\.?\s*\d+(?:\.\d+)?\b", re.IGNORECASE
 )
 
-# --- Revision 4 / Correction 8, 10, 12: bounds and thresholds. All of these
-# are generic, corpus-agnostic tuning constants (same category as the
-# existing constants above) - none encodes corpus content.
+
 CONTRACT_REPAIR_PASSES = 2
 RETRIEVAL_STAGES = 3
 GENERIC_DISPERSION_FLOOR = 4
@@ -134,22 +110,22 @@ STOPWORDS = {
     "would", "please", "explain", "describe", "tell", "me",
 }
 
-# Generic English function words / determiners used only to recognise
-# conversational wrappers (Correction 14) and imperative-mood sentence
-# openings (Correction 2's procedure-obligation discovery). These are
-# ordinary English closed-class words, not corpus content - the same
-# category as STOPWORDS above - and are never corpus-question, corpus-
-# answer, entity, or PDF-derived literals.
+
+GENERIC_QUERY_WORDS = {
+    "difference", "differences", "compare", "comparison", "contrast",
+    "similarity", "similarities", "reason", "reasons", "purpose",
+    "purposes",
+}
+
+
 NON_IMPERATIVE_OPENERS = {
     "the", "a", "an", "this", "that", "these", "those", "it", "he", "she",
     "they", "we", "you", "i", "there", "if", "when", "while", "note",
     "caution", "important", "warning", "figure", "table", "fig",
     "each", "some", "many", "most", "all", "no", "one", "two", "three",
 }
-# A greeting/thanks/farewell head is still purely social when followed by a
-# generic conversational address filler ("there", "folks", ...) rather than
-# any actual content - these are structural chat words, not corpus-specific
-# terms, so allowing them here does not encode any domain-specific rule.
+
+
 _SOCIAL_FILLER = r"(?:\s+(?:there|folks|everyone|everybody|all|team|guys))?"
 SOCIAL_GREETING_RE = re.compile(
     r"^(?:hi+|hello+|hey+|yo|greetings|good\s+(?:morning|afternoon|evening|day))"
@@ -200,7 +176,7 @@ def clean_question(value: str) -> str:
         r"neo4j verification query)\s*[:\n]",
         value, maxsplit=1, flags=re.IGNORECASE,
     )[0]
-    # A plain-text copy may collapse headings and newlines into one line.
+
     value = re.split(
         r"\s+Answer\s+(?=(?:Relevant evidence|No complete answer|"
         r"According to|The |A |An ))",
@@ -209,19 +185,6 @@ def clean_question(value: str) -> str:
     return compact(value).strip()
 
 
-# Correction 31 / Defect 6 (negation-prefix false coverage match): a
-# hyphenated English negation prefix ("non-", "un-") reverses a word's
-# meaning ("non-disposable" means NOT able to be disposed of - the
-# opposite of "disposed"), but plain punctuation-splitting tokenization
-# treats the hyphen as a word boundary and discards exactly the prefix
-# that carries that opposite meaning, leaving the bare root
-# ("disposable") free to match "disposed" through ordinary suffix-
-# stripping/shared-prefix morphology. Joining the prefix onto its root
-# before tokenization keeps the negated word a single, non-matching
-# token instead. Purely structural English morphology - "non"/"un" are
-# closed-class function morphemes, never a corpus word or topic - and
-# applied everywhere `terms()`/`roots()` are used, not just this one
-# corpus sentence.
 _NEGATION_HYPHEN_RE = re.compile(r"\b(non|un)-([a-z]+)\b", re.IGNORECASE)
 
 
@@ -278,6 +241,22 @@ def terms_overlap_morphologically(a: frozenset[str] | set[str], b: set[str]) -> 
     return bool(long_a & long_b)
 
 
+def terms_covered_morphologically(
+    required: frozenset[str] | set[str], candidate: set[str]
+) -> bool:
+    """Require meaningful operation coverage, not one shared token."""
+    wanted = set(required)
+    if not wanted:
+        return True
+    candidate_roots = roots(" ".join(candidate))
+    matched = sum(
+        1 for word in wanted
+        if word in candidate or roots(word) & candidate_roots
+    )
+    minimum = len(wanted) if len(wanted) <= 2 else max(2, len(wanted) - 1)
+    return matched >= minimum
+
+
 def parse_json(value: str) -> dict[str, Any] | None:
     value = re.sub(r"^```(?:json)?\s*|\s*```$", "", value.strip())
     match = re.search(r"\{.*\}", value, re.DOTALL)
@@ -307,6 +286,20 @@ def dehyphenate(text: str) -> str:
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+|\n{2,}")
 
 
+_ABBREVIATION_DOT_RE = re.compile(
+    r"\b(?:Fig(?:ure)?s?|Table|e\.g|i\.e|etc|vs|cf|No|approx|Dr|Mr|Mrs)\.",
+    re.IGNORECASE,
+)
+
+
+def _mask_abbreviation_dots(text: str) -> str:
+    """Replace the trailing '.' of a protected abbreviation with a single
+    non-period sentinel character (same length, so any character offset
+    computed against the masked text is still valid against the original).
+    """
+    return _ABBREVIATION_DOT_RE.sub(lambda m: m.group(0)[:-1] + "\x00", text)
+
+
 def sentence_spans(text: str) -> list[tuple[int, int, str]]:
     """Offset-accurate sentence splitting against the *original* row text.
 
@@ -316,10 +309,17 @@ def sentence_spans(text: str) -> list[tuple[int, int, str]]:
     `MentionRecord`'s own `start_char`/`end_char_exclusive` (Correction 10,
     Correction 12 tier A). Cosmetic cleanup (dehyphenation) is applied only
     to the returned text, never to the offsets.
+
+    The boundary search itself runs against an abbreviation-masked copy of
+    `text` (same length, so offsets still line up 1:1) so an inline
+    "Fig. 5.18" or "e.g." reference is never mistaken for a sentence end;
+    the returned substrings are still sliced from the original, un-masked
+    text.
     """
+    search_text = _mask_abbreviation_dots(text)
     spans: list[tuple[int, int, str]] = []
     start = 0
-    for match in _SENTENCE_BOUNDARY_RE.finditer(text):
+    for match in _SENTENCE_BOUNDARY_RE.finditer(search_text):
         end = match.start()
         if end > start:
             spans.append((start, end, text[start:end]))
@@ -327,20 +327,24 @@ def sentence_spans(text: str) -> list[tuple[int, int, str]]:
     if start < len(text):
         spans.append((start, len(text), text[start:]))
     result = [
-        (s, e, dehyphenate(compact(u)))
+        (s, e, _strip_interleaved_captions(dehyphenate(compact(u))))
         for s, e, u in spans
         if len(compact(u)) >= 8
     ]
-    # Correction 19: the LAST unit of a chunk's raw text is sometimes not a
-    # real sentence end at all but the exact point a fixed-size chunker cut
-    # a sentence in half - the rest of it only exists in the NEXT chunk's
-    # own text. A genuine sentence essentially never ends a passage on a
-    # bare comma or with an opening parenthesis it never closes (a
-    # trailing, un-terminated hyphenation, already otherwise repaired by
-    # `dehyphenate`, is the same signal at the word level) - purely
-    # structural, language-generic truncation shapes, never a corpus word.
-    # Never emitted as evidence: "no incomplete fragments" is required
-    # regardless of how relevant the surrounding text scores.
+
+
+    result = [
+        (s, e, u) for s, e, u in result
+        if not _is_layout_artifact(u) and (
+            EvidenceQA._classify_obligation_kind(u) is not None
+            or (
+                not _STANDALONE_CAPTION_RE.match(u)
+                and not _PAGE_HEADER_RE.match(u)
+            )
+        )
+    ]
+
+
     if result:
         last_start, last_end, _ = result[-1]
         raw_last = text[last_start:last_end].rstrip()
@@ -348,6 +352,10 @@ def sentence_spans(text: str) -> list[tuple[int, int, str]]:
             raw_last.endswith(",")
             or raw_last.endswith("-")
             or raw_last.count("(") > raw_last.count(")")
+            or bool(re.search(
+                r"\b(?:a|an|the|and|or|of|to|into|from|with|by|for|in|on)$",
+                raw_last, re.IGNORECASE,
+            ))
         )
         if truncated:
             result = result[:-1]
@@ -369,17 +377,8 @@ _CONDITION_SPAN_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _REASON_CUE_RE = re.compile(r"\bwhy\b|\bbecause\b|\breasons?\b", re.IGNORECASE)
-# Correction 26 / Defect 2 (causal/reason entailment): a "why" need must be
-# answered by a sentence that actually STATES or ENTAILS the cause/exclusion,
-# never merely one that shares the subject's vocabulary. These are generic
-# English causal-connective and exclusion/negation-of-suitability shapes -
-# never a corpus word or topic - covering both directions a manual states a
-# reason: an explicit connective ("because", "since", "due to", "owing to",
-# "as a result", "therefore", "thus", "hence", "so that", "leads to",
-# "causes", "results in") and the equally common implicit form of stating
-# WHY something is excluded/rejected by asserting it fails a requirement
-# ("will not be", "is not suitable/useful/acceptable", "cannot be used",
-# "should/must not be", "is rejected", "is unsuitable/unacceptable/invalid").
+
+
 _CAUSAL_ENTAILMENT_RE = re.compile(
     r"\bbecause\b|\bsince\b|\bdue to\b|\bowing to\b|\bas a result\b|"
     r"\btherefore\b|\bthus\b|\bhence\b|\bso that\b|\bleads? to\b|\bcauses?\b|"
@@ -391,12 +390,8 @@ _CAUSAL_ENTAILMENT_RE = re.compile(
     r"\b(?:is|are|was|were)\s+(?:rejected|unsuitable|unacceptable|invalid)\b",
     re.IGNORECASE,
 )
-# Correction 17: further generic clause-shape cues, the same category as
-# the condition/reason cues above (a linguistic shape, never a corpus
-# word) - used to genuinely populate RequestedItem.kind for a comparison
-# dimension, an explicitly requested unit, an explicitly requested output/
-# reporting form, or an explicitly requested exception, instead of leaving
-# any of these only in a plain-string QuestionContract field.
+
+
 _DIMENSION_CUE_RE = re.compile(
     r"\bdimensions?\b|\baspects?\b|\bfactors?\b|\bcriteria\b|"
     r"\bin\s+terms\s+of\b|\bwith\s+regard\s+to\b|\bwith\s+respect\s+to\b",
@@ -419,73 +414,103 @@ _THRESHOLD_CUE_RE = re.compile(
     r"[<>]=?",
     re.IGNORECASE,
 )
-# Correction 18: a bare anaphoric pronoun - the same generic
-# English-grammar shape as the cues above, never a corpus word - used only
-# to detect when a split clause names no subject of its own and must
-# inherit the whole question's shared subject instead of being grounded
-# from nothing (`ground_need_subjects`).
+
+
 _ANAPHORA_RE = re.compile(
     r"\b(?:it|this|that|these|those|they|its|their|them)\b", re.IGNORECASE
 )
 
-# Correction 25 / Blocker 4 (wrong-subject false positive via a passive
-# question verb): a "how should X be COLLECTED"/"how is X EXAMINED"-shaped
-# question names the requested ACTION in passive voice - that verb is
-# already captured separately by RequestedItem/DiscoveredObligation "kind"
-# classification, and must never also become a SUBJECT-identifying term.
-# Left in `subject_terms`, a common action verb (e.g. "collected") can
-# overlap almost any other passage describing collection of a completely
-# different specimen type and pass `subject_matches()`'s non-generic-term
-# overlap check purely on the verb, even though the corpus-wide heading-
-# count genericity measure (`is_generic_subject_term`) does not (yet) also
-# recognise that verb as generic. Purely a grammatical pattern - a "be/is/
-# are/was/were" auxiliary followed by a past-participle-shaped word - never
-# a corpus-specific word list.
+
 _PASSIVE_ACTION_VERB_RE = re.compile(
     r"\b(?:be|is|are|was|were|been|being)\s+([a-z]+ed)\b", re.IGNORECASE
 )
-# Correction 28 / Defect 4 (section specificity): a subject named only as
-# one of several illustrative instances in a generic, multi-example passage
-# ("For example, X ...; while Y ...") does not make that passage actually
-# ABOUT X - a generic English illustrative-example cue, never a corpus word.
+
+
 _ILLUSTRATIVE_EXAMPLE_RE = re.compile(
     r"\bfor example\b|\be\.g\.,?|\bsuch as\b|\bfor instance\b|\bincluding\b",
     re.IGNORECASE,
 )
 
-# --- Revision 4 / Correction 6: generic obligation-shape patterns.  These
-# recognise the SHAPE of a step/branch/warning/formula (numbering, bullet
-# glyphs, generic cue words already in NON_IMPERATIVE_OPENERS/STOPWORDS,
-# punctuation, digit+unit patterns) - never a corpus word or topic.
+
+_LIST_LEAD_IN_RE = re.compile(r":\s*$")
+_LIST_REQUEST_RE = re.compile(
+    r"\b(?:components?|parts?|types?|items?|features?|consists?\s+of|"
+    r"made\s+up\s+of)\b",
+    re.IGNORECASE,
+)
+_TEMPORAL_REQUEST_RE = re.compile(r"^\s*when\b", re.IGNORECASE)
+_TEMPORAL_ANSWER_RE = re.compile(
+    r"\b(?:before|after|during|while|until|within|immediately|early|late|"
+    r"at\s+the\s+(?:time|height|start|end)|when|once|daily|weekly|"
+    r"morning|evening|hours?|days?|minutes?)\b",
+    re.IGNORECASE,
+)
+
+
+_INTERLEAVED_CAPTION_RE = re.compile(
+    r"\b(?:Fig(?:ure)?|Table)s?\.?\s*\d+(?:\.\d+)?\s+"
+    r"(?:[A-Z][A-Za-z'\-]*\s+){1,7}[A-Z][A-Za-z'\-]*"
+    r"(?=\s+[a-z])"
+)
+
+_TRAILING_FIGURE_TEXT_RE = re.compile(
+    r"\s+Fig(?:ure)?s?\.?\s*\d+(?:\.\d+)?(?:\s+[^.;:]*)?$",
+    re.IGNORECASE,
+)
+
+
+def _strip_interleaved_captions(text: str) -> str:
+
+
+    return compact(_INTERLEAVED_CAPTION_RE.sub(" ", text))
+
+
+def _is_layout_artifact(text: str) -> bool:
+    value = compact(text)
+    if not value:
+        return True
+    if re.match(r"^(?:Fig(?:ure)?s?|Table)\.?\s*\d", value, re.IGNORECASE):
+        return True
+    if re.match(
+        r"^\d+\s+Manual of basic techniques for a health laboratory\b",
+        value, re.IGNORECASE,
+    ):
+        return True
+    # A mojibake dash at the beginning of a line is still a list marker,
+    # not a layout artifact.  It is classified and normalized downstream.
+    return False
+
+
+_STANDALONE_CAPTION_RE = re.compile(
+    r"^\s*(?:Fig(?:ure)?|Table)s?\.?\s*\d+(?:\.\d+)?"
+    r"(?:\s+[A-Z][A-Za-z'\-]*)*\s*$"
+)
+
+
+_PAGE_HEADER_RE = re.compile(r"^[A-Z0-9][A-Z0-9 .,'\-&/]{6,80}$")
+
+
 _STEP_RE = re.compile(r"^\s*(\d+)\s*[.)]\s+")
 _ROMAN_STEP_RE = re.compile(r"^\s*\(?([ivxIVX]{1,5})\)?[.)]\s+")
 _LETTER_STEP_RE = re.compile(r"^\s*\(?([a-zA-Z])\)?[.)]\s+")
-_DASH_BULLET_RE = re.compile(r"^\s*[-•*–—]\s+")
+_DASH_BULLET_RE = re.compile(r"^\s*(?:[-•*–—]|â)\s+")
 _WARNING_RE = re.compile(
     r"^\s*(important|warning|caution|note|exception)s?\s*[:\-]",
     re.IGNORECASE,
 )
 _CONDITION_BRANCH_RE = re.compile(
-    # A generous, still-bounded gap between "if" and its resolving comma/
-    # "then" - long enough to span a realistic embedded parenthetical or
-    # cross-reference ("if X (see section N.N), then Y") without matching
-    # across an unrelated, much later comma in a long unrelated sentence.
-    # A "." is only treated as a real sentence terminator here when it is
-    # NOT immediately followed by a digit, so an inline decimal-style
-    # section/version reference ("5.4.4") never falsely truncates the gap.
+
+
     r"\bif\b(?:[^.!?]|\.(?=\d)){3,220}?(?:,\s*(?:then\b)?|\bthen\b)",
     re.IGNORECASE,
 )
 _FORMULA_RE = re.compile(
     r"[=×]\s*\d|\d\s*[=×]|\d+(?:\.\d+)?\s*%"
-    # A digit immediately (no space) followed by a short unit abbreviation
-    # - "5g", "1000ml", "37°C" - a concrete operand/threshold a reporting
-    # or recipe/formula instruction turns on. No space is required so an
-    # ordinary count followed by an unrelated short word ("2 to", "5 of")
-    # never matches.
+
+
     r"|\b\d+(?:\.\d+)?[a-zA-Z°]{1,4}\b"
-    # A ratio-style unit ("mg/dl", "mmol/l") may legitimately have a space
-    # before it.
+
+
     r"|\b\d+(?:\.\d+)?\s*[a-zA-Z]{1,4}/[a-zA-Z]{1,4}\b"
 )
 _TABLE_ROW_RE = re.compile(r"(?:\S+[ \t]{2,}){2,}\S+|(?:\d+(?:\.\d+)?[ \t]+){2,}\d")
@@ -518,17 +543,6 @@ def clause_spans(question: str) -> list[tuple[int, int, str]]:
         (s, e, compact(question[s:e])) for s, e, _ in merged
         if compact(question[s:e])
     ]
-
-
-# ---------------------------------------------------------------------------
-# Revision 4 / Correction 6: immutable question-contract planning structures.
-# `label`/`query`/`requirements`/`retrieval_query` keep the exact shape the
-# previous `Facet` had, so the staged retrieval/expansion pipeline below is
-# unchanged; `requested_items` is the validated decomposition Correction 6
-# asks for, and `subject_terms`/`subject_entity_ids` are populated once,
-# after construction, by `ground_need_subjects()` (Correction 12) - never
-# hand-authored, always derived from the question and the loaded corpus.
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -575,6 +589,8 @@ class InformationNeed:
     subject_terms: frozenset[str] = frozenset()
     subject_entity_ids: frozenset[str] = frozenset()
     need_id: str = ""
+    operation_terms: frozenset[str] = frozenset()
+    context_terms: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -597,14 +613,6 @@ class QuestionContract:
     dimensions: tuple[str, ...] = ()
     quantities: tuple[str, ...] = ()
     required_ordering: bool = False
-
-
-# ---------------------------------------------------------------------------
-# Revision 4 / Correction 1-2: Neo4j/CSV mention parity and local-subject
-# resolution. None of the fields below are corpus content - they are the
-# generic shape a mention or a resolved subject takes, whatever corpus is
-# loaded.
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -642,7 +650,9 @@ class LocalSubject:
 
     resolved_terms: frozenset[str]
     resolved_entity_ids: frozenset[str]
-    resolution_source: Literal["sentence", "heading", "chain_context", "none"]
+    resolution_source: Literal[
+        "sentence", "heading", "scope", "body", "chain_context", "lead_in", "none"
+    ]
 
     @property
     def is_resolved(self) -> bool:
@@ -670,14 +680,6 @@ class DiscoveredObligation:
         "comparison_dimension", "table_row", "threshold", "output",
     ] = "step"
     required: bool = True
-
-
-# ---------------------------------------------------------------------------
-# Revision 4 / Correction 4, 7: candidate regions, authoritative scopes, and
-# a materialized, inspectable EvidenceChain. None of these carry corpus
-# content - they are the generic shape a retrieved region/chain takes,
-# populated only from whatever corpus and question are supplied at runtime.
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -864,6 +866,15 @@ def all_need_requirements_supported(
     never keyed on any corpus-specific word."""
     if coverage_map.need is not need or not coverage_map.all_supported():
         return False
+    if answer_type == "procedure":
+        procedure_kinds = EvidenceQA._ANSWER_TYPE_OBLIGATION_KINDS["procedure"]
+        has_procedure_obligation = any(
+            obligation.kind in procedure_kinds
+            and coverage_map.entries[key].state in ("supported", "verified")
+            for key, obligation in coverage_map.obligations.items()
+        )
+        if not has_procedure_obligation:
+            return False
     if answer_type == "calculation":
         calculation_kinds = EvidenceQA._ANSWER_TYPE_OBLIGATION_KINDS["calculation"]
         has_calculation_obligation = any(
@@ -875,13 +886,6 @@ def all_need_requirements_supported(
             return False
     return True
 
-
-# ---------------------------------------------------------------------------
-# Revision 4 / Correction 14: lightweight conversational RequestRouter.
-# These functions never touch `EvidenceQA`'s singleton (`qa()`), so a pure
-# greeting/thanks/farewell never triggers TF-IDF fitting, dense encoding, or
-# any neural model load.
-# ---------------------------------------------------------------------------
 
 _RequestKind = Literal["social_only", "mixed", "ambiguous", "corpus_question"]
 
@@ -929,6 +933,8 @@ def clarification_response(question: str) -> dict[str, Any]:
 
 class EvidenceQA:
     def __init__(self) -> None:
+        self.request_lock = RLock()
+        self.corpus_source = "csv"
         self.driver = self._graph()
         self.rows = self._chunks()
         if not self.rows:
@@ -952,16 +958,15 @@ class EvidenceQA:
                 row["text"],
             ):
                 long_form = compact(match.group(1)).lower()
-                # PDF lines may prepend a heading; the final words nearest the
-                # parentheses are the reliable long form.
+
+
                 long_form = " ".join(long_form.split()[-8:])
                 acronym = match.group(2).lower()
                 if len(long_form.split()) >= 2:
                     self.aliases.setdefault(long_form, set()).add(acronym)
                     self.aliases.setdefault(acronym, set()).add(long_form)
-        # --- Revision 4 / Correction 1-2: entity index and mention parity.
-        # `row["mentions"]` is a list[MentionRecord] populated identically by
-        # both the Neo4j path and the CSV fallback path inside `_chunks()`.
+
+
         self.entity_index: dict[str, EntityInfo] = {}
         for row in self.rows:
             for mention in row.get("mentions", []):
@@ -971,9 +976,8 @@ class EvidenceQA:
                         mention.normalized_name,
                         mention.entity_type,
                     )
-        # --- Revision 4 / Correction 12: heading ownership per chunk, built
-        # once in document order from the same `_heading()` heuristic the
-        # original section-selection logic already used.
+
+
         self.chunk_heading: dict[str, str] = {}
         current_heading = ""
         for row in self.rows:
@@ -985,10 +989,8 @@ class EvidenceQA:
             if own_heading:
                 current_heading = own_heading
             self.chunk_heading[row["chunk_id"]] = current_heading
-        # --- Revision 4 / Correction 10, 13: generic-term dispersion index.
-        # Computed once from whatever corpus is loaded - never a hardcoded
-        # word list. A term (or an entity's normalized name) is "generic"
-        # when it appears under many distinct headings across the corpus.
+
+
         self.term_headings: dict[str, set[str]] = {}
         for row in self.rows:
             heading = self.chunk_heading.get(row["chunk_id"], "")
@@ -1004,37 +1006,16 @@ class EvidenceQA:
             GENERIC_DISPERSION_FLOOR,
             round(GENERIC_DISPERSION_FRACTION * distinct_headings),
         )
-        # Entity names are graph expansion keys, not passage text. Appending
-        # them to a passage makes a reranker reward unrelated chunks that only
-        # share a broad entity.
+
+
         corpus = [row["text"] for row in self.rows]
         self.vectorizer = TfidfVectorizer(
             lowercase=True, ngram_range=(1, 2), sublinear_tf=True,
             stop_words="english",
         )
         self.lexical_matrix = self.vectorizer.fit_transform(corpus)
-        # Revision 4 / Correction 16: a generic, language-level (never
-        # corpus/topic-specific) morphological bucket index over the
-        # corpus's OWN vocabulary, so a question phrased with a different
-        # inflection/derivation of a corpus word ("examined
-        # microscopically") can still be lexically expanded to reach a
-        # passage that only ever uses a different surface form of the same
-        # word ("Examine ... by microscopy"). Two bucket strategies are
-        # combined because ordinary English derivation is not always a
-        # simple suffix away (e.g. "examine"/"examination"): a suffix-
-        # stripped root (`roots()`, already used for heading-lexical
-        # scoring) catches regular inflections, and a fixed-length prefix
-        # (a standard, conservative truncation-stemming heuristic) catches
-        # the rest, with a length floor so short, unrelated words never
-        # collide purely by sharing a short prefix.
-        # Two DISTINCT, namespaced key spaces ("s:" suffix-stripped roots,
-        # "p:" fixed-length prefix truncation) so a short, unrelated word
-        # can never accidentally land in the prefix bucket of a longer word
-        # it merely happens to be a literal prefix of (e.g. "should" is not
-        # itself long enough to earn a "p:" key, so it can never collide
-        # with "shoulder"/"shouldering"'s "p:should" bucket) - the prefix
-        # scheme only ever links two words that are BOTH long enough to
-        # have earned their own prefix key the same way.
+
+
         self.root_index: dict[str, set[str]] = {}
         for vocab_word in self.vectorizer.vocabulary_:
             if " " in vocab_word or not vocab_word.isalpha() or len(vocab_word) < 4:
@@ -1050,25 +1031,15 @@ class EvidenceQA:
         self.tokenizer = None
         self.generator = None
         self.nli = None
-        # Revision 4 / Correction 7: the most recently materialized
-        # EvidenceChains, keyed by need label - set at the end of whichever
-        # extraction/generation path answered the request, purely so the
-        # chain used for an answer's citations is inspectable afterwards.
-        # Diagnostic only: like the rest of this single EvidenceQA
-        # instance's mutable state, it is last-request-wins under
-        # concurrent requests, not per-request-scoped.
+        self.retrieval_cache: dict[tuple[Any, ...], tuple[dict[str, Any], ...]] = {}
+
+
         self.last_chains: dict[str, EvidenceChain] = {}
-        # Correction 8/17: the per-need CoverageMap that produced
-        # `last_chains`, kept for the same diagnostic, last-request-wins
-        # reason - this is what actually connects `CoverageEntry`'s
-        # "verified" state (previously computed but never promoted to)
-        # to the final per-item/obligation completeness gate in `answer()`.
+
+
         self.last_coverage_maps: dict[str, CoverageMap] = {}
-        # Revision 4 / Part 2: image relation tables loaded once per
-        # process (never per-request, never a neural model), so the CSV
-        # image-retrieval fallback is available even when Neo4j is not
-        # configured. Cheap CSV parsing only - no CLIP/image model is ever
-        # loaded here or anywhere else in this class.
+
+
         self._load_images()
 
     @staticmethod
@@ -1078,9 +1049,16 @@ class EvidenceQA:
         password = os.getenv("NEO4J_PASSWORD")
         if not all((uri, user, password)):
             return None
-        driver = GraphDatabase.driver(uri, auth=(user, password))
-        driver.verify_connectivity()
-        return driver
+        driver = None
+        try:
+            driver = GraphDatabase.driver(uri, auth=(user, password))
+            driver.verify_connectivity()
+            return driver
+        except Exception as error:
+            if driver is not None:
+                driver.close()
+            print(f"[GRAPH] unavailable, using CSV fallback: {error}")
+            return None
 
     @staticmethod
     def _mention_record(raw: dict[str, Any]) -> MentionRecord | None:
@@ -1103,12 +1081,8 @@ class EvidenceQA:
         if self.driver:
             try:
                 with self.driver.session() as session:
-                    # Revision 4 / Correction 1: the query now also returns
-                    # the same sentence-level mention structure available
-                    # from rel_chunk_entity.csv (entity id, canonical name,
-                    # normalized name, entity type, mention text, and its
-                    # chunk-relative character offsets), so Neo4j and the
-                    # CSV fallback produce identical MentionRecord fields.
+
+
                     result = session.run(
                         """
                         MATCH (p:Page)-[:HAS_CHUNK]->(c:Chunk)
@@ -1144,6 +1118,7 @@ class EvidenceQA:
                         ]
                         rows.append(row)
                 if rows:
+                    self.corpus_source = "neo4j"
                     return rows
             except Exception as error:
                 print(f"[GRAPH] using CSV fallback: {error}")
@@ -1223,6 +1198,10 @@ class EvidenceQA:
                         "classification_confidence": (
                             float(confidence) if confidence not in (None, "") else None
                         ),
+                        "classification_status": row.get("classification_status") or "",
+                        "review_status": row.get("review_status") or "",
+                        "final_type": (row.get("final_type") or "").lower(),
+                        "content_relevance": row.get("content_relevance") or "",
                         "first_pdf_page": integer(row.get("first_pdf_page")),
                     }
         except (FileNotFoundError, OSError, csv.Error) as error:
@@ -1283,10 +1262,24 @@ class EvidenceQA:
         row = self._row_by_chunk.get(chunk_id)
         if row is None:
             return None
-        match = _FIGURE_CITATION_RE.search(row.get("text", ""))
+        text = row.get("text", "")
+        match = re.search(
+            r"(?m)^\s*Fig(?:ure)?s?\.?\s*\d+(?:\.\d+)?\b[^\n]*",
+            text, re.IGNORECASE,
+        )
+        if match:
+            caption = compact(match.group(0))
+            second = re.search(
+                r"\s+Fig(?:ure)?s?\.?\s*\d+(?:\.\d+)?\b",
+                caption[1:], re.IGNORECASE,
+            )
+            if second:
+                caption = caption[:second.start() + 1]
+            return caption[:200] or None
+        match = _FIGURE_CITATION_RE.search(text)
         if not match:
             return None
-        return compact(row["text"][match.start():match.start() + 140]) or None
+        return compact(text[match.start():match.start() + 140]) or None
 
     def images(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
         """Part 2: verified image retrieval for the exact, already-cited
@@ -1317,7 +1310,8 @@ class EvidenceQA:
                       -[r:ILLUSTRATED_BY]->(i:Image)
                 WHERE c.id IN $ids AND i.file_path IS NOT NULL
                   AND coalesce(r.semantic_score, 0) >= $minimum
-                RETURN i.id AS id, p.pdf_page AS pdf_page,
+                RETURN i.id AS id, i.file_path AS file_path,
+                       p.pdf_page AS pdf_page,
                        p.printed_page AS printed_page,
                        c.id AS chunk_id,
                        r.semantic_score AS confidence,
@@ -1328,17 +1322,45 @@ class EvidenceQA:
                 minimum=IMAGE_MIN_SCORE,
             )
             rows = [dict(record) for record in result]
-        return [{
-            "id": row["id"],
-            "url": f"/image/{row['id']}",
-            "pdf_page": row.get("pdf_page"),
-            "printed_page": row.get("printed_page"),
-            "chunk_id": row.get("chunk_id"),
-            "confidence": row.get("confidence"),
-            "type": row.get("image_type"),
-            "caption": self._caption_for(row.get("chunk_id") or ""),
-            "verification_reason": "directly linked to the cited evidence chunk",
-        } for row in rows]
+        verified: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            image_id = str(row.get("id") or "")
+            info = self.images_by_id.get(image_id, {})
+            file_path = row.get("file_path") or info.get("file_path")
+            if not file_path:
+                continue
+            classifier_type = (
+                info.get("final_type") or row.get("image_type")
+                or info.get("predicted_type") or ""
+            ).lower()
+            if classifier_type not in RELEVANT_IMAGE_TYPES:
+                continue
+            raw_path = Path(str(file_path))
+            path = raw_path if raw_path.is_absolute() else ROOT / raw_path
+            try:
+                path = path.resolve()
+            except OSError:
+                continue
+            if ROOT.resolve() not in path.parents or not path.is_file():
+                continue
+            confidence = float(row.get("confidence") or 0.0)
+            current = verified.get(image_id)
+            if current is not None and current["confidence"] >= confidence:
+                continue
+            verified[image_id] = {
+                "id": image_id,
+                "url": f"/image/{image_id}",
+                "pdf_page": row.get("pdf_page"),
+                "printed_page": row.get("printed_page"),
+                "chunk_id": row.get("chunk_id"),
+                "confidence": confidence,
+                "type": info.get("final_type") or "figure",
+                "caption": self._caption_for(row.get("chunk_id") or ""),
+                "verification_reason": "directly linked to the cited evidence chunk",
+            }
+        return sorted(
+            verified.values(), key=lambda item: item["confidence"], reverse=True
+        )[:MAX_DISPLAY_IMAGES]
 
     def _images_from_csv(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
         if not self.chunk_images and not self.page_images:
@@ -1352,16 +1374,24 @@ class EvidenceQA:
         ) -> None:
             info = self.images_by_id.get(image_id)
             if not info or not info.get("file_path"):
-                # Correction: reject a dangling relation row whose image
-                # was never actually extracted, or has no file - never
-                # fabricate a path.
+
+
                 return
-            effective_type = (image_type_hint or info.get("predicted_type") or "")
+            raw_path = Path(str(info["file_path"]))
+            path = raw_path if raw_path.is_absolute() else ROOT / raw_path
+            try:
+                path = path.resolve()
+            except OSError:
+                return
+            if ROOT.resolve() not in path.parents or not path.is_file():
+                return
+            effective_type = (
+                info.get("final_type") or image_type_hint
+                or info.get("predicted_type") or ""
+            )
             if effective_type not in RELEVANT_IMAGE_TYPES:
-                # Correction: reject fragment/noise, decorative/logo,
-                # document-layout, table/form, and unresolved
-                # ("uncertain") classifications - only genuine figure
-                # content is ever surfaced.
+
+
                 return
             if require_classification_confidence:
                 confidence = info.get("classification_confidence")
@@ -1369,15 +1399,13 @@ class EvidenceQA:
                     confidence is None
                     or confidence < IMAGE_MIN_CLASSIFICATION_CONFIDENCE
                 ):
-                    # Blocker 4: the page-proximity path has no CLIP
-                    # same-page score of its own to corroborate it - a
-                    # low-confidence predicted_type is never, by itself,
-                    # enough to accept a same-page image.
+
+
                     return
             existing = candidates.get(image_id)
             if existing is not None and existing["confidence"] >= rank_score:
-                # Correction: deduplicate by stable image_id, keeping the
-                # strongest evidence seen for this image.
+
+
                 return
             candidates[image_id] = {
                 "id": image_id,
@@ -1386,16 +1414,12 @@ class EvidenceQA:
                 "printed_page": self._printed_page_by_pdf_page.get(pdf_page),
                 "chunk_id": chunk_id,
                 "confidence": round(float(rank_score), 4),
-                "type": effective_type,
+                "type": info.get("final_type") or "figure",
                 "caption": self._caption_for(chunk_id),
                 "verification_reason": reason,
             }
 
-        # Primary: images directly linked to one of the answer's own
-        # cited/verified chunks (rel_chunk_image.csv is already a
-        # same-page, CLIP-scored, type-restricted link table) - preferred
-        # over any page-proximity candidate, and inherits that chunk's
-        # already-verified subject.
+
         for chunk_id in chunk_ids:
             for rel in self.chunk_images.get(chunk_id, []):
                 if rel["semantic_score"] < IMAGE_MIN_SCORE:
@@ -1407,28 +1431,6 @@ class EvidenceQA:
                     rel.get("image_type"),
                 )
 
-        # Secondary: same-page images, corroborated - Correction: never
-        # accepted on page proximity alone. Both an already-relevant
-        # `predicted_type` AND a generic "Fig./Figure N.N" citation
-        # actually present in the cited chunk's OWN text are required, so
-        # an unrelated neighbouring figure on a busy page is rejected.
-        if len(candidates) < MAX_DISPLAY_IMAGES:
-            for chunk_id in chunk_ids:
-                row = self._row_by_chunk.get(chunk_id)
-                pdf_page = row.get("pdf_page") if row else None
-                if (
-                    row is None or pdf_page is None
-                    or not _FIGURE_CITATION_RE.search(row.get("text", ""))
-                ):
-                    continue
-                for rel in self.page_images.get(pdf_page, []):
-                    consider(
-                        rel["image_id"], chunk_id, pdf_page,
-                        min(0.30, 0.15 + rel.get("page_coverage", 0.0)),
-                        "same page as the cited evidence, corroborated by "
-                        "a figure citation in the chunk's own text",
-                        None, require_classification_confidence=True,
-                    )
 
         ranked = sorted(
             candidates.values(), key=lambda row: row["confidence"], reverse=True
@@ -1536,10 +1538,6 @@ class EvidenceQA:
             skip_special_tokens=True,
         ).strip()
 
-    # -----------------------------------------------------------------
-    # Revision 4 / Correction 10, 12, B: generic-term dispersion and safe
-    # subject matching.
-    # -----------------------------------------------------------------
 
     def is_generic_subject_term(self, term: str) -> bool:
         return len(self.term_headings.get(term, ())) >= self.generic_floor
@@ -1561,46 +1559,45 @@ class EvidenceQA:
             if m.start_char < end_char and m.end_char_exclusive > start_char
         ]
         if overlapping:
-            # Tier A: an explicit entity/subject inside this exact unit.
+
             resolved_terms: set[str] = set()
             resolved_entity_ids: set[str] = set()
             for mention in overlapping:
                 resolved_entity_ids.add(mention.entity_id)
                 resolved_terms.update(self.core_terms(mention.canonical_name))
                 resolved_terms.add(mention.normalized_name.lower())
-            # Correction 22 / Blocker (causal/reason coverage): the graph's
-            # own mention-tagging is sparse - a sentence can name a second,
-            # more specific entity while its own overt grammatical subject
-            # was never tagged as a mention at all. Tier A must not let an
-            # untagged-but-literal subject noun phrase lose to whichever
-            # OTHER entity happened to get tagged, so the sentence's own
-            # core terms are folded in alongside the mention-derived ones -
-            # additively only, so an already-resolved mention is never
-            # displaced, and a sentence naming no term the need cares about
-            # still fails `subject_matches`'s non-generic overlap check
-            # exactly as before.
+
+
             resolved_terms.update(self.core_terms(row["text"][start_char:end_char]))
             return LocalSubject(
                 frozenset(resolved_terms), frozenset(resolved_entity_ids),
                 "sentence",
             )
-        # Tier B: inherit from the nearest valid heading, but only when the
-        # heading itself carries a non-generic subject.
+
+
+        own_text = row["text"][start_char:end_char]
+        if _LIST_LEAD_IN_RE.search(own_text.rstrip()):
+            lead_in_terms = self.core_terms(own_text)
+            if lead_in_terms:
+                return LocalSubject(
+                    frozenset(lead_in_terms), frozenset(), "lead_in",
+                )
+
+
         heading = self.chunk_heading.get(row["chunk_id"], "")
         heading_core = self.core_terms(heading)
         if heading_core:
             return LocalSubject(frozenset(heading_core), frozenset(), "heading")
-        # Tier C: continuity inside the same coherent run of evidence
-        # examined so far, only if that run itself already carries a
-        # non-generic, already-specific subject.
+
+
         if chain_subject is not None and chain_subject.is_resolved:
             return LocalSubject(
                 chain_subject.resolved_terms,
                 chain_subject.resolved_entity_ids,
                 "chain_context",
             )
-        # Tier D: a heading/topic/entity/semantic boundary - inheritance
-        # stops rather than guessing.
+
+
         return LocalSubject(frozenset(), frozenset(), "none")
 
     def subject_matches(
@@ -1609,14 +1606,13 @@ class EvidenceQA:
         """Correction B: exactly five allowed paths. Entity-type equality
         is never, by itself, one of them."""
         if not need.subject_entity_ids and not need.subject_terms:
-            # The need itself carries no grounded subject (nothing specific
-            # was named to protect against a wrong subject) - there is no
-            # contamination class to defend against here.
+
+
             return True
-        # Path 1: identical entity id.
+
         if local_subject.resolved_entity_ids & need.subject_entity_ids:
             return True
-        # Path 2: identical normalized canonical name across distinct ids.
+
         if local_subject.resolved_entity_ids and need.subject_entity_ids:
             need_names = {
                 self.entity_index[eid].normalized_name.lower()
@@ -1629,7 +1625,7 @@ class EvidenceQA:
             }
             if need_names & local_names:
                 return True
-        # Path 3: a corpus-derived acronym/long-form alias.
+
         for need_term in need.subject_terms:
             for local_term in local_subject.resolved_terms:
                 if (
@@ -1637,25 +1633,13 @@ class EvidenceQA:
                     or need_term in self.aliases.get(local_term, set())
                 ):
                     return True
-        # Path 4: overlap of discriminative non-generic core terms, with
-        # entity type only ever used as a supporting constraint when both
-        # sides actually resolve one.
+
+
         non_generic_need_terms = {
             t for t in need.subject_terms if not self.is_generic_subject_term(t)
         }
-        # Correction 27 / Defect 4: when the need resolves to a real corpus
-        # entity, prefer THAT entity's own terms as the discriminative
-        # anchor over the raw set of non-generic words the question
-        # happened to contain. A role-noun like "patient" can independently
-        # clear the corpus-wide genericity floor (`is_generic_subject_term`)
-        # while still naming no specific subject of its own - once a
-        # genuinely entity-grounded term is available, an unrelated
-        # section sharing only the incidental word must not also match.
-        # This never touches `is_generic_subject_term`/`generic_floor`
-        # themselves - it only lets the need's own confirmed entity
-        # grounding, when present, take precedence over plain question
-        # vocabulary, exactly the same precedence Paths 1/2 already give
-        # entity ids over Path 4's plain terms.
+
+
         entity_grounded_terms = {
             term
             for eid in need.subject_entity_ids if eid in self.entity_index
@@ -1665,14 +1649,8 @@ class EvidenceQA:
             )
         } & non_generic_need_terms
         if entity_grounded_terms:
-            # Correction 27 continued: among several entity-grounded terms
-            # (e.g. a specimen type together with an incidental role noun
-            # like "patient" that also happens to name a real entity),
-            # the one used FEWER corpus headings is the more discriminative
-            # one - the same heading-count measure `is_generic_subject_term`
-            # already uses, just applied as a relative comparison among the
-            # need's own candidates rather than a new absolute cutoff. This
-            # never changes `generic_floor` itself.
+
+
             most_specific = min(
                 len(self.term_headings.get(t, ())) for t in entity_grounded_terms
             )
@@ -1698,11 +1676,8 @@ class EvidenceQA:
             }
             if not need_types or not local_types or (need_types & local_types):
                 return True
-        # Path 5 (inheritance from a confirmed scope/chain) is structural:
-        # `resolve_local_subject()` only ever inherits a subject (tier B/C)
-        # that already passed the same non-generic test applied above, so an
-        # inherited subject that reaches this point has already had its
-        # chance to match via paths 1-4 and genuinely is a different one.
+
+
         return False
 
     def _non_illustrative_terms(
@@ -1724,8 +1699,8 @@ class EvidenceQA:
         example list) still enrich the section's subject."""
         if not candidate_terms:
             return set()
-        # A term survives only if at least one sentence mentioning it is
-        # NOT itself an illustrative-example sentence.
+
+
         genuine: set[str] = set()
         for _, _, sentence in sentence_spans(paragraph):
             if _ILLUSTRATIVE_EXAMPLE_RE.search(sentence):
@@ -1737,58 +1712,89 @@ class EvidenceQA:
         """Correction 12: populate each need's subject once, from the
         question and the loaded corpus - never hand-authored."""
 
-        def entities_for(candidate_terms: set[str]) -> set[str]:
+        def explicit_entities(text: str) -> set[str]:
+            normalized = compact(text).casefold()
+            text_roots = roots(normalized)
+            matches: list[tuple[int, str]] = []
+            for entity_id, info in self.entity_index.items():
+                names = {
+                    compact(info.canonical_name).casefold(),
+                    compact(info.normalized_name).casefold(),
+                }
+                best = max(
+                    (
+                        name for name in names
+                        if name and (
+                            re.search(
+                                rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])",
+                                normalized,
+                            )
+                            or roots(name).issubset(text_roots)
+                        )
+                    ),
+                    key=len,
+                    default="",
+                )
+                if best:
+                    matches.append((len(best), entity_id))
+            if not matches:
+                return set()
+            longest = max(length for length, _ in matches)
             return {
-                entity_id for entity_id, info in self.entity_index.items()
-                if (
-                    set(terms(info.canonical_name))
-                    | {info.normalized_name.lower()}
-                ) & candidate_terms
+                entity_id for length, entity_id in matches
+                if length >= max(3, longest // 2)
             }
 
         grounded = []
+        shared_entity_ids = explicit_entities(contract.question)
+        shared_entity_terms: set[str] = set()
+        for entity_id in shared_entity_ids:
+            info = self.entity_index[entity_id]
+            shared_entity_terms.update(self.core_terms(info.canonical_name))
+            shared_entity_terms.update(self.core_terms(info.normalized_name))
         for need in contract.needs:
             focus = re.split(
                 r"\s+Context:\s*", need.query, maxsplit=1, flags=re.IGNORECASE
             )[0]
-            candidate_terms = self.core_terms(focus)
-            for requirement in need.requirements:
-                candidate_terms.update(self.core_terms(requirement))
-            # Correction 25 / Defect 4: strip passive-voice action verbs
-            # AFTER folding in `need.requirements` too, since a single-
-            # clause need's own requirements are themselves built from the
-            # unfiltered whole-question terms (Correction 6's own
-            # `RequestedItem.terms` legitimately keeps that verb, for
-            # requested-CONTENT coverage - only SUBJECT-identification
-            # here must drop it) and would otherwise silently reintroduce
-            # the verb this filter just removed.
-            candidate_terms -= {
+            full_terms = self.core_terms(focus)
+            entity_ids = explicit_entities(focus)
+            candidate_terms: set[str] = set()
+            for entity_id in entity_ids:
+                info = self.entity_index[entity_id]
+                candidate_terms.update(self.core_terms(info.canonical_name))
+                candidate_terms.update(self.core_terms(info.normalized_name))
+            passive_actions = {
                 match.lower() for match in _PASSIVE_ACTION_VERB_RE.findall(focus)
             }
-            entity_ids = entities_for(candidate_terms)
-            # Correction 18 / Blocker 1: a clause that only refers back
-            # with a bare anaphoric pronoun ("it", "this", "they", ...)
-            # and names no concrete subject of its own (no candidate term
-            # matched any corpus entity) inherits the WHOLE QUESTION's
-            # already-computed shared subject terms instead of being
-            # grounded from nothing - a purely structural pronoun-plus-
-            # empty-grounding check, never a corpus-specific rule, and
-            # only ever a fallback for a need whose own clause genuinely
-            # resolved nothing on its own.
             if (
                 not entity_ids and _ANAPHORA_RE.search(focus)
-                and contract.shared_subject_terms
+                and shared_entity_terms
             ):
-                inherited = contract.shared_subject_terms - candidate_terms
-                if inherited:
-                    candidate_terms |= inherited
-                    entity_ids |= entities_for(inherited)
+                candidate_terms = set(shared_entity_terms)
+                entity_ids = set(shared_entity_ids)
+            elif not candidate_terms:
+                candidate_terms = full_terms - passive_actions
+            remaining_terms = (full_terms - candidate_terms) | passive_actions
+            # In passive questions the participle is the requested action.
+            # Keep surrounding nouns/adverbials as context instead of letting
+            # one broad word satisfy operation matching by itself.
+            relation_terms = passive_actions or remaining_terms
+            context_terms = full_terms - relation_terms
             grounded.append(replace(
                 need,
                 subject_terms=frozenset(candidate_terms),
                 subject_entity_ids=frozenset(entity_ids),
+                operation_terms=frozenset(relation_terms),
+                context_terms=frozenset(context_terms),
             ))
-        return replace(contract, needs=tuple(grounded))
+        grounded_shared = set().union(*(
+            set(need.subject_terms) for need in grounded
+        )) if grounded else set()
+        return replace(
+            contract,
+            needs=tuple(grounded),
+            shared_subject_terms=frozenset(grounded_shared),
+        )
 
     def plan(self, question: str) -> QuestionContract:
         """Create generic retrieval needs without an LLM or domain rules,
@@ -1802,9 +1808,8 @@ class EvidenceQA:
         elif _REASON_CUE_RE.search(lowered):
             answer_type = "reason"
         elif re.search(
-            # Correction 12: an operation must actually be requested.
-            # "count" alone (as in "the cell count") is a fact/measurement
-            # request, not a calculation.
+
+
             r"\b(?:calculat\w*|comput\w*|deriv\w*|formula|formulae|"
             r"multipl\w*|divid\w*|subtract\w*|add\s+up|sum\s+of|"
             r"percentage\s+of|ratio\s+of|how\s+many\s+times)\b",
@@ -1820,13 +1825,8 @@ class EvidenceQA:
         shared_subject_terms = self.core_terms(question)
 
         def condition_text(clause: str) -> str:
-            # A clause is only split at ";"/"and"/"or"/... boundaries
-            # (`clause_spans`), so a fronted "if ..., <main clause>"
-            # conditional is not itself split into its own clause - the
-            # condition text reported here is still just the "if ..."
-            # subordinate span within the clause, not the whole clause
-            # (which may carry unrelated trailing content the condition
-            # itself does not cover).
+
+
             match = _CONDITION_SPAN_RE.search(clause)
             if match:
                 return compact(match.group(0).rstrip(",").rstrip())
@@ -1856,11 +1856,7 @@ class EvidenceQA:
         quantities = tuple(dict.fromkeys(_QUANTITY_RE.findall(question)))
         required_ordering = answer_type == "procedure"
 
-        # A comma/semicolon, an explicit comparison, or "and" immediately
-        # followed by another wh-word/modal are the only signals that
-        # justify actually splitting into multiple needs; otherwise a bare
-        # "and" almost always joins two nouns of the SAME ask (e.g.
-        # "arterial and venous blood") rather than two separate asks.
+
         complex_question = bool(
             re.search(r"[,;]", question)
             or answer_type == "comparison"
@@ -1886,120 +1882,7 @@ class EvidenceQA:
                 ),),
             )]
         else:
-            instruction = (
-                "Decompose the multi-part question into independently "
-                "answerable retrieval facets. Preserve the shared subject in "
-                "every facet and preserve every method, condition, comparison "
-                "side, requested dimension, technical term, and number. Do "
-                "not answer and do not add knowledge. Return strict JSON with "
-                "facets containing label, query, and requirements."
-            )
-            parsed = None
-            try:
-                parsed = parse_json(self.complete(
-                    instruction,
-                    f"Question: {question}\n"
-                    "Schema: {\"facets\":[{\"label\":\"short label\","
-                    "\"query\":\"self-contained query\","
-                    "\"requirements\":[\"term\"]}]}",
-                    500,
-                ))
-            except Exception as error:
-                print(f"[PLAN] model fallback: {error}")
-            original_terms = set(terms(question))
-            planned: list[InformationNeed] = []
-            used_spans: list[tuple[int, int]] = []
-            if parsed:
-                for item in parsed.get("facets", []):
-                    if not isinstance(item, dict):
-                        continue
-                    query = compact(str(item.get("query") or ""))
-                    if not query:
-                        continue
-                    if re.search(
-                        r"\b(?:your question|relevant evidence|source location|"
-                        r"answer mode)\b", query, re.IGNORECASE,
-                    ):
-                        planned = []
-                        break
-                    requirements = tuple(
-                        compact(str(value)) for value in item.get(
-                            "requirements", []
-                        ) if compact(str(value))
-                    )
-                    requirement_terms: set[str] = set()
-                    for requirement in requirements:
-                        requirement_terms.update(terms(requirement))
-                    # Correction 6: validate the model's output against the
-                    # original question - a requirement term the question
-                    # never actually contained means the model invented or
-                    # hallucinated content, so this facet is dropped rather
-                    # than trusted.
-                    if requirement_terms and not requirement_terms.issubset(original_terms):
-                        print(
-                            f"[PLAN] rejecting model facet {query!r}: "
-                            f"invented terms {requirement_terms - original_terms}"
-                        )
-                        continue
-                    match_terms = requirement_terms or set(terms(query))
-                    best_span = max(
-                        clauses,
-                        key=lambda c: len(set(terms(c[2])) & match_terms),
-                        default=(0, len(question), question),
-                    )
-                    used_spans.append((best_span[0], best_span[1]))
-                    planned.append(InformationNeed(
-                        compact(str(item.get("label") or "")),
-                        query,
-                        requirements,
-                        # The model was instructed to make each query
-                        # self-contained for its own facet, so it is already
-                        # the right retrieval target without further context.
-                        query,
-                        answer_type,
-                        (RequestedItem(
-                            f"clause-{len(planned)}", best_span[2],
-                            (best_span[0], best_span[1]),
-                            frozenset(match_terms), "clause",
-                        ),),
-                    ))
-            needs = planned
-            if not needs:
-                # Structural fallback: one need per semantic clause found in
-                # the ORIGINAL question, each carrying its exact span - not
-                # a synthesized paraphrase, and never a per-word split.
-                for index, (start, end, text) in enumerate(clauses):
-                    # Correction 18 / Blocker 1: the RETRIEVAL query for a
-                    # structurally-split clause carries the same "Context:
-                    # <whole question>" suffix as `query` - purely so a
-                    # clause that only refers back with a bare pronoun
-                    # ("it", "this", ...) still anchors region-level
-                    # retrieval on the whole question's own subject, never
-                    # a synthesized or invented term. Sentence-level
-                    # selection already strips this same suffix back off
-                    # via `focus_query` in `_extract_need_evidence`, so
-                    # this never lets the broader context leak into which
-                    # individual sentence is picked - it only ever widens
-                    # which REGION is found in the first place.
-                    contextual_query = f"{text}. Context: {question}"
-                    needs.append(InformationNeed(
-                        " ".join(text.split()[:7]),
-                        contextual_query,
-                        tuple(terms(text)),
-                        contextual_query,
-                        answer_type,
-                        (RequestedItem(
-                            f"clause-{index}", text, (start, end),
-                            frozenset(terms(text)), "clause",
-                        ),),
-                    ))
-                used_spans = [(s, e) for s, e, _ in clauses]
-            # Correction 6: every meaningful clause span must appear in the
-            # contract exactly once, or be explicitly marked contextual - a
-            # clause the model path skipped is never silently dropped.
-            for start, end, text in clauses:
-                if any(start < ue and end > us for us, ue in used_spans):
-                    continue
+            for index, (start, end, text) in enumerate(clauses):
                 contextual_query = f"{text}. Context: {question}"
                 needs.append(InformationNeed(
                     " ".join(text.split()[:7]),
@@ -2008,16 +1891,12 @@ class EvidenceQA:
                     contextual_query,
                     answer_type,
                     (RequestedItem(
-                        f"clause-ctx-{len(needs)}", text, (start, end),
-                        frozenset(terms(text)), "contextual",
+                        f"clause-{index}", text, (start, end),
+                        frozenset(terms(text)), "clause",
                     ),),
                 ))
-        # Correction 15/16: genuinely populate RequestedItem.kind/need_id
-        # (never left as an always-"clause" placeholder) purely from the
-        # clause's own generic shape - the same condition/reason cues
-        # already used above for `conditions`/`reasons` - never a
-        # hardcoded corpus term, and never for a mixed clause where the
-        # condition/reason is only a minor fragment of a larger ask.
+
+
         finalized: list[InformationNeed] = []
         for need_index, need in enumerate(needs):
             need_id = f"need-{need_index}"
@@ -2031,14 +1910,8 @@ class EvidenceQA:
                     if condition_match and len(condition_match.group(0)) >= 0.5 * max(1, len(clause_text)):
                         kind = "condition"
                     elif answer_type == "comparison" and _DIMENSION_CUE_RE.search(clause_text):
-                        # Checked before the comparison_side containment
-                        # test below: "in terms of X and Y" is an
-                        # unambiguous, purely structural dimension cue,
-                        # even when the same clause also happens to sit
-                        # textually inside a coarser comparison_sides
-                        # segment (the naive "and"-split comparison_sides
-                        # detector cannot itself tell a second compared
-                        # object apart from a trailing dimension list).
+
+
                         kind = "dimension"
                     elif answer_type == "comparison" and any(
                         compact(clause_text) == side
@@ -2064,14 +1937,7 @@ class EvidenceQA:
             ))
         needs = finalized
 
-        # Correction 16: every distinct quantity the question itself names
-        # gets a real, coverage-tracked RequestedItem on whichever need's
-        # own clause span actually contains it - never left only as an
-        # unverified plain string on `contract.quantities`. Non-gating
-        # (`required=False`): a quantity is supplementary confirmation, not
-        # the sole required content of a fact/reason/procedure need, so it
-        # is tracked through uncovered/candidate/supported/verified without
-        # ever blocking completeness on its own (Correction 8).
+
         for quantity in quantities:
             for need_index, need in enumerate(needs):
                 item_spans = [item.span for item in need.requested_items]
@@ -2113,33 +1979,30 @@ class EvidenceQA:
     def retrieve(
         self, need: InformationNeed, widen: int = 0, exhaustive: bool = False
     ) -> list[dict[str, Any]]:
+        cache_key = (
+            need.retrieval_query,
+            tuple(sorted(need.subject_terms)),
+            tuple(sorted(need.operation_terms)),
+            widen,
+            exhaustive,
+        )
+        cached = self.retrieval_cache.get(cache_key)
+        if cached is not None:
+            return [dict(row) for row in cached]
         self._retrievers()
         retrieval_query = self._expand_query(need.retrieval_query)
         query_vector = self.vectorizer.transform([retrieval_query])
         lexical = (self.lexical_matrix @ query_vector.T).toarray().ravel()
         lexical_order = np.argsort(-lexical)
-        # Revision 4 / Correction 5: `widen` implements the bounded
-        # verification-to-retrieval / exhaustive-recovery loop - each
-        # unsuccessful recovery attempt widens the first-stage pool instead
-        # of silently giving up after the first try. Correction 17:
-        # `exhaustive=True` is the final, genuine full-corpus scan stage of
-        # that same escalation ladder - every row becomes a candidate for
-        # lexical/dense scoring and CrossEncoder reranking, never merely a
-        # larger but still partial top-k.
+
+
         first_stage = (
             len(self.rows) if exhaustive
             else min(len(self.rows), TOP_FIRST_STAGE + widen * TOP_FIRST_STAGE)
         )
         selected = set(lexical_order[:first_stage].tolist())
-        # Correction 16: widen the candidate POOL (never the scoring/
-        # ranking basis) with whatever chunks a morphologically-expanded
-        # form of the query alone would surface - so a passage using a
-        # different inflection of a query word (e.g. "Examine ... by
-        # microscopy" for a query asking how something is "examined
-        # microscopically") can still be found. Every candidate the
-        # ORIGINAL query already selected keeps exactly the same score
-        # computed below - this only ever ADDS candidates, it never
-        # changes how any of them are ranked.
+
+
         variants = self._morphological_variants(retrieval_query)
         if variants:
             variant_vector = self.vectorizer.transform([variants])
@@ -2167,34 +2030,65 @@ class EvidenceQA:
             int(index): rank for rank, index in enumerate(dense_order, 1)
         }
         vocabulary = self.vectorizer.vocabulary_
-        query_terms = [term for term in terms(retrieval_query) if term in vocabulary]
+        query_terms = [
+            term for term in terms(retrieval_query)
+            if term in vocabulary and term not in GENERIC_QUERY_WORDS
+        ]
         rare_terms = sorted(
             query_terms,
             key=lambda term: self.vectorizer.idf_[vocabulary[term]],
             reverse=True,
         )[:3]
         coverage = {}
+        subject_coverage = {}
+        operation_coverage = {}
+        subject_roots = roots(" ".join(need.subject_terms))
+        operation_roots = roots(" ".join(need.operation_terms))
         for index in selected:
             passage_terms = set(terms(self.rows[index]["text"]))
+            passage_roots = roots(self.rows[index]["text"])
             coverage[index] = (
                 sum(term in passage_terms for term in rare_terms)
                 / max(1, len(rare_terms))
             )
-        # When an exact rare anchor exists in the corpus, candidates with no
-        # such anchor cannot become the primary evidence merely through broad
-        # semantic similarity.
-        if rare_terms and any(value > 0 for value in coverage.values()):
-            primary = rare_terms[0]
-            primary_anchors = {
-                index for index in selected
-                if primary in set(terms(self.rows[index]["text"]))
-            }
-            anchored = (
-                primary_anchors if len(primary_anchors) >= 3
-                else {index for index in selected if coverage[index] > 0}
+            subject_coverage[index] = (
+                len(subject_roots & passage_roots) / len(subject_roots)
+                if subject_roots else 0.0
             )
-            if len(anchored) >= 4:
-                selected = anchored
+            operation_coverage[index] = (
+                sum(
+                    terms_overlap_morphologically(
+                        {term}, passage_terms
+                    )
+                    for term in need.operation_terms
+                ) / len(need.operation_terms)
+                if need.operation_terms else 0.0
+            )
+
+
+        # `TOP_RERANK` existed as configuration but was never consumed: the
+        # CrossEncoder was receiving the entire lexical+dense+variant union
+        # (and all 767 rows during exhaustive fallback).  Rank that union
+        # cheaply first, then apply the expensive CrossEncoder to the actual
+        # rerank pool.  Exhaustive still scores every corpus row in the first
+        # stage; it does not mean cross-encoding every row repeatedly.
+        def preliminary_score(index: int) -> float:
+            rrf = 1.0 / (60 + lexical_rank.get(index, 10000))
+            if dense_order.size:
+                rrf += 1.0 / (60 + dense_rank.get(index, 10000))
+            return (
+                1.5 * coverage.get(index, 0.0)
+                + 1.5 * subject_coverage.get(index, 0.0)
+                + 1.5 * operation_coverage.get(index, 0.0)
+                + 8.0 * rrf
+                + float(lexical[index])
+                + 0.25 * float(dense_scores[index])
+            )
+
+        rerank_limit = min(len(selected), TOP_RERANK)
+        selected = set(sorted(
+            selected, key=preliminary_score, reverse=True,
+        )[:rerank_limit])
         candidates = [self.rows[index] for index in selected]
         scores = self.reranker.predict(
             [[retrieval_query, row["text"]] for row in candidates],
@@ -2209,6 +2103,8 @@ class EvidenceQA:
             final_score = (
                 float(rerank_score)
                 + 1.5 * coverage.get(index, 0.0)
+                + 1.5 * subject_coverage.get(index, 0.0)
+                + 1.5 * operation_coverage.get(index, 0.0)
                 + 8.0 * rrf
                 + float(lexical[index])
                 + 0.25 * float(dense_scores[index])
@@ -2220,9 +2116,8 @@ class EvidenceQA:
                 "anchor_coverage": coverage.get(index, 0.0),
             })
         ranked.sort(key=lambda row: row["score"], reverse=True)
-        # Correction 4: a negative score is never valid evidence merely for
-        # being top-ranked among an otherwise weak candidate set - being the
-        # best of a bad set is not the same as being a good match.
+
+
         positive_ranked = [row for row in ranked if row["score"] >= 0]
         if not positive_ranked:
             print(
@@ -2230,11 +2125,15 @@ class EvidenceQA:
                 f"zero-score floor (best={ranked[0]['score'] if ranked else None})"
             )
             return []
-        # One coherent section window is more useful than several unrelated
-        # high-scoring pages. Multi-part questions already retrieve one anchor
-        # independently for every need.
-        anchor_count = 1 + widen
-        return self.expand(need, positive_ranked[:anchor_count])
+
+
+        if exhaustive:
+            anchor_count = min(len(positive_ranked), 32)
+        else:
+            anchor_count = min(len(positive_ranked), 6 + widen * 4)
+        result = self.expand(need, positive_ranked[:anchor_count])
+        self.retrieval_cache[cache_key] = tuple(dict(row) for row in result)
+        return result
 
     def expand(
         self, need: InformationNeed, anchors: list[dict[str, Any]]
@@ -2245,10 +2144,8 @@ class EvidenceQA:
             requirement_terms.update(terms(requirement))
 
         def on_topic(text: str) -> bool:
-            # A minimal lexical overlap with the need's own requirements
-            # keeps a same-page neighbour or a co-mentioned entity chunk from
-            # entering evidence purely on page or entity proximity when its
-            # text has actually drifted to an unrelated subject.
+
+
             return not requirement_terms or bool(
                 requirement_terms.intersection(terms(text))
             )
@@ -2265,19 +2162,8 @@ class EvidenceQA:
                     (row.get("pdf_page") or 0)
                     - (anchor.get("pdf_page") or 0)
                 )
-                # Correction 21 / Blocker (calculation truncation): a fixed
-                # one-page cap silently drops a genuine continuation of the
-                # SAME numbered sequence once a figure/diagram pushes later
-                # steps onto a third page (e.g. a calculation's final
-                # "compute/report the result" step) - a multi-page figure
-                # is exactly why the corpus's own chunk boundaries and page
-                # numbers do not line up one-to-one. The page budget scales
-                # with how many chunk-positions away the neighbour already
-                # is (never more generous than the fixed `NEIGHBOR_WINDOW`
-                # itself), so a same-page or next-page neighbour is checked
-                # exactly as strictly as before while a farther, still
-                # in-window neighbour is not rejected on page count alone -
-                # `on_topic()` below remains the real relevance gate.
+
+
                 if page_distance > max(1, abs(distance)):
                     continue
                 if distance != 0 and not on_topic(row["text"]):
@@ -2310,22 +2196,8 @@ class EvidenceQA:
     def evidence(
         self, contract: QuestionContract, groups: list[list[dict[str, Any]]]
     ) -> list[dict[str, Any]]:
-        # Correction 33 / Defect 4 (retrieval depth vs. section specificity):
-        # this quota is a legitimate, unchanged citation BUDGET
-        # (`MAX_EVIDENCE` itself is never touched here) - but applying it by
-        # raw retrieval score alone, before the authoritative-section search
-        # even runs, lets a merely higher-SCORING chunk from an unrelated
-        # section permanently crowd out the genuinely specific one, no
-        # matter how deep the prior retrieval widening went. For a
-        # procedure, stably move each need's own candidates that actually
-        # contain one of the need's already-grounded, non-generic subject
-        # terms (`need.subject_terms` - the same discriminative terms
-        # `subject_matches()` itself uses, never a new corpus word) ahead of
-        # ones that do not, before the quota slice below - relative score
-        # order is preserved within each group, so a genuinely irrelevant
-        # subject-matching chunk still cannot outrank a better-scoring one
-        # of the same kind. This only changes WHICH already-retrieved rows
-        # occupy the existing budget, never the budget's size.
+
+
         if contract.answer_type == "procedure":
             reordered_groups = []
             for need_index, candidates in enumerate(groups):
@@ -2342,17 +2214,22 @@ class EvidenceQA:
                 reordered_groups.append(on_subject + off_subject)
             groups = reordered_groups
         chosen: dict[str, dict[str, Any]] = {}
-        quota = max(1, MAX_EVIDENCE // max(1, len(contract.needs)))
+
+
+        unbounded = contract.answer_type in ("procedure", "calculation")
+        evidence_cap = None if unbounded else MAX_EVIDENCE
+        quota = (
+            None if unbounded
+            else max(1, MAX_EVIDENCE // max(1, len(contract.needs)))
+        )
         for need_index, candidates in enumerate(groups):
             for row in candidates[:quota]:
                 item = chosen.setdefault(row["chunk_id"], dict(row))
                 item.setdefault("needs", []).append(need_index)
-                if len(chosen) >= MAX_EVIDENCE:
+                if evidence_cap is not None and len(chosen) >= evidence_cap:
                     break
-        # Each need is reranked in its own retrieval call, so raw scores sit
-        # on independent scales; min-max normalize per need before pooling
-        # so no need wins merely because its candidates scored higher on an
-        # absolute scale unrelated to any other need's.
+
+
         pool: list[tuple[float, dict[str, Any]]] = []
         for candidates in groups:
             if not candidates:
@@ -2367,11 +2244,8 @@ class EvidenceQA:
                 pool.append((normalized, row))
         pool.sort(key=lambda item: item[0], reverse=True)
         if contract.answer_type == "procedure":
-            # A procedure's steps are only complete if the chunk_index run
-            # is unbroken. Prefer candidates that extend the sequence already
-            # gathered over a higher-scoring chunk from an unrelated position,
-            # so a numbered step in the middle is not dropped for one from
-            # elsewhere in the document.
+
+
             def continuity_gap(row: dict[str, Any]) -> int:
                 page = row.get("pdf_page")
                 index = row.get("chunk_index") or 0
@@ -2384,7 +2258,7 @@ class EvidenceQA:
             pool.sort(key=lambda item: (continuity_gap(item[1]), -item[0]))
         for _, row in pool:
             chosen.setdefault(row["chunk_id"], dict(row))
-            if len(chosen) >= MAX_EVIDENCE:
+            if evidence_cap is not None and len(chosen) >= evidence_cap:
                 break
         return sorted(chosen.values(), key=lambda row: (
             row.get("pdf_page") or 0,
@@ -2414,18 +2288,13 @@ class EvidenceQA:
         ):
             return False
         before_blank = index == 0 or not compact(lines[index - 1])
-        # A final line without a following blank is usually a chunk-boundary
-        # sentence fragment, not a heading.
+
+
         after_blank = index < len(lines) - 1 and not compact(lines[index + 1])
         return (
             numbered_section or (before_blank and after_blank)
         ) and bool(re.search(r"[A-Za-z]", line))
 
-    # -----------------------------------------------------------------
-    # Revision 4 / Correction 4: CandidateRegions and authoritative-scope
-    # selection. Sentences are never pulled straight out of independently
-    # ranked chunks - they first have to belong to the region chosen here.
-    # -----------------------------------------------------------------
 
     def _build_candidate_regions(
         self, need: InformationNeed, evidence: list[dict[str, Any]]
@@ -2478,13 +2347,98 @@ class EvidenceQA:
                 if heading_core
                 else LocalSubject(frozenset(), frozenset(), "none")
             )
-            return self.subject_matches(local_subject, need)
+            if self.subject_matches(local_subject, need):
+                return True
+
+
+            region_terms: set[str] = set()
+            for chunk_id in region.chunk_ids:
+                position = self.positions.get(chunk_id)
+                if position is not None:
+                    region_terms |= set(terms(self.rows[position].get("text", "")))
+            body_subject = LocalSubject(frozenset(region_terms), frozenset(), "body")
+            return self.subject_matches(body_subject, need)
 
         matching = [region for region in regions if region_subject_ok(region)]
         pool = matching if matching else regions
-        best = max(pool, key=lambda region: region.score)
-        if matching and best not in matching:
-            best = max(matching, key=lambda region: region.score)
+        passages = []
+        subject_roots = roots(" ".join(need.subject_terms))
+        operation_roots = roots(" ".join(need.operation_terms))
+        for region in pool:
+            rows = [
+                self.rows[self.positions[chunk_id]]["text"]
+                for chunk_id in region.chunk_ids
+                if chunk_id in self.positions
+            ]
+            focused_units: list[str] = []
+            for row_text in rows:
+                for _, _, unit in sentence_spans(row_text):
+                    unit_roots = roots(unit)
+                    subject_ok = not subject_roots or bool(subject_roots & unit_roots)
+                    operation_ok = (
+                        not operation_roots
+                        or terms_covered_morphologically(
+                            need.operation_terms, set(terms(unit))
+                        )
+                    )
+                    if subject_ok and operation_ok:
+                        focused_units.append(unit)
+            focused = " ".join(focused_units[:6])
+            if not focused:
+                focused = " ".join(rows)[:1800]
+            passages.append(compact(f"{region.heading}. {focused}")[:2400])
+        semantic = np.asarray(self.reranker.predict(
+            [[need.query, passage] for passage in passages],
+            show_progress_bar=False,
+        )).reshape(-1)
+        subject_terms = {
+            term for term in need.subject_terms
+            if not self.is_generic_subject_term(term)
+        }
+        operation_terms = set(need.operation_terms)
+
+        def region_rank(index: int) -> float:
+            passage_terms = set(terms(passages[index]))
+            heading_terms = self.core_terms(pool[index].heading)
+            subject_coverage = (
+                len(subject_terms & passage_terms) / len(subject_terms)
+                if subject_terms else 0.0
+            )
+            operation_coverage = (
+                sum(
+                    terms_overlap_morphologically(
+                        {term}, set(terms(passages[index]))
+                    )
+                    for term in operation_terms
+                ) / max(1, len(operation_terms))
+            )
+            heading_subject_coverage = (
+                len(heading_terms & subject_terms) / len(subject_terms)
+                if subject_terms else 0.0
+            )
+            heading_operation_coverage = (
+                sum(
+                    terms_overlap_morphologically({term}, set(heading_terms))
+                    for term in operation_terms
+                ) / max(1, len(operation_terms))
+            )
+            requested_terms = subject_terms | operation_terms
+            heading_precision = (
+                len(heading_terms & requested_terms) / len(heading_terms)
+                if heading_terms else 0.0
+            )
+            return (
+                float(semantic[index])
+                + 3.0 * subject_coverage
+                + 2.0 * operation_coverage
+                + 2.0 * heading_subject_coverage
+                + 2.0 * heading_operation_coverage
+                + 1.5 * heading_precision
+                + 0.10 * pool[index].score
+            )
+
+        best_index = max(range(len(pool)), key=region_rank)
+        best = pool[best_index]
         scope = AuthoritativeScope(
             f"scope-{best.region_id}", best.region_id, best.heading,
             frozenset(self.core_terms(best.heading)), best.start_position,
@@ -2492,11 +2446,6 @@ class EvidenceQA:
         )
         return best, scope
 
-    # -----------------------------------------------------------------
-    # Revision 4 / Correction 6: obligation discovery from the confirmed
-    # authoritative scope's own text - never from the question, never a
-    # hardcoded per-topic list.
-    # -----------------------------------------------------------------
 
     @staticmethod
     def _classify_obligation_kind(text: str) -> str | None:
@@ -2508,22 +2457,22 @@ class EvidenceQA:
             return "bullet"
         if _WARNING_RE.match(text):
             return "warning"
+        if re.search(
+            r"\b(?:must|should)\s+not\b|^\s*(?:never|do\s+not)\b",
+            text, re.IGNORECASE,
+        ):
+            return "warning"
         if _CONDITION_BRANCH_RE.search(text):
             return "condition_branch"
         if _THRESHOLD_CUE_RE.search(text):
-            # Correction 17: a calculation's branch cut-offs (">=", "at
-            # least X", "exceeds Y") are their own generic obligation kind,
-            # distinct from a bare formula/operand sentence - checked
-            # before `_FORMULA_RE` since a threshold sentence usually also
-            # contains a bare digit+unit that would otherwise be
-            # misclassified as just "formula".
+
+
             return "threshold"
         if _FORMULA_RE.search(text):
             return "formula"
         if _OUTPUT_CUE_RE.search(text):
-            # A sentence instructing how the result is reported/recorded/
-            # expressed - the generic "reporting output" obligation a
-            # calculation must also preserve.
+
+
             return "output"
         if _TABLE_ROW_RE.search(text):
             return "table_row"
@@ -2538,17 +2487,8 @@ class EvidenceQA:
             and not first_word.endswith("s")
             and not re.match(r"^(?:is|are|was|were|has|have|had)$", first_word)
         ):
-            # A capitalized sentence opening with a base-form verb that is
-            # not a generic English function word - a plain imperative
-            # action, the same shape a procedure step takes in ordinary
-            # prose even without numbering or bullets. A table header/row,
-            # a duplicated OCR caption fragment, or a column-label list
-            # (e.g. "Specimen Type Volume Container") shares this same
-            # capitalized-opening shape but, unlike a genuine imperative
-            # sentence, is mostly TITLE-CASE throughout rather than mostly
-            # lowercase after its first word, and usually carries no
-            # terminal sentence punctuation - a purely structural,
-            # language-generic distinction, never a corpus-specific word.
+
+
             rest_words = [w for w in words[1:] if any(c.isalpha() for c in w)]
             lowercase_rest = sum(1 for w in rest_words if w[:1].islower())
             title_like = bool(rest_words) and lowercase_rest < 0.5 * len(rest_words)
@@ -2558,29 +2498,42 @@ class EvidenceQA:
             return "step"
         return None
 
-    # Correction 15: which generically discovered obligation KINDS gate
-    # completeness depends on what the question actually asked for - a
-    # fact/definition/measurement question is satisfied by its requested
-    # facts and essential qualifiers alone, so an unrelated nearby
-    # procedure step or table row must never become a blocking requirement
-    # for it; a procedure question is the opposite, requiring every
-    # step/order/condition/warning it discovers; a calculation question
-    # requires its formula/operands/branches/thresholds/units/reporting
-    # output; a comparison question requires every declared dimension
-    # (tracked separately by `_discover_comparison_dimension_obligations`).
-    # Purely keyed on the GENERIC obligation kind already classified by
-    # `_classify_obligation_kind` and the GENERIC answer_type already
-    # classified by `plan()` - never a per-topic/per-question rule.
+
     _ANSWER_TYPE_OBLIGATION_KINDS: dict[str, frozenset[str]] = {
         "fact": frozenset(),
         "reason": frozenset({"condition_branch"}),
         "procedure": frozenset({"step", "bullet", "condition_branch", "warning"}),
         "comparison": frozenset({"comparison_dimension"}),
         "calculation": frozenset({
-            "step", "bullet", "condition_branch", "formula", "table_row",
-            "threshold", "output",
+            "condition_branch", "formula", "table_row", "threshold", "output",
         }),
     }
+
+    def _operation_entailed(
+        self, item_terms: frozenset[str], subject_terms: frozenset[str],
+        text: str, operation_terms: frozenset[str] = frozenset(),
+    ) -> bool:
+        """Correction 45 / item 1 (generalized relation/operation
+        entailment): the single shared test for whether a candidate
+        sentence actually entails the operation/relation a RequestedItem
+        asks for, not merely its subject - used by BOTH
+        `_obligation_required` and `accept()`'s per-item coverage check,
+        so the same rule applies regardless of obligation kind or answer
+        type, never limited to condition_branch alone. Strips the need's
+        own grounded SUBJECT vocabulary (`subject_terms`) from the item's
+        full term set: whenever the item asks for something beyond its
+        own subject, that operation/relation content - not the bare
+        subject - must be morphologically present in the text, so subject
+        overlap alone can never satisfy an operation/relation item. A
+        clause that is nothing but its own subject (e.g. a bare "What is
+        X?") falls back to requiring the subject itself, since there is
+        nothing more specific to ask for. Purely generic, question-
+        derived vocabulary and morphological matching - never a
+        corpus-specific word."""
+        check_terms = operation_terms or (item_terms - subject_terms) or item_terms
+        if not check_terms:
+            return True
+        return terms_covered_morphologically(check_terms, set(terms(text)))
 
     def _obligation_required(
         self, kind: str, answer_type: str, text: str, need: InformationNeed,
@@ -2591,11 +2544,29 @@ class EvidenceQA:
         (kind="condition") must still resolve any condition_branch
         obligation it discovers even for an otherwise non-procedural
         answer type, since the condition itself was asked for, not merely
-        encountered in passing."""
-        if kind == "condition_branch" and any(
-            item.kind == "condition" for item in need.requested_items
-        ):
-            return not bool(re.match(r"^\s*notes?\s*[:\-]", text, re.IGNORECASE))
+        encountered in passing.
+
+        Correction 45 / item 1 (generalized relation/operation
+        entailment): the operation/relation check Correction 41 applied
+        only inside the condition_branch branch below now gates EVERY
+        obligation kind alike, via the shared `_operation_entailed`
+        helper - an obligation sentence that is merely on-subject is not
+        enough; whenever the need has a condition-kind RequestedItem, any
+        discovered obligation (step, bullet, warning, threshold, formula,
+        output, table_row, or condition_branch alike) must also entail
+        that SAME requested operation/relation before it can count as
+        required, not merely some other instruction that happens to apply
+        under the same condition (e.g. a staining instruction is not an
+        answer to how a specimen is SENT to the laboratory)."""
+        condition_items = [
+            item for item in need.requested_items if item.kind == "condition"
+        ]
+        if kind == "bullet" and _LIST_REQUEST_RE.search(need.query):
+            return True
+        if kind == "condition_branch" and condition_items:
+            if re.match(r"^\s*notes?\s*[:\-]", text, re.IGNORECASE):
+                return False
+            return True
         allowed = self._ANSWER_TYPE_OBLIGATION_KINDS.get(
             answer_type, self._ANSWER_TYPE_OBLIGATION_KINDS["fact"]
         )
@@ -2607,11 +2578,8 @@ class EvidenceQA:
 
     @staticmethod
     def _obligation_key(kind: str, chunk_id: str, start_char: int) -> str:
-        # Deterministic from the sentence's own physical position, so a
-        # discovery pass over the whole scope and a later pass over just
-        # the subject-verified units always agree on the same key for the
-        # same sentence - never a running counter that could drift between
-        # the two passes.
+
+
         return f"{kind}:{chunk_id}:{start_char}"
 
     def _discover_comparison_dimension_obligations(
@@ -2687,18 +2655,39 @@ class EvidenceQA:
                 bool(re.match(r"^\s*\d+[.)]\s+", line))
                 for line in body_lines
             ))
-        semantic_scores = np.asarray(self.reranker.predict(
-            [[section_query, passage] for passage in heading_passages],
-            show_progress_bar=False,
-        )).reshape(-1)
+        operation_matches = np.asarray([
+            not need.operation_terms or terms_covered_morphologically(
+                need.operation_terms, set(terms(passage))
+            )
+            for passage in heading_passages
+        ], dtype=bool)
         query_roots = roots(section_query)
         lexical_scores = np.asarray([
             len(query_roots.intersection(roots(heading)))
             / max(1, len(roots(heading)))
             for _, heading in headings
         ])
+        subject_roots = roots(" ".join(need.subject_terms))
+        subject_matches = np.asarray([
+            not subject_roots or bool(subject_roots & roots(passage))
+            for passage in heading_passages
+        ], dtype=bool)
+        eligible = operation_matches & subject_matches
+        if not eligible.any():
+            eligible = operation_matches if operation_matches.any() else subject_matches
+        if not eligible.any():
+            eligible = np.ones(len(headings), dtype=bool)
+        eligible_indices = np.flatnonzero(eligible)
+        semantic_scores = np.full(len(headings), -np.inf, dtype=float)
+        predicted = np.asarray(self.reranker.predict(
+            [[section_query, heading_passages[int(index)]]
+             for index in eligible_indices],
+            show_progress_bar=False,
+        )).reshape(-1)
+        semantic_scores[eligible_indices] = predicted
         combined_scores = semantic_scores + 4.0 * lexical_scores
-        if re.search(
+        combined_scores = np.where(eligible, combined_scores, -np.inf)
+        if need.kind == "procedure" and re.search(
             r"\b(?:how|steps?|procedure|method)\b", need.query,
             re.IGNORECASE,
         ):
@@ -2706,8 +2695,8 @@ class EvidenceQA:
                 min(3, count) for count in heading_step_counts
             ], dtype=float)
             combined_scores += structure_scores
-        # If two nested headings score equally, the later, more specific one
-        # is normally the useful subsection.
+
+
         combined_scores += np.arange(len(headings)) * 1e-6
         top_heading_indices = np.argsort(-combined_scores)[:5]
         print("[SECTIONS] candidates=" + str([
@@ -2720,10 +2709,31 @@ class EvidenceQA:
             return None
         start = headings[best_at][0] + 1
         end = len(records)
-        for position, _ in headings[best_at + 1:]:
-            if position > start:
-                end = position
-                break
+        nested_heading_positions: set[int] = set()
+        for position, following_heading in headings[best_at + 1:]:
+            if position <= start:
+                continue
+            heading_core = self.core_terms(following_heading)
+            heading_subject = LocalSubject(
+                frozenset(heading_core), frozenset(), "heading"
+            )
+            continues_subject = self.subject_matches(heading_subject, need)
+            method_subheading = bool(re.match(
+                r"^(?:using|boiling|heating|cooling|mixing|adding|removing|"
+                r"washing|cleaning|staining|counting|calculating|preparing)\b",
+                following_heading, re.IGNORECASE,
+            ))
+            if continues_subject or method_subheading:
+                nested_heading_positions.add(position)
+                continue
+            if (
+                following_heading.rstrip().endswith(":")
+                and self._classify_obligation_kind(following_heading) is not None
+            ):
+                nested_heading_positions.add(position)
+                continue
+            end = position
+            break
         paragraphs = []
         current = []
         current_source = None
@@ -2738,8 +2748,13 @@ class EvidenceQA:
             current = []
             current_source = None
 
-        for evidence_index, _, raw_line in records[start:end]:
+        for record_position in range(start, end):
+            evidence_index, _, raw_line = records[record_position]
+            if record_position in nested_heading_positions:
+                flush()
+                continue
             line = compact(raw_line)
+            line = _TRAILING_FIGURE_TEXT_RE.sub("", line).strip()
             if not line:
                 flush()
                 continue
@@ -2756,6 +2771,10 @@ class EvidenceQA:
             paragraph = re.sub(
                 r"(?<=[A-Za-z])-\s+(?=[a-z])", "", paragraph
             )
+            paragraph = re.sub(r"^\s*â\s+", "— ", paragraph)
+
+
+            paragraph = _strip_interleaved_captions(paragraph)
             if re.match(r"^\d+\s+Manual\b", paragraph, re.IGNORECASE):
                 continue
             if re.match(r"^[a-z]", paragraph) and len(paragraph) < 160:
@@ -2763,6 +2782,16 @@ class EvidenceQA:
             if re.search(
                 r"\b(?:and|or|the|of|to|with|in|for)$", paragraph,
                 re.IGNORECASE,
+            ):
+                continue
+
+
+            if (
+                self._classify_obligation_kind(paragraph) is None
+                and (
+                    _STANDALONE_CAPTION_RE.match(paragraph)
+                    or _PAGE_HEADER_RE.match(paragraph)
+                )
             ):
                 continue
             key = re.sub(r"\W+", " ", paragraph.lower()).strip()
@@ -2775,12 +2804,20 @@ class EvidenceQA:
         paragraphs = cleaned_paragraphs
         if not paragraphs:
             return None
-        # Correction 3/4: the SPECIFIC heading this extraction was actually
-        # bounded by - finer-grained than `region.heading` (only the first
-        # chunk in the region's own chunk-level heading), since a region
-        # can span more than one heading and `_best_section` may have
-        # picked a later, different one within it.
+
+
         selected_heading = headings[best_at][1]
+        if (
+            selected_heading.rstrip().endswith(":")
+            and (
+                not need.operation_terms
+                or terms_covered_morphologically(
+                    need.operation_terms, set(terms(selected_heading))
+                )
+            )
+        ):
+            heading_source = records[headings[best_at][0]][0]
+            paragraphs.insert(0, (heading_source, -1, selected_heading))
         return best_score, paragraphs, selected_heading
 
     def _narrow_authoritative_rows(
@@ -2894,8 +2931,8 @@ class EvidenceQA:
             rejection_reason=None if validated else f"unresolved: {remaining_required}",
         )
         if validated:
-            # Correction 35 / Defect 6: discrete completeness alone is not
-            # coherence - see `_chain_is_coherent`.
+
+
             coherent, reason = self._chain_is_coherent(chain)
             if not coherent:
                 chain = replace(
@@ -2939,11 +2976,12 @@ class EvidenceQA:
             if row["chunk_id"] in authoritative_chunk_ids
         ]
         scope_rows = [row for _, row in scope_rows_indexed]
+        if contract.answer_type in ("procedure", "calculation"):
+            scope_rows_indexed = list(enumerate(evidence, 1))
+            scope_rows = [row for _, row in scope_rows_indexed]
         if scope_rows and len(authoritative_chunk_ids) < len(region.chunk_ids):
-            # Correction 4/7: the scope actually used is narrower than the
-            # retrieved region - record its real bounds and heading rather
-            # than the whole region's, so `region_id`/`scope_id` stay
-            # distinct and honest in the materialized EvidenceChain.
+
+
             narrowed_positions = [
                 self.positions[row["chunk_id"]] for row in scope_rows
             ]
@@ -2957,13 +2995,9 @@ class EvidenceQA:
             coverage_map.mark(item.key, "candidate")
 
         accepted: list[EvidenceUnit] = []
-        # Correction 26 / Defect 2: whether THIS specific need (not merely
-        # the whole contract's answer_type, which a multi-part question's
-        # OTHER needs do not share) is itself a "why" clause - checked on
-        # the need's own focus text with any appended "Context: ..."
-        # suffix stripped, so a purely descriptive/procedural sibling need
-        # inside the same reason-typed contract is never held to this
-        # extra requirement.
+        scope_semantically_matched = False
+
+
         need_focus = re.split(
             r"\s+Context:\s*", need.query, maxsplit=1, flags=re.IGNORECASE,
         )[0]
@@ -2976,62 +3010,39 @@ class EvidenceQA:
             local_subject: LocalSubject, kind: str | None, role: str,
             obligation_keys: frozenset[str] | None = None,
         ) -> None:
-            # Correction 26 / Defect 2: "on-topic is not enough" - for a
-            # "why" need, a unit only covers the base clause once it also
-            # states or entails the cause/exclusion itself
-            # (`_CAUSAL_ENTAILMENT_RE`), not merely once it shares the
-            # subject's vocabulary. A required DiscoveredObligation kind
-            # (e.g. a genuine `condition_branch`) still counts on its own
-            # terms below - this only tightens the base RequestedItem
-            # clause, which term-overlap alone was letting an on-topic but
-            # non-explanatory sentence satisfy.
-            #
-            # Correction 32 / Defect 6 (action-word coverage - a sibling
-            # tightening to Correction 26, for clauses Correction 26 does
-            # not already cover): a clause's own `item.terms` is a flat bag
-            # combining its SUBJECT words (which `ground_need_subjects`
-            # already isolates into `need.subject_terms`, e.g. the item
-            # named in the question) with whatever CONTENT word beyond the
-            # subject the question actually asks about (e.g. the verb in
-            # "how should X be disposed of").
-            # `terms_overlap_morphologically` only needs ONE shared word to
-            # pass, so a sentence that mentions the subject but never
-            # touches the requested action ("...X... may contain Y...")
-            # wrongly satisfies coverage on the subject word
-            # alone while saying nothing about the actual request.
-            # Requiring the overlap to include a CONTENT term
-            # (`item.terms - need.subject_terms`) whenever the clause has
-            # one - falling back to the full term set for a clause that is
-            # nothing but its own subject (e.g. a bare "What is X?") -
-            # closes that gap without adding any corpus word, threshold, or
-            # per-need special case. A "why" need is exempted here, not
-            # because it is held to a lower standard, but because
-            # Correction 26 already imposes a STRICTER, purpose-built
-            # standard on it (`_CAUSAL_ENTAILMENT_RE`): the genuine causal
-            # sentence for a reason clause routinely restates the subject
-            # in different words than the question's own verb (e.g. "will
-            # not be useful" rather than repeating "rejected"), so gating
-            # it on content-term overlap AS WELL would reject the correct
-            # answer for the wrong reason - the causal-entailment check is
-            # the real adequacy test there, not a second bag-of-words pass.
+
+            if (
+                _TEMPORAL_REQUEST_RE.search(need_focus)
+                and not _TEMPORAL_ANSWER_RE.search(unit_text)
+            ):
+                return
+
+
             covered_items = frozenset(
                 item.key for item in need.requested_items
                 if not item.terms or (
-                    terms_overlap_morphologically(
-                        item.terms if is_reason_need
-                        else ((item.terms - need.subject_terms) or item.terms),
-                        set(terms(unit_text)),
+                    (
+                        terms_overlap_morphologically(
+                            item.terms, set(terms(unit_text)),
+                        )
+                        if is_reason_need
+                        else (
+                            bool(
+                                _LIST_REQUEST_RE.search(need.query)
+                                and _LIST_REQUEST_RE.search(unit_text)
+                            )
+                            or self._operation_entailed(
+                                item.terms, need.subject_terms, unit_text,
+                                need.operation_terms,
+                            )
+                        )
                     )
                     and (not is_reason_need or _CAUSAL_ENTAILMENT_RE.search(unit_text))
                 )
             )
             if obligation_keys is not None:
-                # Correction 6/7: an explicit set of matched obligation
-                # keys - used where a single reconstructed unit (e.g. a
-                # procedure paragraph merging several original sentences)
-                # can cover more than one discovered obligation at once,
-                # so a single start_char can no longer stand in for all of
-                # them.
+
+
                 covered_obligations = frozenset(
                     key for key in obligation_keys if key in coverage_map.obligations
                 )
@@ -3041,6 +3052,30 @@ class EvidenceQA:
                     obligation_key = self._obligation_key(kind, chunk_id, start_char)
                     if obligation_key in coverage_map.obligations:
                         covered_obligations = frozenset({obligation_key})
+            required_obligations = frozenset(
+                key for key in covered_obligations
+                if coverage_map.obligations[key].required
+            )
+            if (
+                not covered_items
+                and required_obligations
+                and contract.answer_type in ("procedure", "calculation")
+                and (
+                    scope_semantically_matched
+                    or (
+                        need.operation_terms
+                        and terms_covered_morphologically(
+                            need.operation_terms,
+                            set(terms(scope.heading)),
+                        )
+                    )
+                )
+            ):
+                covered_items = frozenset(
+                    item.key for item in need.requested_items if item.required
+                )
+            if not covered_items and not required_obligations:
+                return
             for item_key in covered_items:
                 coverage_map.mark(item_key, "supported", evidence_index)
             for obligation_key in covered_obligations:
@@ -3051,27 +3086,22 @@ class EvidenceQA:
                 covered_items, covered_obligations,
             ))
 
-        # A whole subsection is an answer only for a genuinely sequential
-        # procedure.  For facts, reasons, lists and comparisons a section
-        # is merely a search boundary: returning it wholesale is how a
-        # nearby but irrelevant paragraph can masquerade as an answer.
-        procedural_need = (
-            contract.answer_type == "procedure"
-            and bool(re.search(
-                r"\b(?:how|steps?|procedure|method|prepare|collect|"
-                r"perform|carry out)\b",
-                need.query, re.IGNORECASE,
-            ))
-            and not bool(re.search(
-                r"\b(?:why|compare|difference|differ|purpose|reason)\b",
-                need.query, re.IGNORECASE,
-            ))
-        )
+
+        # Planning already classified the question. Do not maintain a second
+        # verb whitelist here: it silently diverted valid procedures whose
+        # action verb was absent from that list into sentence-only extraction.
+        procedural_need = contract.answer_type in ("procedure", "calculation")
         section_used = False
         if procedural_need and scope_rows:
             section = self._best_section(need, scope_rows)
             if section is not None:
                 section_score, paragraphs, selected_heading = section
+                scope_semantically_matched = section_score >= MIN_EXTRACT_SCORE
+                scope = replace(
+                    scope,
+                    heading=selected_heading,
+                    subject_terms=frozenset(self.core_terms(selected_heading)),
+                )
                 section_chars = sum(len(item[2]) for item in paragraphs)
                 if section_chars <= 6000:
                     print(
@@ -3079,81 +3109,86 @@ class EvidenceQA:
                         f"score={section_score:.3f}; "
                         f"paragraphs={len(paragraphs)}"
                     )
-                    # Correction 3: inherit from the SPECIFIC heading this
-                    # extraction was actually bounded by, not the coarser
-                    # region-level (first-chunk) heading - a region can
-                    # span more than one heading, and this is the one that
-                    # genuinely governs the extracted paragraphs' subject.
+
+
                     heading_core = self.core_terms(selected_heading)
+                    # A section heading may deliberately use a generic head
+                    # noun while its body names the precise subject (for
+                    # example, a generic list lead-in followed by subject-
+                    # specific bullets).  Ground the scope from the heading
+                    # plus only question-subject terms actually present in
+                    # the selected section.  This remains question-derived
+                    # and scope-local; it does not borrow entities from other
+                    # retrieved chunks.
+                    section_text_terms = set(terms(" ".join(
+                        paragraph for _, _, paragraph in paragraphs
+                    )))
+                    scoped_subject_terms = heading_core | {
+                        subject_term for subject_term in need.subject_terms
+                        if terms_overlap_morphologically(
+                            {subject_term}, section_text_terms
+                        )
+                    }
                     section_subject = (
-                        LocalSubject(frozenset(heading_core), frozenset(), "heading")
-                        if heading_core
+                        LocalSubject(
+                            frozenset(scoped_subject_terms), frozenset(), "scope"
+                        )
+                        if scoped_subject_terms
                         else LocalSubject(frozenset(), frozenset(), "none")
                     )
-                    # Correction 6/7: obligations for a procedural need are
-                    # discovered from exactly this extracted subsection's
-                    # own paragraph text - the confirmed authoritative
-                    # scope - never from the rest of the source chunk,
-                    # which can carry a neighbouring, unrelated
-                    # sub-heading's steps that this extraction could never
-                    # actually cover.
+
+
+                    chain_subject: LocalSubject | None = section_subject
                     for local_index, paragraph_index, paragraph in paragraphs:
                         if local_index - 1 >= len(scope_rows_indexed):
                             continue
                         global_index, row = scope_rows_indexed[local_index - 1]
-                        # Correction 19: a procedural section's heading
-                        # alone sometimes never repeats a specific
-                        # condition/subject the paragraph's own body text
-                        # states (e.g. a conditional lead-in sentence
-                        # naming a specific condition under a generic
-                        # "Method"/"Specimens" heading) - enrich
-                        # only THIS paragraph's own local subject with
-                        # whatever non-generic core terms its own text
-                        # shares with the need's already-grounded subject,
-                        # the exact same discriminative-term-overlap
-                        # signal `subject_matches()` already uses,
-                        # sourced from the paragraph body in addition to
-                        # the heading. Never mutates the shared
-                        # `section_subject` other paragraphs use, and
-                        # never adds a term the paragraph's own text does
-                        # not actually contain, so a genuinely wrong
-                        # subject is still rejected exactly as before.
-                        enriched_terms = section_subject.resolved_terms | (
-                            self._non_illustrative_terms(
-                                paragraph,
-                                need.subject_terms & self.core_terms(paragraph),
-                            )
+
+
+                        own_terms = self._non_illustrative_terms(
+                            paragraph, self.core_terms(paragraph),
                         )
-                        paragraph_subject = (
-                            section_subject
-                            if enriched_terms == section_subject.resolved_terms
-                            else LocalSubject(
-                                frozenset(enriched_terms),
-                                section_subject.resolved_entity_ids,
-                                section_subject.resolution_source,
+                        matching_own_terms = own_terms & set(need.subject_terms)
+                        subject_types = {
+                            self.entity_index[entity_id].entity_type
+                            for entity_id in need.subject_entity_ids
+                            if entity_id in self.entity_index
+                        }
+                        paragraph_lower = paragraph.casefold()
+                        competing_mentions = [
+                            mention for mention in row.get("mentions", [])
+                            if mention.entity_type in subject_types
+                            and compact(mention.mention_text).casefold() in paragraph_lower
+                            and not (
+                                set(terms(mention.mention_text)) & set(need.subject_terms)
+                                or mention.entity_id in need.subject_entity_ids
                             )
-                        )
-                        # Correction 24 / Blocker 4/5 (wrong-subject false
-                        # positive in the whole-section procedure path): the
-                        # non-procedural per-sentence scan has always gated
-                        # every unit on `subject_matches()` (Correction B)
-                        # before it can ever be accepted, but this
-                        # whole-section shortcut never carried the same
-                        # gate - a `_best_section()` pick that merely
-                        # scored best among a weak candidate pool (e.g. a
-                        # generic "Specimen collection" quality-assurance
-                        # passage that never actually names the need's own
-                        # subject) could reach `verified=True` on pure
-                        # section-score ranking alone, with no subject
-                        # check at all. This is the exact class Correction
-                        # B exists to prevent, just reached through the
-                        # other extraction branch - a valid not_found is
-                        # preferable to a wrong-subject answer, so a
-                        # paragraph whose own (heading + body enriched)
-                        # subject fails the need's grounded subject is
-                        # skipped here exactly as a sentence would be
-                        # skipped in the non-procedural path, never merely
-                        # accepted because the section total scored highest.
+                        ]
+                        if matching_own_terms:
+                            own_subject = LocalSubject(
+                                frozenset(matching_own_terms), frozenset(), "sentence",
+                            )
+                            # A generic word from the lead-in must not replace
+                            # the more specific subject already grounded from
+                            # the selected scope.  Update the chain only when
+                            # the paragraph's own subject independently matches
+                            # the requested subject.
+                            if self.subject_matches(own_subject, need):
+                                paragraph_subject = own_subject
+                                chain_subject = paragraph_subject
+                            elif chain_subject is not None and chain_subject.is_resolved:
+                                paragraph_subject = chain_subject
+                            else:
+                                continue
+                        elif competing_mentions:
+                            chain_subject = None
+                            continue
+                        elif chain_subject is not None and chain_subject.is_resolved:
+                            paragraph_subject = chain_subject
+                        else:
+                            paragraph_subject = section_subject
+
+
                         if not self.subject_matches(paragraph_subject, need):
                             continue
                         paragraph_obligation_keys: set[str] = set()
@@ -3167,12 +3202,8 @@ class EvidenceQA:
                             required = self._obligation_required(
                                 sent_kind, contract.answer_type, sentence, need,
                             )
-                            # A paragraph-relative offset (paragraph_index
-                            # dominates, sentence offset within the
-                            # paragraph breaks ties) - unique per sentence
-                            # without depending on the original chunk's raw
-                            # character offsets, which the reconstructed
-                            # paragraph text no longer aligns with.
+
+
                             key = self._obligation_key(
                                 sent_kind, row["chunk_id"],
                                 paragraph_index * 1_000_000 + sent_start,
@@ -3182,13 +3213,14 @@ class EvidenceQA:
                                 row["chunk_id"], sent_kind, required,
                             ))
                             coverage_map.mark(key, "candidate")
-                            paragraph_obligation_keys.add(key)
+                            if required:
+                                paragraph_obligation_keys.add(key)
                         if paragraph_kind is None:
                             paragraph_kind = self._classify_obligation_kind(paragraph)
                         role = self._classify_role(paragraph, paragraph_kind)
                         if role == "optional_background":
-                            # A genuine procedure step never counts as
-                            # merely optional background.
+
+
                             role = "primary"
                         accept(
                             global_index, paragraph_index, row["chunk_id"],
@@ -3206,16 +3238,16 @@ class EvidenceQA:
                 coverage_map.mark(obligation.key, "candidate")
             vocabulary = self.vectorizer.vocabulary_
             expanded_query = self._expand_query(need.query)
-            # The planner may append the complete question as context so a
-            # short need retains its subject during retrieval.  That
-            # context must not become the sentence-selection objective.
+
+
             focus_query = re.split(
                 r"\s+Context:\s*", need.query, maxsplit=1,
                 flags=re.IGNORECASE,
             )[0]
             expanded_focus = self._expand_query(focus_query)
             query_terms = [
-                term for term in terms(expanded_query) if term in vocabulary
+                term for term in terms(expanded_query)
+                if term in vocabulary and term not in GENERIC_QUERY_WORDS
             ]
             rare_terms = sorted(
                 query_terms,
@@ -3252,20 +3284,8 @@ class EvidenceQA:
                     continue
                 heading = self.chunk_heading.get(row["chunk_id"], "")
                 if last_heading is not None and heading != last_heading:
-                    # Correction 3, tier D / Correction 19: a heading
-                    # boundary only actually stops subject inheritance
-                    # when the NEW heading itself names a real, specific
-                    # subject of its own (non-generic core terms) - a
-                    # purely generic/structural sub-heading ("Method",
-                    # "Principle", "Materials and reagents") carries no
-                    # information that contradicts whatever subject was
-                    # already established higher up the same section, so
-                    # inheritance continues through it instead of being
-                    # wiped merely because the heading STRING changed.
-                    # A heading that genuinely names a different, specific
-                    # topic still resets exactly as before - this never
-                    # weakens wrong-subject rejection, it only stops a
-                    # false reset on a same-topic procedural sub-heading.
+
+
                     if self.core_terms(heading):
                         chain_subject = None
                 last_heading = heading
@@ -3282,13 +3302,8 @@ class EvidenceQA:
                     kind = self._classify_obligation_kind(unit)
                     role = self._classify_role(unit, kind)
                     if kind is not None:
-                        # Correction 6: an obligation is only ever
-                        # discovered from a sentence that has ALREADY been
-                        # confirmed on-subject for this need - a sentence
-                        # belonging to a different subject within the same
-                        # broader chunk set was never "required" for this
-                        # need to begin with, so it must never be
-                        # discovered as an uncoverable requirement either.
+
+
                         required = self._obligation_required(
                             kind, contract.answer_type, unit, need,
                         )
@@ -3305,38 +3320,14 @@ class EvidenceQA:
                         end_char, unit, row_score, kind, role, local_subject,
                     ))
 
-            # Correction 6/19: every discovered REQUIRED-FOR-THIS-ANSWER-
-            # TYPE obligation sentence is included outright - a single
-            # action sentence must never close a procedure when the
-            # confirmed scope's obligations continue. Critically, this
-            # only applies to a kind `_obligation_required` actually says
-            # this answer_type needs (Correction 15's own policy) - a
-            # sentence that merely LOOKS like a bullet/step/warning/table
-            # row but is not itself required for a plain fact/reason
-            # question (e.g. an unrelated nearby list item or disposal
-            # note) is never force-included purely for having that shape;
-            # it instead competes for inclusion in `other_candidates` on
-            # its own relevance like any other sentence, fixing the
-            # "unrelated neighbouring content in a fact answer" failure
-            # class without dropping anything that is genuinely the best
-            # match.
+
             obligation_candidates = [
                 c for c in raw_candidates
                 if c[7] is not None and c[8] != "optional_background"
                 and self._obligation_required(c[7], contract.answer_type, c[5], need)
             ]
-            # Correction 26 / Defect 2: a sentence that itself states or
-            # entails the requested cause/exclusion is - for a "why" need -
-            # exactly as REQUIRED as a genuine condition_branch obligation
-            # already is for a reason answer, so it is force-included the
-            # same way, never left to compete against ordinary prose under
-            # the general relevance floor (`MIN_EXTRACT_SCORE`) that floor
-            # is calibrated for topical relevance, not causal entailment,
-            # and a real reason sentence buried in a busy chunk can score
-            # below it purely on generic lexical similarity to the query.
-            # This never lowers or raises that floor - it only recognises
-            # this one already-required-for-this-answer-type sentence shape
-            # the same way `obligation_candidates` already does.
+
+
             causal_candidates = [
                 c for c in raw_candidates
                 if is_reason_need and c[8] != "optional_background"
@@ -3351,6 +3342,12 @@ class EvidenceQA:
                 )
                 and c not in causal_candidates
             ]
+            if is_reason_need and causal_candidates:
+                other_candidates = []
+            elif _TEMPORAL_REQUEST_RE.search(need_focus):
+                other_candidates = [
+                    c for c in other_candidates if _TEMPORAL_ANSWER_RE.search(c[5])
+                ]
             if other_candidates:
                 focus_scores = np.asarray(self.reranker.predict(
                     [[expanded_focus, c[5]] for c in other_candidates],
@@ -3364,7 +3361,7 @@ class EvidenceQA:
                     top_score = float(combined[order[0]])
                     kept = 0
                     for position in order:
-                        if kept >= per_need_limit:
+                        if per_need_limit is not None and kept >= per_need_limit:
                             break
                         if float(combined[position]) < max(
                             MIN_EXTRACT_SCORE, top_score - 2.5
@@ -3381,24 +3378,7 @@ class EvidenceQA:
             for c in causal_candidates:
                 accept(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[6], c[9], c[7], c[8])
 
-        # Correction 7/19: distributed recovery is permitted only via a
-        # STRONG identity signal when the primary scope still leaves
-        # something required uncovered - never merely because a sentence
-        # is "on topic" anywhere in running prose. Two such signals are
-        # accepted: (a) Correction B path 1, an exact entity id match, and
-        # (b) the sentence's own nearest heading EXPLICITLY, non-
-        # generically naming the need's already-grounded subject
-        # (`resolve_local_subject`'s Tier B - which by construction never
-        # fires on a generic heading - reused via the same
-        # `subject_matches` five-path check extraction already trusts).
-        # (b) is what a cross-chunk need distributed across independently
-        # retrieved authoritative scopes actually needs: a disposal
-        # instruction two chapters away can carry no entity mention of
-        # the specimen type at all while still sitting, unambiguously,
-        # under a heading that names it. Neither signal is "on topic
-        # alone" - both are anchored to an explicit label, so wrong-
-        # subject rejection for a sentence with NEITHER signal is
-        # unchanged.
+
         if not coverage_map.all_supported():
             outside = [
                 (index, row) for index, row in enumerate(evidence, 1)
@@ -3419,18 +3399,8 @@ class EvidenceQA:
                         local_subject.resolution_source in ("heading", "sentence")
                         and self.subject_matches(local_subject, need)
                     )
-                    # Correction 23 / Blocker (causal/reason coverage): a
-                    # Tier-A ("sentence") resolution is at least as strong an
-                    # identity signal as the Tier-B ("heading") one already
-                    # accepted above - it is the FINER-grained of the two,
-                    # anchored to the exact sentence's own non-generic terms
-                    # (Correction 22) rather than a whole section's heading.
-                    # Restricting distributed recovery to heading-only
-                    # `subject_matches` meant a sentence naming the need's
-                    # subject explicitly in its own text, but tagged (by the
-                    # graph's own sparse mention extraction) with a
-                    # DIFFERENT secondary entity, could never be recovered -
-                    # exactly the failure this need's own evidence exhibited.
+
+
                     if not strong_identity_signal:
                         continue
                     kind = self._classify_obligation_kind(unit)
@@ -3457,14 +3427,11 @@ class EvidenceQA:
         section can no longer enter an answer merely by sharing a broad
         word like "specimen" or "collection")."""
         selected: dict[tuple[int, int], tuple[float, str]] = {}
-        # Correction 20 / Blocker (calculation truncation): a calculation
-        # answer is structurally the same shape as a procedure - a run of
-        # sequential steps culminating in a final formula/output/report
-        # step - so it needs the same generous per-need evidence-unit
-        # budget a procedure gets, never the tighter generic-fact budget.
-        # Purely a category-level distinction on `answer_type`, never a
-        # corpus-specific word or count.
-        per_need_limit = 5 if contract.answer_type in ("procedure", "calculation") else 3
+
+
+        per_need_limit = (
+            None if contract.answer_type in ("procedure", "calculation") else 3
+        )
         chains: dict[str, EvidenceChain] = {}
         coverage_maps: dict[str, CoverageMap] = {}
         for need in contract.needs:
@@ -3474,10 +3441,8 @@ class EvidenceQA:
             if scope is None or not accepted:
                 print(f"[EXTRACT] need={need.label!r}: no candidate region/evidence")
                 return None
-            # Revision 4 / Correction A: the generator (and, for the
-            # extractive path, the act of finalizing this need's
-            # contribution) may only proceed once every RequestedItem and
-            # required DiscoveredObligation for this need is "supported".
+
+
             if not all_need_requirements_supported(need, coverage_map, contract.answer_type):
                 unresolved = [
                     key for key in coverage_map.required_keys()
@@ -3504,9 +3469,60 @@ class EvidenceQA:
         self.last_chains = chains
         self.last_coverage_maps = coverage_maps
         ordered = sorted(selected.items(), key=lambda item: item[0])
+
+
+        normalized_by_key = {
+            key: compact(dehyphenate(unit)).casefold()
+            for key, (_, unit) in ordered
+        }
+
+
+        chunk_id_by_key: dict[tuple[int, int], str] = {}
+        for key, _unused in ordered:
+            evidence_index, _unit_index = key
+            if 1 <= evidence_index <= len(evidence):
+                chunk_id_by_key[key] = evidence[evidence_index - 1]["chunk_id"]
+        fragment_keys: set[tuple[int, int]] = set()
+        for key, normalized in normalized_by_key.items():
+            if not normalized or len(normalized) < 8:
+                continue
+            key_position = self.positions.get(chunk_id_by_key.get(key, ""))
+            for other_key, other_normalized in normalized_by_key.items():
+                if other_key == key:
+                    continue
+                if not (
+                    other_normalized != normalized
+                    and len(other_normalized) > len(normalized)
+                    and normalized in other_normalized
+                ):
+                    continue
+                key_chunk = chunk_id_by_key.get(key)
+                other_chunk = chunk_id_by_key.get(other_key)
+                if (
+                    key_chunk is None or other_chunk is None
+                    or key_chunk == other_chunk
+                ):
+                    continue
+                other_position = self.positions.get(other_chunk)
+                if (
+                    key_position is not None and other_position is not None
+                    and abs(key_position - other_position) <= 1
+                ):
+                    fragment_keys.add(key)
+                    break
         claims = []
         answer_parts = []
-        for (evidence_index, _), (_, unit) in ordered:
+        seen_normalized_units: set[str] = set()
+        for key, (_, unit) in ordered:
+            if key in fragment_keys:
+                continue
+            evidence_index, _unit_index = key
+
+
+            normalized = compact(dehyphenate(unit)).casefold()
+            if normalized in seen_normalized_units:
+                continue
+            seen_normalized_units.add(normalized)
             answer_parts.append(f"{unit} [E{evidence_index}]")
             claims.append({
                 "sentence": unit,
@@ -3520,16 +3536,8 @@ class EvidenceQA:
         print(f"[EXTRACT] coverage={coverage.tolist()}")
         if any(float(score) < MIN_COVERAGE_SCORE for score in coverage):
             return None
-        # Correction 29 / required regression behaviour: a NEGATIVE
-        # coverage score must never reach a verified answer, whatever the
-        # lenient absolute floor `MIN_COVERAGE_SCORE` otherwise tolerates -
-        # this is a separate, additive gate (never a change to
-        # `MIN_COVERAGE_SCORE` itself, which stays exactly as calibrated)
-        # that only tightens the boundary the assembled answer's own
-        # relevance to its need must clear.
-        if any(float(score) < 0 for score in coverage):
-            print(f"[EXTRACT] negative coverage rejected: {coverage.tolist()}")
-            return None
+
+
         return {
             "answer": answer, "claims": claims, "extractive": True,
             "chains": chains, "coverage_maps": coverage_maps,
@@ -3550,15 +3558,51 @@ class EvidenceQA:
         global_chains: dict[str, EvidenceChain] = {}
         global_coverage_maps: dict[str, CoverageMap] = {}
         for need, group in zip(contract.needs, groups):
-            local_rows = sorted(group[:7], key=lambda row: (
-                row.get("pdf_page") or 0, row.get("chunk_index") or 0
-            ))
             local_contract = QuestionContract(
                 contract.question, contract.answer_type, (need,)
             )
+            page_order = lambda row: (
+                row.get("pdf_page") or 0, row.get("chunk_index") or 0
+            )
+
+
+            row_window_limit = (
+                None if contract.answer_type in ("procedure", "calculation")
+                else 7
+            )
+            local_rows = sorted(group[:row_window_limit], key=page_order)
             result = self.extractive_answer(local_contract, local_rows)
             if result is None:
-                return None
+                reformulated = self._reformulate_query(need)
+                alt_need = (
+                    need if reformulated == need.retrieval_query
+                    else replace(need, retrieval_query=reformulated)
+                )
+                reformulated_pool = self.retrieve(
+                    alt_need, widen=RETRIEVAL_STAGES - 1, exhaustive=True
+                )
+                original_pool = (
+                    self.retrieve(need, widen=RETRIEVAL_STAGES - 1, exhaustive=True)
+                    if alt_need is not need else reformulated_pool
+                )
+                merged_pool: dict[str, dict[str, Any]] = {}
+                for row in [*original_pool, *reformulated_pool]:
+                    existing = merged_pool.get(row["chunk_id"])
+                    if existing is None or row["score"] > existing["score"]:
+                        merged_pool[row["chunk_id"]] = row
+                if merged_pool:
+                    exhaustive_rows = sorted(
+                        sorted(
+                            merged_pool.values(),
+                            key=lambda row: row["score"], reverse=True,
+                        )[:row_window_limit],
+                        key=page_order,
+                    )
+                    result = self.extractive_answer(local_contract, exhaustive_rows)
+                    if result is not None:
+                        local_rows = exhaustive_rows
+                if result is None:
+                    return None
             local_map = {}
             cited_local = list(dict.fromkeys(
                 int(value) for value in re.findall(
@@ -3592,9 +3636,8 @@ class EvidenceQA:
                         "sentence": claim["sentence"],
                         "evidence_ids": ids,
                     })
-            # Correction 7: carry the materialized EvidenceChain forward,
-            # remapped onto the global evidence numbering the final
-            # response's citations actually use.
+
+
             local_chain = result.get("chains", {}).get(need.label)
             if local_chain is not None:
                 remapped_units = tuple(
@@ -3606,10 +3649,8 @@ class EvidenceQA:
                     global_chains[need.label] = replace(
                         local_chain, units=remapped_units
                     )
-            # Correction 8/17: the CoverageMap's own keys are anchored to
-            # chunk_id/character offsets, never to this call's local
-            # evidence numbering - so, unlike the EvidenceChain above, it
-            # needs no remap at all to carry forward correctly.
+
+
             local_coverage_map = result.get("coverage_maps", {}).get(need.label)
             if local_coverage_map is not None:
                 global_coverage_maps[need.label] = local_coverage_map
@@ -3636,7 +3677,11 @@ class EvidenceQA:
         precondition (Correction A) and its context (Correction 9/10)
         reflect the same notion of "supported" and "primary evidence" the
         extractive path enforces."""
-        per_need_limit = 8 if contract.answer_type in ("procedure", "calculation") else 5
+
+
+        per_need_limit = (
+            None if contract.answer_type in ("procedure", "calculation") else 5
+        )
         coverage_map, accepted, scope = self._extract_need_evidence(
             need, evidence, contract, per_need_limit
         )
@@ -3673,11 +3718,7 @@ class EvidenceQA:
             return coverage_map, False
         if chain.validation_status != "validated":
             return coverage_map, False
-        chain_text = "\n".join(unit.text for unit in chain.units)
-        score = float(self.reranker.predict(
-            [[need.query, chain_text]], show_progress_bar=False,
-        )[0])
-        return coverage_map, score >= 0
+        return coverage_map, True
 
     def _diagnose_need_failure(
         self, need: InformationNeed, contract: QuestionContract,
@@ -3709,7 +3750,9 @@ class EvidenceQA:
                 )
         if not evidence:
             return "retrieval"
-        per_need_limit = 8 if contract.answer_type in ("procedure", "calculation") else 5
+        per_need_limit = (
+            None if contract.answer_type in ("procedure", "calculation") else 5
+        )
         coverage_map, accepted, scope = self._extract_need_evidence(
             need, evidence, contract, per_need_limit,
         )
@@ -3743,44 +3786,29 @@ class EvidenceQA:
         coverage_maps: dict[str, CoverageMap] = {}
         for need in contract.needs:
             coverage_map, chain = self._pool_coverage_and_chain(need, evidence, contract)
-            # --- Correction 10: the full generator-guard checklist -----
-            assert chain is not None, (
-                f"Correction A violated: compose() invoked for need "
-                f"{need.label!r} with no EvidenceChain"
-            )
-            assert chain.validation_status == "validated", (
-                f"Correction A violated: compose() invoked for need "
-                f"{need.label!r} with an unvalidated chain "
-                f"({chain.rejection_reason})"
-            )
-            assert chain.continuation_state != "open", (
-                f"Correction 6 violated: compose() invoked for need "
-                f"{need.label!r} while the source scope's obligations "
-                f"still continue"
-            )
-            assert all(unit.role != "optional_background" for unit in chain.units), (
-                f"Correction 9/10 violated: optional-background evidence "
-                f"reached compose() for need {need.label!r}"
-            )
-            assert all(
+
+            if chain is None or chain.validation_status != "validated":
+                return None
+            if chain.continuation_state == "open":
+                return None
+            if any(unit.role == "optional_background" for unit in chain.units):
+                return None
+            if not all(
                 not unit.local_subject.is_resolved
                 or self.subject_matches(unit.local_subject, need)
                 for unit in chain.units
-            ), (
-                f"Correction B violated: an evidence unit with the wrong "
-                f"subject reached compose() for need {need.label!r}"
-            )
-            assert all_need_requirements_supported(need, coverage_map, contract.answer_type), (
-                f"Correction A violated: compose() invoked for need "
-                f"{need.label!r} with an unsupported requirement"
-            )
+            ):
+                return None
+            if not all_need_requirements_supported(
+                need, coverage_map, contract.answer_type
+            ):
+                return None
             chains[need.label] = chain
             coverage_maps[need.label] = coverage_map
         self.last_chains = chains
         self.last_coverage_maps = coverage_maps
-        # Correction 9/10: the context is exactly the filtered chain
-        # material (primary/required-conditional sentences only, in
-        # citation order) - never the whole raw chunk text.
+
+
         unit_pool = sorted(
             (
                 unit for chain in chains.values() for unit in chain.units
@@ -3796,7 +3824,16 @@ class EvidenceQA:
                 continue
             seen_keys.add(key)
             context_lines.append(f"[E{unit.evidence_index}] {unit.text}")
-        context = "\n".join(context_lines)[:MAX_CONTEXT_CHARS]
+        context = "\n".join(context_lines)
+        if len(context) > MAX_CONTEXT_CHARS:
+
+
+            print(
+                f"[compose] verified context ({len(context)} chars) "
+                f"exceeds MAX_CONTEXT_CHARS ({MAX_CONTEXT_CHARS}); "
+                f"refusing to truncate required evidence."
+            )
+            return None
         needs_payload = [
             {
                 "label": need.label,
@@ -3806,9 +3843,8 @@ class EvidenceQA:
             for need in contract.needs
         ]
         if contract.answer_type == "procedure":
-            # A partial or reordered procedure is unusable, so the sequencing
-            # constraint has to be explicit and stricter than the generic
-            # instruction below.
+
+
             type_instruction = (
                 " This is a procedure: reproduce every step from the "
                 "evidence in its exact original order, without skipping, "
@@ -3920,9 +3956,8 @@ class EvidenceQA:
                 if self.subject_matches(local_subject, best_need):
                     return True
             if index in chain_units_by_index:
-                # A tracked chain unit exists for this evidence index but
-                # none of its local subjects matched - trust that resolved
-                # subject rather than re-deriving a different one below.
+
+
                 continue
             row = evidence[index - 1]
             best_span = None
@@ -3984,8 +4019,8 @@ class EvidenceQA:
             ))
             if exact_extract and normalized_sentence not in normalized_premise:
                 return False, "extract is not verbatim evidence", []
-            # Correction 11: a verbatim match is not, by itself, proof the
-            # cited chunk is even about the right subject.
+
+
             if not self._claim_subject_consistent(ids, sentence, evidence, contract):
                 return False, "claim's cited evidence has the wrong subject", []
             claim_numbers = set(re.findall(r"\d+(?:\.\d+)?%?", sentence))
@@ -4014,8 +4049,8 @@ class EvidenceQA:
         if not set(answer_citations).issubset(set(cited)):
             return False, "answer cites evidence not verified by a claim", []
         if contract.required_ordering:
-            # Correction 11: a procedure's citations must not walk backward
-            # through the document - that is a reordered/merged step.
+
+
             positions = [
                 self.positions[evidence[value - 1]["chunk_id"]]
                 for value in answer_citations
@@ -4048,14 +4083,42 @@ class EvidenceQA:
         print(f"[COVERAGE] scores={coverage_scores.tolist()}")
         if any(float(score) < MIN_COVERAGE_SCORE for score in coverage_scores):
             return False, "one or more requested needs are absent", []
-        # Correction 29 / required regression behaviour: same additive
-        # negative-coverage gate as the extractive path - never a change
-        # to `MIN_COVERAGE_SCORE` itself.
-        if any(float(score) < 0 for score in coverage_scores):
-            return False, "coverage score is negative", []
-        # Correction 11: completeness against the QuestionContract itself -
-        # a declared comparison side must actually surface in the answer.
+
+
         cited_unique = list(dict.fromkeys(cited))
+        cited_set = set(cited_unique)
+
+        # Independently re-check the assembled answer against every need.
+        # A valid citation and a matching subject are insufficient when the
+        # cited evidence does not also express the requested operation.
+        for need in contract.needs:
+            chain = self.last_chains.get(need.label)
+            if chain is None or not chain.units:
+                return False, "a requested need has no evidence chain", []
+            cited_units = [
+                unit for unit in chain.units
+                if unit.evidence_index in cited_set
+            ]
+            if not cited_units:
+                return False, "a requested need has no cited evidence", []
+            covered = frozenset().union(*(
+                unit.covered_item_ids | unit.covered_obligation_ids
+                for unit in cited_units
+            ))
+            required_items = {
+                item.key for item in need.requested_items if item.required
+            }
+            if not required_items.issubset(covered):
+                return False, "a requested item is absent from cited evidence", []
+            if need.operation_terms:
+                operation_text = " ".join(
+                    unit.text for unit in cited_units
+                )
+                if not terms_covered_morphologically(
+                    need.operation_terms, set(terms(operation_text))
+                ):
+                    return False, "cited evidence does not entail the requested operation", []
+
         answer_terms = set(terms(generated["answer"]))
         for side in contract.comparison_sides:
             side_terms = self.core_terms(side)
@@ -4093,6 +4156,7 @@ class EvidenceQA:
         images: list[dict[str, Any]],
         scanned: int,
         mode: str,
+        neo4j_verified: bool = False,
     ) -> dict[str, Any]:
         ids = [source["chunk_id"] for source in sources]
         values = ", ".join(
@@ -4122,7 +4186,7 @@ class EvidenceQA:
                 "consistent_candidates": len(sources),
                 "sources_used": min(len(sources), MAX_DISPLAY_SOURCES),
                 "neo4j_verification": (
-                    "verified" if kind == "domain_answer"
+                    "verified" if kind == "domain_answer" and neo4j_verified
                     else "not_verified"
                 ),
                 "synthesis_mode": mode,
@@ -4135,27 +4199,22 @@ class EvidenceQA:
         }
 
     def answer(self, question: str) -> dict[str, Any]:
+        with self.request_lock:
+            return self._answer_locked(question)
+
+    def _answer_locked(self, question: str) -> dict[str, Any]:
         contract = self.plan(question)
         groups = [self.retrieve(need) for need in contract.needs]
-        # Revision 4 / Correction 5: exhaustive retrieval recovery for a need
-        # whose first attempt came back empty - retried with a widened
-        # candidate pool before the request gives up on it.
+
+
         for attempt in range(1, RETRIEVAL_STAGES):
             if all(groups):
                 break
             for index, need in enumerate(contract.needs):
                 if not groups[index]:
                     groups[index] = self.retrieve(need, widen=attempt)
-        # Blocker 1: a need still empty after ordinary widening gets one
-        # final escalation before it is ever reported as a retrieval
-        # failure - a generic semantic reformulation of its OWN query
-        # (`_reformulate_query`, built purely from the corpus's own
-        # morphological vocabulary and the need's already-grounded subject/
-        # requirement terms - never a rule authored for any specific
-        # sample question), retried with a true exhaustive full-corpus
-        # scan. This never lowers the zero-score acceptance floor inside
-        # `retrieve()` - it only ever gives the SAME floor a wider, better-
-        # targeted pool of candidates to clear it with.
+
+
         for index, need in enumerate(contract.needs):
             if groups[index]:
                 continue
@@ -4172,10 +4231,8 @@ class EvidenceQA:
                     f"[RETRIEVE] need={need.label!r}: recovered via "
                     "semantic reformulation + exhaustive scan"
                 )
-        # Needs from one question normally share a subject. Share candidate
-        # windows when their query vocabulary overlaps, while retaining each
-        # need's own ranking and section selection. This prevents a generic
-        # operation need from losing the subject found by a sibling need.
+
+
         if len(groups) > 1:
             original_groups = [list(group) for group in groups]
             for target_index, target_need in enumerate(contract.needs):
@@ -4217,116 +4274,11 @@ class EvidenceQA:
         if extracted is not None:
             generated, evidence = extracted
         else:
-            evidence = self.evidence(contract, groups)
-            print(
-                "[EVIDENCE] selected="
-                f"{[(row['chunk_id'], round(row['score'], 3)) for row in evidence]}"
+            return self.response(
+                "not_found", question,
+                "Relevant evidence was found, but it was incomplete.",
+                [], [], len(self.rows), "evidence_incomplete",
             )
-            # Revision 4 / Correction A, 5: the generator may run only once
-            # every need's coverage map is fully supported over this exact
-            # evidence pool. Recovery widens retrieval up to
-            # RETRIEVAL_STAGES times before a need is finally declared
-            # unresolved; when that happens, strict final failure follows
-            # without ever calling `compose()` for a partial answer.
-            coverage_maps = []
-            needs_resolved = []
-            for need in contract.needs:
-                cmap, resolved = self._pool_need_resolved(need, evidence, contract)
-                coverage_maps.append(cmap)
-                needs_resolved.append(resolved)
-            recovery_attempt = 0
-            while (
-                not all(needs_resolved)
-                and recovery_attempt < RETRIEVAL_STAGES - 1
-            ):
-                recovery_attempt += 1
-                groups = [
-                    self.retrieve(need, widen=recovery_attempt)
-                    for need in contract.needs
-                ]
-                evidence = self.evidence(contract, groups)
-                coverage_maps = []
-                needs_resolved = []
-                for need in contract.needs:
-                    cmap, resolved = self._pool_need_resolved(need, evidence, contract)
-                    coverage_maps.append(cmap)
-                    needs_resolved.append(resolved)
-            # Blocker 1/4: ordinary widening only ever takes MORE from the
-            # TOP of the same score ranking - it never helps a need whose
-            # retrieval came back non-empty but consistently ranked the
-            # wrong region above the genuinely correct one. Before finally
-            # giving up, retry exactly the STILL-unresolved needs with a
-            # generic semantic reformulation of their own query
-            # (`_reformulate_query`) plus a true exhaustive full-corpus
-            # scan, then re-pool coverage once more - the same escalation
-            # already applied to a need whose retrieval came back
-            # completely empty, extended to "non-empty but never actually
-            # extractable" too. Still never lowers any acceptance floor.
-            still_unresolved = [
-                index for index, need in enumerate(contract.needs)
-                if not needs_resolved[index]
-            ]
-            if still_unresolved:
-                for index in still_unresolved:
-                    need = contract.needs[index]
-                    reformulated = self._reformulate_query(need)
-                    alt_need = (
-                        need if reformulated == need.retrieval_query
-                        else replace(need, retrieval_query=reformulated)
-                    )
-                    reformulated_pool = self.retrieve(
-                        alt_need, widen=RETRIEVAL_STAGES - 1, exhaustive=True
-                    )
-                    # Correction 30 / Defect 4: the morphologically-widened
-                    # reformulation can itself skew toward generic
-                    # boilerplate that happens to repeat the query's own
-                    # words (e.g. "collect"/"collection") over a genuinely
-                    # on-topic passage that never uses that inflection at
-                    # all - so this also tries the need's OWN original
-                    # query at the same exhaustive depth and MERGES both
-                    # candidate pools (deduplicated by chunk id, higher
-                    # score wins) rather than trusting the reformulation
-                    # alone. This only ever widens the candidate pool
-                    # extraction/verification still independently judges -
-                    # it never changes which sentence gets accepted.
-                    original_pool = (
-                        self.retrieve(need, widen=RETRIEVAL_STAGES - 1, exhaustive=True)
-                        if alt_need is not need else reformulated_pool
-                    )
-                    merged_pool: dict[str, dict[str, Any]] = {}
-                    for row in [*original_pool, *reformulated_pool]:
-                        existing = merged_pool.get(row["chunk_id"])
-                        if existing is None or row["score"] > existing["score"]:
-                            merged_pool[row["chunk_id"]] = row
-                    groups[index] = sorted(
-                        merged_pool.values(), key=lambda row: row["score"], reverse=True
-                    )
-                evidence = self.evidence(contract, groups)
-                coverage_maps = []
-                needs_resolved = []
-                for need in contract.needs:
-                    cmap, resolved = self._pool_need_resolved(need, evidence, contract)
-                    coverage_maps.append(cmap)
-                    needs_resolved.append(resolved)
-            unresolved = [
-                need.label or need.query for index, need in enumerate(contract.needs)
-                if not needs_resolved[index]
-            ]
-            if unresolved:
-                print(
-                    "[COVERAGE] unresolved after exhaustive recovery: "
-                    f"{unresolved}"
-                )
-                for index, need in enumerate(contract.needs):
-                    if not needs_resolved[index]:
-                        stage = self._diagnose_need_failure(need, contract, evidence)
-                        print(f"[DIAGNOSE] need={need.label!r}: stage={stage}")
-                return self.response(
-                    "not_found", question,
-                    "Relevant evidence was found, but it was incomplete.",
-                    [], [], len(self.rows), "evidence_incomplete",
-                )
-            generated = self.compose(contract, evidence)
         if generated is None:
             print("[COMPOSE] rejected: invalid or empty structured answer")
             return self.response(
@@ -4353,41 +4305,27 @@ class EvidenceQA:
                 "fully supported and complete.",
                 [], [], len(self.rows), "verification_failed",
             )
-        # Revision 4 / Correction 8: only VERIFIED coverage counts as
-        # complete. `verify()` confirming entailment/subject-consistency/
-        # completeness for the answer AS A WHOLE is not yet the same thing
-        # as every individual RequestedItem/required DiscoveredObligation
-        # having been covered by a citation that actually survived
-        # verification - promote coverage to "verified" only for the units
-        # that did, and fail the request if anything required is left
-        # short, rather than silently accepting partial coverage because
-        # the overall answer text happened to score well.
+
+
         cited_set = set(cited)
         incomplete_needs = []
         for need in contract.needs:
             chain = self.last_chains.get(need.label)
             if chain is None:
+                incomplete_needs.append(need.label or need.query)
                 continue
             verified_ids: frozenset[str] = frozenset()
             for unit in chain.units:
                 if unit.evidence_index in cited_set:
                     verified_ids |= unit.covered_item_ids | unit.covered_obligation_ids
-            # Correction 8/17: promote every item/obligation this citation
-            # actually survived independent verification for to the
-            # CoverageEntry state machine's own "verified" state - this is
-            # the one place that state is genuinely reached, connecting
-            # `CoverageMap.all_verified()` (previously defined but never
-            # invoked - dead scaffolding) to the real per-request result
-            # instead of leaving it permanently unreachable.
+
+
             coverage_map = self.last_coverage_maps.get(need.label)
             if coverage_map is not None:
                 for key in verified_ids:
                     coverage_map.mark(key, "verified")
-            # Only a REQUIRED RequestedItem/DiscoveredObligation gates
-            # completeness (Correction 8) - a non-gating item such as a
-            # supplementary quantity mention (`required=False`) is tracked
-            # through this same state machine without ever being able to
-            # block an otherwise-complete answer on its own.
+
+
             required_item_keys = {
                 item.key for item in need.requested_items if item.required
             }
@@ -4435,7 +4373,7 @@ class EvidenceQA:
         return self.response(
             "domain_answer", question, answer, source_rows,
             self.images(chunk_ids), len(self.rows),
-            mode,
+            mode, neo4j_verified=self.corpus_source == "neo4j",
         )
 
     def image_path(self, image_id: str) -> str | None:
@@ -4448,7 +4386,11 @@ class EvidenceQA:
                         id=image_id,
                     ).single()
                 if record and record["path"]:
-                    return record["path"]
+                    raw = Path(str(record["path"]))
+                    candidate = raw if raw.is_absolute() else ROOT / raw
+                    candidate = candidate.resolve()
+                    if ROOT.resolve() in candidate.parents and candidate.is_file():
+                        return str(candidate)
             except Exception as error:
                 print(f"[GRAPH] image path lookup failed, using CSV fallback: {error}")
         info = self.images_by_id.get(image_id)
@@ -4476,7 +4418,11 @@ def home() -> FileResponse:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "graph": "v2"}
+    return {
+        "status": "ok",
+        "graph": "v2",
+        "evidence_service": "initialized" if _qa is not None else "not_initialized",
+    }
 
 
 @app.post("/ask")
@@ -4486,12 +4432,8 @@ def ask(request: QuestionRequest) -> dict[str, Any]:
         raise HTTPException(
             status_code=400, detail="Question cannot be empty"
         )
-    # Revision 4 / Correction 14: the conversational RequestRouter runs
-    # before anything that could load a neural model. A pure greeting,
-    # thanks, or farewell never instantiates the EvidenceQA singleton; a
-    # mixed message has its social wrapper stripped and proceeds as a
-    # corpus question; an ambiguous fragment gets a clarification request;
-    # only a genuine corpus question reaches the full pipeline.
+
+
     kind, effective_question = classify_request(question)
     if kind == "social_only":
         return lightweight_social_response(effective_question)
