@@ -3168,7 +3168,26 @@ class EvidenceQA:
                                 or mention.entity_id in need.subject_entity_ids
                             )
                         ]
-                        if matching_own_terms:
+                        operation_scoped_list_item = bool(
+                            paragraph_index >= 0
+                            and selected_heading.rstrip().endswith(":")
+                            and (
+                                not need.operation_terms
+                                or terms_covered_morphologically(
+                                    need.operation_terms,
+                                    set(terms(selected_heading)),
+                                )
+                            )
+                        )
+                        if operation_scoped_list_item:
+                            # _best_section has already bounded this list at
+                            # the next genuine heading.  Its child items
+                            # inherit the validated heading's subject and
+                            # operation; nouns inside an item describe the
+                            # action/object variant, not a new section subject.
+                            paragraph_subject = section_subject
+                            chain_subject = section_subject
+                        elif matching_own_terms:
                             own_subject = LocalSubject(
                                 frozenset(matching_own_terms), frozenset(), "sentence",
                             )
