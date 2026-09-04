@@ -3234,10 +3234,16 @@ class EvidenceQA:
                                 self._classify_obligation_kind(paragraph)
                                 or "bullet"
                             )
-                            fallback_required = self._obligation_required(
-                                fallback_kind, contract.answer_type,
-                                paragraph, need,
-                            )
+                            # The colon-terminated heading supplies the
+                            # requested operation to each child item.  The
+                            # children may legitimately express only the
+                            # concrete actions (for example, destroy, clean,
+                            # sterilize, or reuse) without repeating the
+                            # heading's relation verb.  Since _best_section
+                            # selected this heading only after operation
+                            # matching, every non-empty child is a required
+                            # list obligation.
+                            fallback_required = True
                             fallback_key = self._obligation_key(
                                 fallback_kind, row["chunk_id"],
                                 paragraph_index * 1_000_000,
