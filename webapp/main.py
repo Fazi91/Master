@@ -2777,7 +2777,11 @@ class EvidenceQA:
             paragraph = _strip_interleaved_captions(paragraph)
             if re.match(r"^\d+\s+Manual\b", paragraph, re.IGNORECASE):
                 continue
-            if re.match(r"^[a-z]", paragraph) and len(paragraph) < 160:
+            if (
+                re.match(r"^[a-z]", paragraph)
+                and len(paragraph) < 160
+                and not headings[best_at][1].rstrip().endswith(":")
+            ):
                 continue
             if re.search(
                 r"\b(?:and|or|the|of|to|with|in|for)$", paragraph,
@@ -3215,6 +3219,39 @@ class EvidenceQA:
                             coverage_map.mark(key, "candidate")
                             if required:
                                 paragraph_obligation_keys.add(key)
+                        # OCR or an upstream graph import can corrupt or drop
+                        # the visible dash while preserving the list topology.
+                        # Under an operation-matched colon lead-in, every
+                        # following content paragraph inside the selected
+                        # heading scope is therefore a list obligation even
+                        # when no marker survives for the regex classifier.
+                        if (
+                            paragraph_index >= 0
+                            and selected_heading.rstrip().endswith(":")
+                            and not paragraph_obligation_keys
+                        ):
+                            fallback_kind = (
+                                self._classify_obligation_kind(paragraph)
+                                or "bullet"
+                            )
+                            fallback_required = self._obligation_required(
+                                fallback_kind, contract.answer_type,
+                                paragraph, need,
+                            )
+                            fallback_key = self._obligation_key(
+                                fallback_kind, row["chunk_id"],
+                                paragraph_index * 1_000_000,
+                            )
+                            coverage_map.add_obligation(DiscoveredObligation(
+                                fallback_key, paragraph[:160],
+                                frozenset(terms(paragraph)), row["chunk_id"],
+                                fallback_kind, fallback_required,
+                            ))
+                            coverage_map.mark(fallback_key, "candidate")
+                            if fallback_required:
+                                paragraph_obligation_keys.add(fallback_key)
+                            if paragraph_kind is None:
+                                paragraph_kind = fallback_kind
                         if paragraph_kind is None:
                             paragraph_kind = self._classify_obligation_kind(paragraph)
                         role = self._classify_role(paragraph, paragraph_kind)
