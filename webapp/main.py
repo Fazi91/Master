@@ -1780,8 +1780,20 @@ class EvidenceQA:
             # one broad word satisfy operation matching by itself.
             relation_terms = passive_actions or remaining_terms
             context_terms = full_terms - relation_terms
+            # Retrieval must remain facet-local.  Carrying the complete
+            # multi-part question in every need makes terms from a sibling
+            # clause dominate lexical/dense/reranking scores.  Only an
+            # anaphoric clause needs inherited context, and for that clause
+            # the grounded shared subject is sufficient.
+            facet_query = focus
+            if _ANAPHORA_RE.search(focus) and candidate_terms:
+                facet_query = compact(
+                    f"{focus} {' '.join(sorted(candidate_terms))}"
+                )
             grounded.append(replace(
                 need,
+                query=facet_query,
+                retrieval_query=facet_query,
                 subject_terms=frozenset(candidate_terms),
                 subject_entity_ids=frozenset(entity_ids),
                 operation_terms=frozenset(relation_terms),
