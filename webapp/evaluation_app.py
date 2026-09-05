@@ -19,7 +19,10 @@ from webapp.pdf_direct_qa import DirectPdfQA, clean_question, roots
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENGINE_REVISION = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
+ENGINE_REVISION = hashlib.sha256(
+    Path(__file__).read_bytes()
+    + Path(__file__).with_name("pdf_direct_qa.py").read_bytes()
+).hexdigest()[:12]
 load_dotenv(ROOT / ".env")
 
 
