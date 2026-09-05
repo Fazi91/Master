@@ -41,7 +41,10 @@ QUESTION_WORDS = {
     "why", "will", "with", "would", "after", "before", "during", "through",
 }
 ACTION_SUFFIXES = ("ed", "ing", "ize", "ise", "ate", "fy")
-GENERIC_SUBJECT_ROOTS = {"specimen", "container", "method", "procedure", "use"}
+GENERIC_SUBJECT_ROOTS = {
+    "specimen", "container", "method", "procedure", "use",
+    "shown", "figure", "purpose", "difference",
+}
 CAUSAL_RE = re.compile(
     r"\b(?:because|therefore|so that|in order to|to permit|to prevent|"
     r"reason|not suitable|not useful|unsuitable|due to|otherwise)\b",
@@ -226,14 +229,21 @@ class DirectPdfQA:
         char_scores = (self.char_matrix @ char_query.T).toarray().ravel()
         cheap_scores = 0.72 * word_scores + 0.28 * char_scores
         required_subject = set(need.subject_terms) - GENERIC_SUBJECT_ROOTS
+        chunk_roots = [roots(chunk.text) for chunk in self.chunks]
         eligible = np.asarray([
-            index for index, chunk in enumerate(self.chunks)
-            if not required_subject or required_subject.issubset(roots(chunk.text))
+            index for index, item_roots in enumerate(chunk_roots)
+            if not required_subject or required_subject.issubset(item_roots)
         ], dtype=int)
-        lexical_top = (
-            eligible[np.argsort(-cheap_scores[eligible])[:TOP_LEXICAL]]
-            if eligible.size else np.argsort(-cheap_scores)[:TOP_LEXICAL]
-        )
+        if not eligible.size and required_subject:
+            eligible = np.asarray([
+                index for index, item_roots in enumerate(chunk_roots)
+                if required_subject & item_roots
+            ], dtype=int)
+        if not eligible.size:
+            return []
+        lexical_top = eligible[
+            np.argsort(-cheap_scores[eligible])[:TOP_LEXICAL]
+        ]
         pairs = [[need.query, self.chunks[int(index)].text] for index in lexical_top]
         semantic = np.asarray(
             self.reranker.predict(pairs, show_progress_bar=False)
