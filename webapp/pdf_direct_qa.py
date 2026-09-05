@@ -268,7 +268,8 @@ class DirectPdfQA:
 
     def extract(self, need: Need, ranked: list[tuple[int, float]]) -> list[Unit]:
         candidates: list[tuple[int, int, str]] = []
-        for chunk_index, _chunk_score in ranked[:TOP_RERANK]:
+        candidate_limit = 60 if need.answer_type in {"procedure", "calculation"} else TOP_RERANK
+        for chunk_index, _chunk_score in ranked[:candidate_limit]:
             for order, text in enumerate(self.units(self.chunks[chunk_index].text)):
                 candidates.append((chunk_index, order, text))
         if not candidates:
@@ -336,6 +337,7 @@ class DirectPdfQA:
                     selected_step = max(
                         options,
                         key=lambda unit: (
+                            not bool(re.search(r"(?:\bFig\.?|\(|\[)\s*$", unit.text)),
                             -abs(unit.chunk_index - last_chunk),
                             len(unit.text),
                             unit.score,
