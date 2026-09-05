@@ -125,6 +125,7 @@ class GraphVerifier:
         self.uri = os.getenv("NEO4J_URI")
         self.user = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER")
         self.password = os.getenv("NEO4J_PASSWORD")
+        self.database = os.getenv("NEO4J_DATABASE", "neo4j")
         self.driver = None
 
     def connect(self) -> bool:
@@ -168,7 +169,7 @@ class GraphVerifier:
                        file_path: image.file_path
                    }) AS images
             """
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 records = [record.data() for record in session.run(query, chunk_ids=chunk_ids)]
             verified = [record["chunk_id"] for record in records]
             return {
@@ -247,7 +248,7 @@ class GraphVerifier:
             WITH DISTINCT related_id WHERE related_id IS NOT NULL
             RETURN related_id LIMIT 80
             """
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 return [
                     record["related_id"]
                     for record in session.run(query, chunk_ids=chunk_ids)
@@ -290,7 +291,7 @@ class GraphVerifier:
             ORDER BY graph_score DESC, chunk_id
             LIMIT 80
             """
-            with self.driver.session() as session:
+            with self.driver.session(database=self.database) as session:
                 return [
                     record["chunk_id"]
                     for record in session.run(

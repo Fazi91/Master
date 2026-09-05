@@ -1031,6 +1031,7 @@ class EvidenceQA:
         self.tokenizer = None
         self.generator = None
         self.nli = None
+        self.database = os.getenv("NEO4J_DATABASE", "neo4j")
         self.retrieval_cache: dict[tuple[Any, ...], tuple[dict[str, Any], ...]] = {}
 
 
@@ -1080,7 +1081,7 @@ class EvidenceQA:
     def _chunks(self) -> list[dict[str, Any]]:
         if self.driver:
             try:
-                with self.driver.session() as session:
+                with self.driver.session(database=self.database) as session:
 
 
                     result = session.run(
@@ -1303,7 +1304,7 @@ class EvidenceQA:
         return self._images_from_csv(chunk_ids)
 
     def _images_from_graph(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
-        with self.driver.session() as session:
+        with self.driver.session(database=self.database) as session:
             result = session.run(
                 f"""
                 MATCH (p:Page)-[:HAS_CHUNK]->(c:Chunk)
@@ -4453,7 +4454,7 @@ class EvidenceQA:
     def image_path(self, image_id: str) -> str | None:
         if self.driver:
             try:
-                with self.driver.session() as session:
+                with self.driver.session(database=self.database) as session:
                     record = session.run(
                         "MATCH (i:Image {id: $id}) "
                         "RETURN i.file_path AS path LIMIT 1",
