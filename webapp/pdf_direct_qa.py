@@ -41,7 +41,7 @@ QUESTION_WORDS = {
     "why", "will", "with", "would", "after", "before", "during", "through",
 }
 ACTION_SUFFIXES = ("ed", "ing", "ize", "ise", "ate", "fy")
-GENERIC_SUBJECT_ROOTS = {"specimen", "sample", "container", "method", "procedure", "use"}
+GENERIC_SUBJECT_ROOTS = {"specimen", "container", "method", "procedure", "use"}
 CAUSAL_RE = re.compile(
     r"\b(?:because|therefore|so that|in order to|to permit|to prevent|"
     r"reason|not suitable|not useful|unsuitable|due to|otherwise)\b",
@@ -228,7 +228,7 @@ class DirectPdfQA:
         required_subject = set(need.subject_terms) - GENERIC_SUBJECT_ROOTS
         eligible = np.asarray([
             index for index, chunk in enumerate(self.chunks)
-            if not required_subject or required_subject & roots(chunk.text)
+            if not required_subject or required_subject.issubset(roots(chunk.text))
         ], dtype=int)
         lexical_top = (
             eligible[np.argsort(-cheap_scores[eligible])[:TOP_LEXICAL]]
@@ -304,7 +304,7 @@ class DirectPdfQA:
         filtered = [
             unit for unit in ranked_units
             if (
-                required_subject & roots(unit.text)
+                required_subject.issubset(roots(unit.text))
                 if required_subject else
                 (not subject_roots or subject_roots & roots(unit.text))
             )
