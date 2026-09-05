@@ -118,6 +118,33 @@ class GraphVerifier:
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
+    def expand(self, chunk_ids: list[str]) -> list[str]:
+        """Return graph-linked chunk candidates without replacing text retrieval."""
+        if not chunk_ids:
+            return []
+        try:
+            if not self.connect():
+                return []
+            query = """
+            UNWIND $chunk_ids AS seed_id
+            MATCH (seed:Chunk {id: seed_id})
+            OPTIONAL MATCH (page:Page)-[:HAS_CHUNK]->(seed)
+            OPTIONAL MATCH (page)-[:HAS_CHUNK]->(page_neighbor:Chunk)
+            OPTIONAL MATCH (seed)-[:MENTIONS]->(:Entity)<-[:MENTIONS]-(entity_neighbor:Chunk)
+            WITH collect(DISTINCT page_neighbor.id) +
+                 collect(DISTINCT entity_neighbor.id) AS related_ids
+            UNWIND related_ids AS related_id
+            WITH DISTINCT related_id WHERE related_id IS NOT NULL
+            RETURN related_id LIMIT 80
+            """
+            with self.driver.session() as session:
+                return [
+                    record["related_id"]
+                    for record in session.run(query, chunk_ids=chunk_ids)
+                ]
+        except Exception:
+            return []
+
 
 class EvaluationService:
     def __init__(self) -> None:
@@ -177,7 +204,10 @@ class EvaluationService:
 
     def ask(self, question: str, mode: str) -> dict[str, Any]:
         started = time.perf_counter()
-        result = self.pdf.answer(question)
+        result = (
+            self._graph_answer(question)
+            if mode == "graph" else self.pdf.answer(question)
+        )
         chunk_ids = [source["chunk_id"] for source in result.get("sources", [])]
         graph_result = {
             "status": "not_requested",
@@ -197,6 +227,108 @@ class EvaluationService:
         result["images"] = self.related_images(chunk_ids) if result["kind"] == "domain_answer" else []
         result["timing_ms"] = round((time.perf_counter() - started) * 1000, 1)
         return result
+
+    def _graph_answer(self, question: str) -> dict[str, Any]:
+        """Use Neo4j to expand each need's text candidates before extraction."""
+        cleaned = clean_question(question)
+        needs = self.pdf.plan(cleaned)
+        chunk_index = {
+            chunk.chunk_id: index for index, chunk in enumerate(self.pdf.chunks)
+        }
+        need_results: list[dict[str, Any]] = []
+        source_indices: list[int] = []
+        complete = True
+        for need in needs:
+            ranked = self.pdf.retrieve(need)
+            seed_ids = [
+                self.pdf.chunks[index].chunk_id for index, _ in ranked[:10]
+            ]
+            related_ids = self.graph.expand(seed_ids)
+            expanded = dict(ranked)
+            seed_floor = min((score for _, score in ranked[:10]), default=0.0)
+            for offset, chunk_id in enumerate(related_ids):
+                index = chunk_index.get(chunk_id)
+                if index is not None and index not in expanded:
+                    expanded[index] = seed_floor - 0.01 * (offset + 1)
+            graph_ranked = sorted(
+                expanded.items(), key=lambda item: item[1], reverse=True
+            )
+            units = [
+                unit for unit in self.pdf.extract(need, graph_ranked)
+                if self.pdf.verify_unit(unit)
+            ]
+            if not units:
+                complete = False
+            for unit in units:
+                if unit.chunk_index not in source_indices:
+                    source_indices.append(unit.chunk_index)
+            need_results.append({
+                "need_id": need.need_id,
+                "question_part": need.original,
+                "resolved_query": need.query,
+                "subject_terms": sorted(need.subject_terms),
+                "answer_type": need.answer_type,
+                "graph_candidates_added": len([
+                    cid for cid in related_ids if cid in chunk_index
+                ]),
+                "evidence": [
+                    {
+                        "text": unit.text,
+                        "chunk_id": self.pdf.chunks[unit.chunk_index].chunk_id,
+                        "pdf_page": self.pdf.chunks[unit.chunk_index].pdf_page,
+                        "score": round(unit.score, 4),
+                        "exact_source_match": True,
+                    }
+                    for unit in units
+                ],
+            })
+        citation_number = {
+            index: number for number, index in enumerate(source_indices, 1)
+        }
+        answer_parts: list[str] = []
+        for result in need_results:
+            lines: list[str] = []
+            for evidence in result["evidence"]:
+                index = chunk_index[evidence["chunk_id"]]
+                lines.append(
+                    f"{evidence['text']} [S{citation_number[index]}]"
+                )
+            if len(needs) > 1:
+                answer_parts.append(
+                    f"{result['question_part']}:\n" + "\n".join(lines)
+                )
+            else:
+                answer_parts.extend(lines)
+        sources = [
+            {
+                "chunk_id": self.pdf.chunks[index].chunk_id,
+                "pdf_page": self.pdf.chunks[index].pdf_page,
+                "printed_page": self.pdf.chunks[index].printed_page,
+                "text": self.pdf.chunks[index].text,
+            }
+            for index in source_indices
+        ]
+        return {
+            "kind": "domain_answer" if complete else "not_found",
+            "question": cleaned,
+            "answer": (
+                "\n\n".join(answer_parts)
+                if complete else "No complete extractive answer was verified."
+            ),
+            "needs": need_results,
+            "sources": sources,
+            "verification": {
+                "complete": complete,
+                "all_claims_are_exact_source_spans": complete and all(
+                    item["exact_source_match"]
+                    for result in need_results for item in result["evidence"]
+                ),
+                "needs_covered": sum(
+                    bool(result["evidence"]) for result in need_results
+                ),
+                "needs_total": len(needs),
+            },
+        }
 
 
 _service: EvaluationService | None = None
@@ -289,4 +421,3 @@ function render(mode,data){const target=document.getElementById(mode==='pdf'?'pd
 async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});render(mode,await r.json())}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
 async function compareBoth(){await run('pdf');await run('graph')}
 </script></body></html>'''
-
