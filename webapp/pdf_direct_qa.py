@@ -311,12 +311,25 @@ class DirectPdfQA:
         )
         subject_roots = set(need.subject_terms)
         required_subject = subject_roots - GENERIC_SUBJECT_ROOTS
+        # Procedure steps often omit the subject after the section establishes it
+        # (for example, "Ask the patient..." under sputum collection).  Keep
+        # subject validation at chunk level for procedures, but at unit level
+        # for facts/reasons so unrelated passages still cannot leak through.
         filtered = [
             unit for unit in ranked_units
             if (
-                bool(required_subject & roots(unit.text))
+                bool(required_subject & roots(
+                    self.chunks[unit.chunk_index].text
+                    if need.answer_type == "procedure" else unit.text
+                ))
                 if required_subject else
-                (not subject_roots or subject_roots & roots(unit.text))
+                (
+                    not subject_roots
+                    or subject_roots & roots(
+                        self.chunks[unit.chunk_index].text
+                        if need.answer_type == "procedure" else unit.text
+                    )
+                )
             )
         ]
         if not filtered:
