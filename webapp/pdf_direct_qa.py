@@ -82,25 +82,6 @@ def roots(text: str) -> set[str]:
     return {stem(word) for word in words(text) if word not in QUESTION_WORDS}
 
 
-def is_section_heading(text: str) -> bool:
-    line = compact(text)
-    tokens = words(line)
-    if not 1 <= len(tokens) <= 10:
-        return False
-    if re.match(r"^(?:Fig|Table)\.?\s*\d", line, re.I):
-        return False
-    if re.match(r"^\d+\s+(?:Manual|Index)\b", line, re.I):
-        return False
-    if re.match(r"^\d+\.?\s+.*\s+\d+$", line):
-        return False
-    if line.endswith((".", ";", ":", ",")):
-        return False
-    return bool(
-        HEADING_RE.match(line)
-        or re.match(r"^(?:\d+(?:\.\d+)*\.?\s+)?[A-Z][A-Za-z ]+$", line)
-    )
-
-
 def normalize_for_exact_check(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", compact(text).casefold()).strip()
 
@@ -342,65 +323,30 @@ class DirectPdfQA:
                     starts,
                     key=lambda unit: (section_operation_overlap(unit), unit.score),
                 )
-                # Once the correct section is anchored, follow PDF page order.
-                # CSV row order is not a stable document-order guarantee.
-                local_candidates: list[tuple[int, int, str]] = []
-                start_page = self.chunks[start.chunk_index].pdf_page
-                nearby_chunks = sorted(
-                    (
-                        (chunk_index, chunk)
-                        for chunk_index, chunk in enumerate(self.chunks)
-                        if start_page <= chunk.pdf_page <= start_page + 4
-                    ),
-                    key=lambda item: (item[1].pdf_page, item[1].page_index),
-                )
-                boundary_page: int | None = None
-                for _, chunk in nearby_chunks:
-                    if chunk.pdf_page <= start_page:
-                        continue
-                    if any(is_section_heading(line) for line in chunk.text.splitlines()):
-                        boundary_page = chunk.pdf_page
-                        break
-                for chunk_index, chunk in nearby_chunks:
-                    if boundary_page is not None and chunk.pdf_page >= boundary_page:
-                        break
-                    for order, text in enumerate(
-                        self.units(chunk.text)
-                    ):
-                        if re.match(r"^\s*\d+[.)]\s+", text):
-                            local_candidates.append((chunk_index, order, text))
-                if local_candidates:
-                    local_scores = np.asarray(
-                        self.reranker.predict(
-                            [[need.query, text] for _, _, text in local_candidates],
-                            show_progress_bar=False,
-                        )
-                    ).reshape(-1)
-                    numbered = [
-                        (
-                            int(re.match(r"^\s*(\d+)[.)]\s+", text).group(1)),
-                            Unit(chunk_index, order, text, float(score)),
-                        )
-                        for (chunk_index, order, text), score
-                        in zip(local_candidates, local_scores)
-                    ]
                 sequence = [start]
                 expected = 2
-                last_page = start_page
+                last_page = self.chunks[start.chunk_index].pdf_page
                 while expected <= 20:
                     options = [
                         unit for number, unit in numbered
                         if number == expected
                         and last_page <= self.chunks[unit.chunk_index].pdf_page
-                        <= start_page + 4
+                        <= last_page + 1
                     ]
+                    if not options:
+                        for chunk_index, chunk in enumerate(self.chunks):
+                            if not last_page <= chunk.pdf_page <= last_page + 1:
+                                continue
+                            for order, text in enumerate(self.units(chunk.text)):
+                                match = re.match(r"^\s*(\d+)[.)]\s+", text)
+                                if match and int(match.group(1)) == expected:
+                                    options.append(Unit(chunk_index, order, text, 0.0))
                     if not options:
                         break
                     selected_step = max(
                         options,
                         key=lambda unit: (
                             not bool(re.search(r"(?:\bFig\.?|\(|\[)\s*$", unit.text)),
-                            -abs(self.chunks[unit.chunk_index].pdf_page - last_page),
                             len(unit.text),
                             unit.score,
                         ),
@@ -447,7 +393,8 @@ class DirectPdfQA:
         claim = normalize_for_exact_check(unit.text)
         return bool(claim) and claim in source
 
-    def need_complete(self, need: Need, units: list[Unit]) -> bool:
+    @staticmethod
+    def need_complete(need: Need, units: list[Unit]) -> bool:
         if not units:
             return False
         if need.answer_type != "procedure":
@@ -458,34 +405,7 @@ class DirectPdfQA:
             if (match := re.match(r"^\s*(\d+)[.)]\s+", unit.text))
         ]
         if numbers:
-            contiguous = (
-                numbers[0] == 1
-                and numbers == list(range(1, len(numbers) + 1))
-            )
-            if not contiguous:
-                return False
-            expected = numbers[-1] + 1
-            last_chunk = units[-1].chunk_index
-            last = self.chunks[last_chunk]
-            continuation = sorted(
-                (
-                    (chunk_index, chunk)
-                    for chunk_index, chunk in enumerate(self.chunks)
-                    if last.pdf_page <= chunk.pdf_page <= last.pdf_page + 3
-                    and (chunk.pdf_page, chunk.page_index)
-                    >= (last.pdf_page, last.page_index)
-                ),
-                key=lambda item: (item[1].pdf_page, item[1].page_index),
-            )
-            for chunk_index, chunk in continuation:
-                text = chunk.text
-                if re.search(rf"(?m)^\s*{expected}[.)]\s+", text):
-                    return False
-                if chunk_index != last_chunk and any(
-                    is_section_heading(line) for line in text.splitlines()
-                ):
-                    return True
-            return False
+            return numbers[0] == 1 and numbers == list(range(1, len(numbers) + 1))
         has_lead_in = any(unit.text.rstrip().endswith(":") for unit in units)
         has_instruction = any(PROCEDURE_RE.match(unit.text) for unit in units)
         return has_lead_in and has_instruction
