@@ -83,6 +83,7 @@ def roots(text: str) -> set[str]:
 
 
 def normalize_for_exact_check(text: str) -> str:
+    text = re.sub(r"(?m)^\s*G\s+", " ", text)
     return re.sub(r"[^a-z0-9]+", " ", compact(text).casefold()).strip()
 
 
