@@ -323,6 +323,34 @@ class DirectPdfQA:
                     starts,
                     key=lambda unit: (section_operation_overlap(unit), unit.score),
                 )
+                # Once the correct section is anchored, follow its physical chunk
+                # order. Ranking is useful for finding the section, but it must not
+                # decide whether a later numbered step is allowed to exist.
+                local_candidates: list[tuple[int, int, str]] = []
+                for chunk_index in range(
+                    start.chunk_index,
+                    min(len(self.chunks), start.chunk_index + 9),
+                ):
+                    for order, text in enumerate(
+                        self.units(self.chunks[chunk_index].text)
+                    ):
+                        if re.match(r"^\s*\d+[.)]\s+", text):
+                            local_candidates.append((chunk_index, order, text))
+                if local_candidates:
+                    local_scores = np.asarray(
+                        self.reranker.predict(
+                            [[need.query, text] for _, _, text in local_candidates],
+                            show_progress_bar=False,
+                        )
+                    ).reshape(-1)
+                    numbered = [
+                        (
+                            int(re.match(r"^\s*(\d+)[.)]\s+", text).group(1)),
+                            Unit(chunk_index, order, text, float(score)),
+                        )
+                        for (chunk_index, order, text), score
+                        in zip(local_candidates, local_scores)
+                    ]
                 sequence = [start]
                 expected = 2
                 last_chunk = start.chunk_index
@@ -385,8 +413,7 @@ class DirectPdfQA:
         claim = normalize_for_exact_check(unit.text)
         return bool(claim) and claim in source
 
-    @staticmethod
-    def need_complete(need: Need, units: list[Unit]) -> bool:
+    def need_complete(self, need: Need, units: list[Unit]) -> bool:
         if not units:
             return False
         if need.answer_type != "procedure":
@@ -397,7 +424,36 @@ class DirectPdfQA:
             if (match := re.match(r"^\s*(\d+)[.)]\s+", unit.text))
         ]
         if numbers:
-            return numbers[0] == 1 and numbers == list(range(1, len(numbers) + 1))
+            contiguous = (
+                numbers[0] == 1
+                and numbers == list(range(1, len(numbers) + 1))
+            )
+            if not contiguous:
+                return False
+            expected = numbers[-1] + 1
+            last_chunk = units[-1].chunk_index
+            for chunk_index in range(
+                last_chunk,
+                min(len(self.chunks), last_chunk + 4),
+            ):
+                text = self.chunks[chunk_index].text
+                if re.search(rf"(?m)^\s*{expected}[.)]\s+", text):
+                    return False
+                if chunk_index > last_chunk and any(
+                    (
+                        HEADING_RE.match(compact(line))
+                        or (
+                            1 <= len(words(compact(line))) <= 10
+                            and bool(re.match(
+                                r"^(?:\d+(?:\.\d+)*\.?\s+)?[A-Z][A-Za-z ]+$",
+                                compact(line),
+                            ))
+                        )
+                    )
+                    for line in text.splitlines()
+                ):
+                    return True
+            return False
         has_lead_in = any(unit.text.rstrip().endswith(":") for unit in units)
         has_instruction = any(PROCEDURE_RE.match(unit.text) for unit in units)
         return has_lead_in and has_instruction
