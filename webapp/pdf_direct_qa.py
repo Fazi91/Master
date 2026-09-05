@@ -41,6 +41,7 @@ QUESTION_WORDS = {
     "why", "will", "with", "would", "after", "before", "during", "through",
 }
 ACTION_SUFFIXES = ("ed", "ing", "ize", "ise", "ate", "fy")
+GENERIC_SUBJECT_ROOTS = {"specimen", "sample", "container", "method", "procedure", "use"}
 CAUSAL_RE = re.compile(
     r"\b(?:because|therefore|so that|in order to|to permit|to prevent|"
     r"reason|not suitable|not useful|unsuitable|due to|otherwise)\b",
@@ -224,7 +225,15 @@ class DirectPdfQA:
         word_scores = (self.word_matrix @ word_query.T).toarray().ravel()
         char_scores = (self.char_matrix @ char_query.T).toarray().ravel()
         cheap_scores = 0.72 * word_scores + 0.28 * char_scores
-        lexical_top = np.argsort(-cheap_scores)[:TOP_LEXICAL]
+        required_subject = set(need.subject_terms) - GENERIC_SUBJECT_ROOTS
+        eligible = np.asarray([
+            index for index, chunk in enumerate(self.chunks)
+            if not required_subject or required_subject & roots(chunk.text)
+        ], dtype=int)
+        lexical_top = (
+            eligible[np.argsort(-cheap_scores[eligible])[:TOP_LEXICAL]]
+            if eligible.size else np.argsort(-cheap_scores)[:TOP_LEXICAL]
+        )
         pairs = [[need.query, self.chunks[int(index)].text] for index in lexical_top]
         semantic = np.asarray(
             self.reranker.predict(pairs, show_progress_bar=False)
@@ -288,12 +297,17 @@ class DirectPdfQA:
             reverse=True,
         )
         subject_roots = set(need.subject_terms)
+        required_subject = subject_roots - GENERIC_SUBJECT_ROOTS
         filtered = [
             unit for unit in ranked_units
-            if not subject_roots or subject_roots & roots(unit.text)
+            if (
+                required_subject & roots(unit.text)
+                if required_subject else
+                (not subject_roots or subject_roots & roots(unit.text))
+            )
         ]
         if not filtered:
-            filtered = ranked_units
+            return []
         if need.answer_type == "reason":
             causal = [unit for unit in filtered if CAUSAL_RE.search(unit.text)]
             if causal:
