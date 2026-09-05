@@ -607,11 +607,13 @@ def main():
 
     load_dotenv(ROOT / ".env")
     uri = os.getenv("NEO4J_URI")
-    user = os.getenv("NEO4J_USER")
+    user = os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME")
     password = os.getenv("NEO4J_PASSWORD")
     database = os.getenv("NEO4J_DATABASE", "neo4j")
     if not uri or not user or not password:
-        raise RuntimeError("Missing NEO4J_URI, NEO4J_USER, or NEO4J_PASSWORD")
+        raise RuntimeError(
+            "Missing NEO4J_URI, NEO4J_USER/NEO4J_USERNAME, or NEO4J_PASSWORD"
+        )
 
     driver = GraphDatabase.driver(uri, auth=(user, password))
     try:
@@ -630,4 +632,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
