@@ -62,6 +62,7 @@ BENCHMARK_BY_QUESTION = {
 }
 
 GOLD_EVIDENCE_BY_ID = {
+    10: {"C_0217_001", "C_0217_002"},
     11: {"C_0109_001"},
     12: {"C_0312_001", "C_0312_002", "C_0313_001", "C_0314_001"},
 }
@@ -295,18 +296,19 @@ class EvaluationService:
                 (chunk_id, relation, "direct chunk-to-image relationship")
                 for relation in self.chunk_images.get(chunk_id, [])
             )
+        figure_pages = {
+            chunk.pdf_page
+            for chunk in self.pdf.chunks
+            if chunk.chunk_id in chunk_ids
+            and re.search(r"\bFig(?:ure)?\.?", chunk.text, re.I)
+        }
         for page in source_pages:
+            if page not in figure_pages:
+                continue
             relations.extend(
-                ("", relation, "image linked to the cited PDF page")
+                ("", relation, "figure on the cited PDF page")
                 for relation in self.page_images.get(page, [])
             )
-        if not relations:
-            for page in source_pages:
-                for nearby_page in (page - 1, page + 1):
-                    relations.extend(
-                        ("", relation, "image linked to an adjacent continuation page")
-                        for relation in self.page_images.get(nearby_page, [])
-                    )
         for chunk_id, relation, reason in relations:
                 image_id = relation.get("image_id", "")
                 if not image_id or image_id in seen:
@@ -365,6 +367,8 @@ class EvaluationService:
             "gold_recall_pct": recall,
             "neo4j_verification_pct": graph,
             "gold_annotated": gold is not None,
+            "gold_correct": f1 == 100.0 if f1 is not None else None,
+            "source_exact": bool(result.get("verification", {}).get("complete")),
             "gold_chunks": sorted(gold) if gold is not None else [],
             "label": "gold evidence F1" if gold is not None else "not measured",
         }
@@ -633,7 +637,7 @@ function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['D
 function graphStats(viz){const nodes=viz?.nodes||[],edges=viz?.edges||[];return `${nodes.length} real Aura nodes · ${edges.length} real relationships`}
 let results={};
 function pct(value){return value==null?'Not measured':`${value}%`}
-function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),ok=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{};target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${ok?'Verified':'Not verified'}</span></div><p class="answer ${ok?'':'error'}">${esc(data.answer)}</p><div class="metric"><b>${data.benchmark?.recognized?`Question ${String(data.benchmark.id).padStart(2,'0')} · ${esc(data.benchmark.category)}`:'Custom question'}</b><span>${data.benchmark?.recognized?'recognized benchmark question':'not one of the fixed 30 questions'} · engine ${esc(data.engine_revision||'unknown')}</span></div><div class="meta"><div class="metric"><b>${pct(score.accuracy_pct)}</b><span>Gold evidence F1</span></div><div class="metric"><b>${pct(score.gold_precision_pct)}</b><span>Gold precision</span></div><div class="metric"><b>${pct(score.gold_recall_pct)}</b><span>Gold recall</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>independent Aura search and location verification; this value is not added to answer quality</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
+function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),sourceExact=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{},goldMeasured=score.gold_annotated===true,goldCorrect=score.gold_correct===true,ok=goldMeasured?goldCorrect:sourceExact,status=goldMeasured?(goldCorrect?'Gold-correct':'Incorrect evidence'):(sourceExact?'Source-exact · not Gold-evaluated':'Not verified');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${status}</span></div><p class="answer ${sourceExact?'':'error'}">${esc(data.answer)}</p><div class="metric"><b>${data.benchmark?.recognized?`Question ${String(data.benchmark.id).padStart(2,'0')} · ${esc(data.benchmark.category)}`:'Custom question'}</b><span>${data.benchmark?.recognized?'recognized benchmark question':'not one of the fixed 30 questions'} · engine ${esc(data.engine_revision||'unknown')}</span></div><div class="meta"><div class="metric"><b>${pct(score.accuracy_pct)}</b><span>Gold evidence F1</span></div><div class="metric"><b>${pct(score.gold_precision_pct)}</b><span>Gold precision</span></div><div class="metric"><b>${pct(score.gold_recall_pct)}</b><span>Gold recall</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j traceability: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>share of selected source chunks located in Aura; not answer accuracy</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
 async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});render(mode,await r.json())}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
 function unique(values){return [...new Set(values||[])]}
 function chunkText(values){return values.length?values.map(esc).join(', '):'None'}
