@@ -330,8 +330,8 @@ class EvaluationService:
                 meta = self.images.get(image_id, {})
                 predicted = meta.get("final_type") or meta.get("predicted_type") or relation.get("image_type")
                 relevance = meta.get("content_relevance", "")
-                width = int(meta.get("width") or 0)
-                height = int(meta.get("height") or 0)
+                width = int(meta.get("pixel_width") or meta.get("width") or 0)
+                height = int(meta.get("pixel_height") or meta.get("height") or 0)
                 large_cited_figure = (
                     reason == "figure on the cited PDF page"
                     and width >= 300 and height >= 250
@@ -468,7 +468,7 @@ class EvaluationService:
                 self.pdf.chunks[index].chunk_id for index, _ in ranked[:10]
             ]
             distinctive_subject = sorted(
-                set(need.subject_terms) - {"specimen", "sample", "container", "method", "procedure", "use"}
+                set(need.subject_terms) - {"specimen", "container", "method", "procedure", "use"}
             )
             independent_ids = self.graph.search(
                 list(need.subject_terms) + list(roots(need.query)),
