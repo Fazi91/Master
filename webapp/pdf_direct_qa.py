@@ -234,10 +234,11 @@ class DirectPdfQA:
             index = int(lexical_top[int(position)])
             selected[index] = float(semantic[int(position)]) + float(cheap_scores[index])
         expanded = dict(selected)
+        neighbor_distance = 3 if need.answer_type in {"procedure", "calculation"} else 1
         for index, score in list(selected.items())[:TOP_CHUNKS_PER_NEED]:
-            for neighbor in (index - 1, index + 1):
+            for neighbor in range(index - neighbor_distance, index + neighbor_distance + 1):
                 if 0 <= neighbor < len(self.chunks):
-                    expanded.setdefault(neighbor, score - 0.35)
+                    expanded.setdefault(neighbor, score - 0.35 * abs(neighbor - index))
         return sorted(expanded.items(), key=lambda item: item[1], reverse=True)
 
     @staticmethod
@@ -294,14 +295,59 @@ class DirectPdfQA:
             causal = [unit for unit in filtered if CAUSAL_RE.search(unit.text)]
             if causal:
                 filtered = causal + [unit for unit in filtered if unit not in causal]
+        if need.answer_type == "procedure":
+            numbered: list[tuple[int, Unit]] = []
+            for unit in filtered:
+                match = re.match(r"^\s*(\d+)[.)]\s+", unit.text)
+                if match:
+                    numbered.append((int(match.group(1)), unit))
+            starts = [unit for number, unit in numbered if number == 1]
+            if starts:
+                start = max(starts, key=lambda unit: unit.score)
+                sequence = [start]
+                expected = 2
+                last_chunk = start.chunk_index
+                while expected <= 20:
+                    options = [
+                        unit for number, unit in numbered
+                        if number == expected
+                        and last_chunk <= unit.chunk_index <= start.chunk_index + 6
+                    ]
+                    if not options:
+                        break
+                    selected_step = max(
+                        options,
+                        key=lambda unit: (
+                            -abs(unit.chunk_index - last_chunk),
+                            len(unit.text),
+                            unit.score,
+                        ),
+                    )
+                    sequence.append(selected_step)
+                    last_chunk = selected_step.chunk_index
+                    expected += 1
+                if len(sequence) >= 2:
+                    return sequence[:MAX_UNITS_PER_NEED]
         best = filtered[0]
         chosen = [best]
         if need.answer_type in {"procedure", "calculation"}:
+            if need.answer_type == "procedure":
+                structural = [
+                    unit for unit in filtered
+                    if PROCEDURE_RE.match(unit.text) or unit.text.rstrip().endswith(":")
+                ]
+                if structural:
+                    best = structural[0]
             same_chunk = sorted(
                 (
                     unit for unit in ranked_units
                     if unit.chunk_index == best.chunk_index
                     and abs(unit.order - best.order) <= 4
+                    and (
+                        need.answer_type == "calculation"
+                        or PROCEDURE_RE.match(unit.text)
+                        or unit.text.rstrip().endswith(":")
+                    )
                 ),
                 key=lambda unit: unit.order,
             )
@@ -319,6 +365,23 @@ class DirectPdfQA:
         claim = normalize_for_exact_check(unit.text)
         return bool(claim) and claim in source
 
+    @staticmethod
+    def need_complete(need: Need, units: list[Unit]) -> bool:
+        if not units:
+            return False
+        if need.answer_type != "procedure":
+            return True
+        numbers = [
+            int(match.group(1))
+            for unit in units
+            if (match := re.match(r"^\s*(\d+)[.)]\s+", unit.text))
+        ]
+        if numbers:
+            return numbers[0] == 1 and numbers == list(range(1, len(numbers) + 1))
+        has_lead_in = any(unit.text.rstrip().endswith(":") for unit in units)
+        has_instruction = any(PROCEDURE_RE.match(unit.text) for unit in units)
+        return has_lead_in and has_instruction
+
     def answer(self, question: str) -> dict[str, Any]:
         cleaned = clean_question(question)
         needs = self.plan(cleaned)
@@ -328,7 +391,8 @@ class DirectPdfQA:
         for need in needs:
             ranked = self.retrieve(need)
             units = [unit for unit in self.extract(need, ranked) if self.verify_unit(unit)]
-            if not units:
+            need_is_complete = self.need_complete(need, units)
+            if not need_is_complete:
                 complete = False
             for unit in units:
                 if unit.chunk_index not in source_indices:
@@ -339,6 +403,7 @@ class DirectPdfQA:
                 "resolved_query": need.query,
                 "subject_terms": sorted(need.subject_terms),
                 "answer_type": need.answer_type,
+                "complete": need_is_complete,
                 "evidence": [
                     {
                         "text": unit.text,
@@ -385,7 +450,7 @@ class DirectPdfQA:
                     item["exact_source_match"]
                     for result in need_results for item in result["evidence"]
                 ),
-                "needs_covered": sum(bool(result["evidence"]) for result in need_results),
+                "needs_covered": sum(bool(result["complete"]) for result in need_results),
                 "needs_total": len(needs),
             },
         }
@@ -426,4 +491,3 @@ def ask(request: AskRequest) -> dict[str, Any]:
             "sources": [],
         }
     return engine().answer(question)
-
