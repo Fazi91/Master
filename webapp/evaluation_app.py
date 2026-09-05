@@ -100,9 +100,9 @@ class GraphVerifier:
             OPTIONAL MATCH (chunk)-[:ILLUSTRATED_BY]->(image:Image)
             RETURN chunk.id AS chunk_id,
                    page.pdf_page AS pdf_page,
-                   collect(DISTINCT coalesce(entity.name, entity.normalized_name,
+                   collect(DISTINCT coalesce(entity.normalized_name,
                                              entity.canonical_name)) AS entities,
-                   collect(DISTINCT coalesce(image.id, image.image_id)) AS image_ids
+                   collect(DISTINCT image.id) AS image_ids
             """
             with self.driver.session() as session:
                 records = [record.data() for record in session.run(query, chunk_ids=chunk_ids)]
@@ -163,8 +163,8 @@ class GraphVerifier:
             MATCH (chunk:Chunk)
             OPTIONAL MATCH (chunk)-[:MENTIONS]->(entity:Entity)
             WITH chunk,
-                 toLower(coalesce(chunk.text, chunk.chunk_text, '')) AS body,
-                 collect(DISTINCT toLower(coalesce(entity.name,
+                 toLower(coalesce(chunk.text, '')) AS body,
+                 collect(DISTINCT toLower(coalesce(
                      entity.normalized_name, entity.canonical_name, ''))) AS names
             WITH chunk,
                  reduce(n = 0, term IN $terms |
@@ -348,6 +348,24 @@ class EvaluationService:
         result["scores"] = self._scores(
             result, graph_result, benchmark, result["images"], mode
         )
+        result["retrieval_trace"] = {
+            "retrieved_chunks": list(dict.fromkeys(
+                candidate["chunk_id"]
+                for need in result.get("needs", [])
+                for candidate in need.get("retrieved_chunks", [])
+            )),
+            "pdf_seed_chunks": list(dict.fromkeys(
+                chunk_id
+                for need in result.get("needs", [])
+                for chunk_id in need.get("pdf_seed_chunks", [])
+            )),
+            "neo4j_independent_chunks": list(dict.fromkeys(
+                chunk_id
+                for need in result.get("needs", [])
+                for chunk_id in need.get("neo4j_independent_chunks", [])
+            )),
+            "accepted_chunks": chunk_ids,
+        }
         result["timing_ms"] = round((time.perf_counter() - started) * 1000, 1)
         return result
 
@@ -399,6 +417,12 @@ class EvaluationService:
                 "graph_candidates_added": len([
                     cid for cid in related_ids if cid in chunk_index
                 ]),
+                "pdf_seed_chunks": seed_ids,
+                "neo4j_independent_chunks": independent_ids[:20],
+                "neo4j_expanded_chunks": related_ids[:30],
+                "accepted_chunks": list(dict.fromkeys(
+                    self.pdf.chunks[unit.chunk_index].chunk_id for unit in units
+                )),
                 "evidence": [
                     {
                         "text": unit.text,
@@ -524,6 +548,7 @@ HTML = r'''<!doctype html>
     .answer{white-space:pre-wrap;margin:0 0 16px}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.metric{padding:9px;background:#f8fafc;border-radius:8px}.metric b{display:block;font-size:13px}.metric span{font-size:12px;color:var(--muted)}
     details{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}summary{font-weight:700;cursor:pointer}.source{padding:11px 0;border-bottom:1px solid #edf2f7}.source small{color:var(--muted)}.source p{margin:6px 0;font-size:13px;max-height:110px;overflow:auto}
     .images{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.images img{width:100%;height:150px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}.error{color:var(--red)}
+    .compare-panel{margin-top:20px}.compare-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}.chunk-list{font:12px/1.5 Consolas,monospace;word-break:break-word;color:#334155}.gain{color:#047857}.loss{color:#b91c1c}
     @media(max-width:800px){.grid{grid-template-columns:1fr}.top{display:block}.badge{display:inline-block;margin-top:12px}.meta{grid-template-columns:1fr}}
   </style>
 </head>
@@ -549,5 +574,7 @@ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 let results={};
 function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),ok=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{};target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${ok?'Verified':'Not verified'}</span></div><p class="answer ${ok?'':'error'}">${esc(data.answer)}</p><div class="metric"><b>${data.benchmark?.recognized?`Question ${String(data.benchmark.id).padStart(2,'0')} · ${esc(data.benchmark.category)}`:'Custom question'}</b><span>${data.benchmark?.recognized?'recognized benchmark question':'not one of the fixed 30 questions'}</span></div><div class="meta"><div class="metric"><b>${score.accuracy_pct??0}%</b><span>evaluation score</span></div><div class="metric"><b>${score.need_coverage_pct??0}%</b><span>need coverage</span></div><div class="metric"><b>${score.source_fidelity_pct??0}%</b><span>source fidelity</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>independent graph search plus chunk/location verification</span></div>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
 async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});render(mode,await r.json())}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
-async function compareBoth(){results={};await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct??0,g=results.graph?.scores?.accuracy_pct??0,d=g-p;const verdict=d>0?`Neo4j improved the measured score by ${d} percentage points.`:d<0?`Neo4j scored ${Math.abs(d)} points lower; no improvement is claimed.`:'Neo4j did not change the measured score for this question.';document.getElementById('comparison').innerHTML=`<section class="panel" style="margin-top:20px"><b>Measured comparison: PDF ${p}% · PDF + Neo4j ${g}%</b><p class="subtitle">${verdict} This score measures need coverage, exact source support, graph verification and required image support; it is not a fabricated correctness claim.</p></section>`}
+function unique(values){return [...new Set(values||[])]}
+function chunkText(values){return values.length?values.map(esc).join(', '):'None'}
+async function compareBoth(){results={};document.getElementById('comparison').innerHTML='';await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct??0,g=results.graph?.scores?.accuracy_pct??0,d=g-p,pdfAccepted=unique(results.pdf?.retrieval_trace?.accepted_chunks),graphAccepted=unique(results.graph?.retrieval_trace?.accepted_chunks),graphCandidates=unique(results.graph?.retrieval_trace?.neo4j_independent_chunks),common=pdfAccepted.filter(id=>graphAccepted.includes(id)),graphOnly=graphAccepted.filter(id=>!pdfAccepted.includes(id)),pdfOnly=pdfAccepted.filter(id=>!graphAccepted.includes(id)),candidateOnly=graphCandidates.filter(id=>!pdfAccepted.includes(id));const improved=d>0||graphOnly.length>0,verdict=d>0?`Neo4j improved the measured score by ${d} percentage points.`:d<0?`Neo4j scored ${Math.abs(d)} points lower; no improvement is claimed.`:graphOnly.length?`Neo4j found additional accepted evidence, although the aggregate score did not change.`:'Neo4j did not improve the accepted evidence for this question.';document.getElementById('comparison').innerHTML=`<section class="panel compare-panel"><div class="head"><h2>PDF vs Neo4j comparison</h2><span class="state ${improved?'ok':'idle'}">${improved?'Graph contribution found':'No measured gain'}</span></div><b>PDF ${p}% · PDF + Neo4j ${g}%</b><p class="subtitle ${d<0?'loss':d>0?'gain':''}">${verdict}</p><div class="compare-grid"><div class="metric"><b>PDF accepted</b><div class="chunk-list">${chunkText(pdfAccepted)}</div></div><div class="metric"><b>Common evidence</b><div class="chunk-list">${chunkText(common)}</div></div><div class="metric"><b>Neo4j-only accepted</b><div class="chunk-list">${chunkText(graphOnly)}</div></div><div class="metric"><b>PDF-only accepted</b><div class="chunk-list">${chunkText(pdfOnly)}</div></div></div><details><summary>Independent Neo4j candidates not returned by PDF</summary><p class="chunk-list">${chunkText(candidateOnly)}</p></details><p class="subtitle">A graph improvement is reported only when Neo4j adds accepted evidence or increases the measured score. Candidate chunks alone do not count as an improvement.</p></section>`}
 </script></body></html>'''
