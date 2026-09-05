@@ -19,10 +19,7 @@ from webapp.pdf_direct_qa import DirectPdfQA, clean_question, roots
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENGINE_REVISION = hashlib.sha256(
-    Path(__file__).read_bytes()
-    + Path(__file__).with_name("pdf_direct_qa.py").read_bytes()
-).hexdigest()[:12]
+ENGINE_REVISION = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
 load_dotenv(ROOT / ".env")
 
 
@@ -62,6 +59,11 @@ EVALUATION_QUESTIONS = [
 BENCHMARK_BY_QUESTION = {
     re.sub(r"[^a-z0-9]+", " ", item["question"].casefold()).strip(): item
     for item in EVALUATION_QUESTIONS
+}
+
+GOLD_EVIDENCE_BY_ID = {
+    11: {"C_0109_001"},
+    12: {"C_0312_001", "C_0312_002", "C_0313_001", "C_0314_001"},
 }
 
 
@@ -341,30 +343,30 @@ class EvaluationService:
         result: dict[str, Any], graph_result: dict[str, Any],
         benchmark: dict[str, Any] | None, images: list[dict[str, Any]], mode: str,
     ) -> dict[str, Any]:
-        verification = result.get("verification", {})
-        total = max(int(verification.get("needs_total") or 0), 1)
-        covered = int(verification.get("needs_covered") or 0)
-        coverage = round(100 * min(covered / total, 1.0))
-        fidelity = 100 if verification.get("all_claims_are_exact_source_spans") else 0
+        accepted = {source["chunk_id"] for source in result.get("sources", [])}
+        gold = GOLD_EVIDENCE_BY_ID.get(int(benchmark["id"])) if benchmark else None
+        precision = recall = f1 = None
+        if gold is not None:
+            true_positive = len(accepted & gold)
+            precision = round(100 * true_positive / max(len(accepted), 1), 1)
+            recall = round(100 * true_positive / len(gold), 1)
+            f1 = (
+                round(2 * precision * recall / (precision + recall), 1)
+                if precision + recall else 0.0
+            )
         graph = (
             round(100 * len(graph_result.get("verified_chunks", [])) /
                   max(len(result.get("sources", [])), 1))
             if mode == "graph" else None
         )
-        image_expected = bool(benchmark and benchmark["category"] == "Image")
-        image_support = (100 if images else 0) if image_expected else None
-        # The graph connection is reported separately. Merely verifying that a
-        # chunk exists in Aura cannot improve the quality score of an answer.
-        components = [coverage, fidelity]
-        if image_support is not None:
-            components.append(image_support)
         return {
-            "accuracy_pct": min(components),
-            "need_coverage_pct": coverage,
-            "source_fidelity_pct": fidelity,
+            "accuracy_pct": f1,
+            "gold_precision_pct": precision,
+            "gold_recall_pct": recall,
             "neo4j_verification_pct": graph,
-            "image_support_pct": image_support,
-            "label": "answer verification score",
+            "gold_annotated": gold is not None,
+            "gold_chunks": sorted(gold) if gold is not None else [],
+            "label": "gold evidence F1" if gold is not None else "not measured",
         }
 
     def ask(self, question: str, mode: str) -> dict[str, Any]:
@@ -630,9 +632,10 @@ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image']){const cap=['Entity','Image'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 880 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg>`}
 function graphStats(viz){const nodes=viz?.nodes||[],edges=viz?.edges||[];return `${nodes.length} real Aura nodes · ${edges.length} real relationships`}
 let results={};
-function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),ok=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{};target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${ok?'Verified':'Not verified'}</span></div><p class="answer ${ok?'':'error'}">${esc(data.answer)}</p><div class="metric"><b>${data.benchmark?.recognized?`Question ${String(data.benchmark.id).padStart(2,'0')} · ${esc(data.benchmark.category)}`:'Custom question'}</b><span>${data.benchmark?.recognized?'recognized benchmark question':'not one of the fixed 30 questions'} · engine ${esc(data.engine_revision||'unknown')}</span></div><div class="meta"><div class="metric"><b>${score.accuracy_pct??0}%</b><span>answer verification score</span></div><div class="metric"><b>${score.need_coverage_pct??0}%</b><span>need coverage</span></div><div class="metric"><b>${score.source_fidelity_pct??0}%</b><span>source fidelity</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>independent Aura search and location verification; this value is not added to answer quality</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
+function pct(value){return value==null?'Not measured':`${value}%`}
+function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),ok=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{};target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${ok?'Verified':'Not verified'}</span></div><p class="answer ${ok?'':'error'}">${esc(data.answer)}</p><div class="metric"><b>${data.benchmark?.recognized?`Question ${String(data.benchmark.id).padStart(2,'0')} · ${esc(data.benchmark.category)}`:'Custom question'}</b><span>${data.benchmark?.recognized?'recognized benchmark question':'not one of the fixed 30 questions'} · engine ${esc(data.engine_revision||'unknown')}</span></div><div class="meta"><div class="metric"><b>${pct(score.accuracy_pct)}</b><span>Gold evidence F1</span></div><div class="metric"><b>${pct(score.gold_precision_pct)}</b><span>Gold precision</span></div><div class="metric"><b>${pct(score.gold_recall_pct)}</b><span>Gold recall</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>independent Aura search and location verification; this value is not added to answer quality</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
 async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});render(mode,await r.json())}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
 function unique(values){return [...new Set(values||[])]}
 function chunkText(values){return values.length?values.map(esc).join(', '):'None'}
-async function compareBoth(){results={};document.getElementById('comparison').innerHTML='';await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct??0,g=results.graph?.scores?.accuracy_pct??0,d=g-p,pdfAccepted=unique(results.pdf?.retrieval_trace?.accepted_chunks),graphAccepted=unique(results.graph?.retrieval_trace?.accepted_chunks),graphCandidates=unique(results.graph?.retrieval_trace?.neo4j_independent_chunks),common=pdfAccepted.filter(id=>graphAccepted.includes(id)),graphOnly=graphAccepted.filter(id=>!pdfAccepted.includes(id)),pdfOnly=pdfAccepted.filter(id=>!graphAccepted.includes(id)),candidateOnly=graphCandidates.filter(id=>!pdfAccepted.includes(id));const improved=d>0||graphOnly.length>0,verdict=d>0?`Neo4j improved the measured score by ${d} percentage points.`:d<0?`Neo4j scored ${Math.abs(d)} points lower; no improvement is claimed.`:graphOnly.length?`Neo4j found additional accepted evidence, although the aggregate score did not change.`:'Neo4j did not improve the accepted evidence for this question.';document.getElementById('comparison').innerHTML=`<section class="panel compare-panel"><div class="head"><h2>PDF vs Neo4j comparison</h2><span class="state ${improved?'ok':'idle'}">${improved?'Graph contribution found':'No measured gain'}</span></div><b>PDF ${p}% · PDF + Neo4j ${g}%</b><p class="subtitle ${d<0?'loss':d>0?'gain':''}">${verdict}</p><div class="compare-grid"><div class="metric"><b>PDF accepted</b><div class="chunk-list">${chunkText(pdfAccepted)}</div></div><div class="metric"><b>Common evidence</b><div class="chunk-list">${chunkText(common)}</div></div><div class="metric"><b>Neo4j-only accepted</b><div class="chunk-list">${chunkText(graphOnly)}</div></div><div class="metric"><b>PDF-only accepted</b><div class="chunk-list">${chunkText(pdfOnly)}</div></div></div><details><summary>Independent Neo4j candidates not returned by PDF</summary><p class="chunk-list">${chunkText(candidateOnly)}</p></details><p class="subtitle">A graph improvement is reported only when Neo4j adds accepted evidence or increases the measured score. Candidate chunks alone do not count as an improvement.</p></section>`}
+async function compareBoth(){results={};document.getElementById('comparison').innerHTML='';await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct,g=results.graph?.scores?.accuracy_pct,measured=p!=null&&g!=null,d=measured?g-p:null,pdfAccepted=unique(results.pdf?.retrieval_trace?.accepted_chunks),graphAccepted=unique(results.graph?.retrieval_trace?.accepted_chunks),graphCandidates=unique(results.graph?.retrieval_trace?.neo4j_independent_chunks),common=pdfAccepted.filter(id=>graphAccepted.includes(id)),graphOnly=graphAccepted.filter(id=>!pdfAccepted.includes(id)),pdfOnly=pdfAccepted.filter(id=>!graphAccepted.includes(id)),candidateOnly=graphCandidates.filter(id=>!pdfAccepted.includes(id));const improved=measured&&d>0,verdict=!measured?'No Gold annotation exists for this question; no percentage is reported.':d>0?`Neo4j improved Gold evidence F1 by ${d.toFixed(1)} percentage points.`:d<0?`Neo4j Gold evidence F1 was ${Math.abs(d).toFixed(1)} points lower.`:'Neo4j did not improve Gold evidence retrieval for this question.',scores=measured?`PDF ${p}% · PDF + Neo4j ${g}%`:'PDF Not measured · PDF + Neo4j Not measured';document.getElementById('comparison').innerHTML=`<section class="panel compare-panel"><div class="head"><h2>PDF vs Neo4j comparison</h2><span class="state ${improved?'ok':'idle'}">${improved?'Measured graph gain':'No measured gain'}</span></div><b>${scores}</b><p class="subtitle ${d<0?'loss':d>0?'gain':''}">${verdict}</p><div class="compare-grid"><div class="metric"><b>PDF accepted</b><div class="chunk-list">${chunkText(pdfAccepted)}</div></div><div class="metric"><b>Common evidence</b><div class="chunk-list">${chunkText(common)}</div></div><div class="metric"><b>Neo4j-only accepted</b><div class="chunk-list">${chunkText(graphOnly)}</div></div><div class="metric"><b>PDF-only accepted</b><div class="chunk-list">${chunkText(pdfOnly)}</div></div></div><details><summary>Independent Neo4j candidates not returned by PDF</summary><p class="chunk-list">${chunkText(candidateOnly)}</p></details><p class="subtitle">A Neo4j improvement is reported only against independently annotated Gold evidence.</p></section>`}
 </script></body></html>'''
