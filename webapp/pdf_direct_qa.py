@@ -304,7 +304,7 @@ class DirectPdfQA:
         filtered = [
             unit for unit in ranked_units
             if (
-                required_subject.issubset(roots(unit.text))
+                bool(required_subject & roots(unit.text))
                 if required_subject else
                 (not subject_roots or subject_roots & roots(unit.text))
             )
