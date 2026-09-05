@@ -82,6 +82,25 @@ def roots(text: str) -> set[str]:
     return {stem(word) for word in words(text) if word not in QUESTION_WORDS}
 
 
+def is_section_heading(text: str) -> bool:
+    line = compact(text)
+    tokens = words(line)
+    if not 1 <= len(tokens) <= 10:
+        return False
+    if re.match(r"^(?:Fig|Table)\.?\s*\d", line, re.I):
+        return False
+    if re.match(r"^\d+\s+(?:Manual|Index)\b", line, re.I):
+        return False
+    if re.match(r"^\d+\.?\s+.*\s+\d+$", line):
+        return False
+    if line.endswith((".", ";", ":", ",")):
+        return False
+    return bool(
+        HEADING_RE.match(line)
+        or re.match(r"^(?:\d+(?:\.\d+)*\.?\s+)?[A-Z][A-Za-z ]+$", line)
+    )
+
+
 def normalize_for_exact_check(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", compact(text).casefold()).strip()
 
@@ -323,16 +342,30 @@ class DirectPdfQA:
                     starts,
                     key=lambda unit: (section_operation_overlap(unit), unit.score),
                 )
-                # Once the correct section is anchored, follow its physical chunk
-                # order. Ranking is useful for finding the section, but it must not
-                # decide whether a later numbered step is allowed to exist.
+                # Once the correct section is anchored, follow PDF page order.
+                # CSV row order is not a stable document-order guarantee.
                 local_candidates: list[tuple[int, int, str]] = []
-                for chunk_index in range(
-                    start.chunk_index,
-                    min(len(self.chunks), start.chunk_index + 9),
-                ):
+                start_page = self.chunks[start.chunk_index].pdf_page
+                nearby_chunks = sorted(
+                    (
+                        (chunk_index, chunk)
+                        for chunk_index, chunk in enumerate(self.chunks)
+                        if start_page <= chunk.pdf_page <= start_page + 4
+                    ),
+                    key=lambda item: (item[1].pdf_page, item[1].page_index),
+                )
+                boundary_page: int | None = None
+                for _, chunk in nearby_chunks:
+                    if chunk.pdf_page <= start_page:
+                        continue
+                    if any(is_section_heading(line) for line in chunk.text.splitlines()):
+                        boundary_page = chunk.pdf_page
+                        break
+                for chunk_index, chunk in nearby_chunks:
+                    if boundary_page is not None and chunk.pdf_page >= boundary_page:
+                        break
                     for order, text in enumerate(
-                        self.units(self.chunks[chunk_index].text)
+                        self.units(chunk.text)
                     ):
                         if re.match(r"^\s*\d+[.)]\s+", text):
                             local_candidates.append((chunk_index, order, text))
@@ -353,12 +386,13 @@ class DirectPdfQA:
                     ]
                 sequence = [start]
                 expected = 2
-                last_chunk = start.chunk_index
+                last_page = start_page
                 while expected <= 20:
                     options = [
                         unit for number, unit in numbered
                         if number == expected
-                        and last_chunk <= unit.chunk_index <= start.chunk_index + 6
+                        and last_page <= self.chunks[unit.chunk_index].pdf_page
+                        <= start_page + 4
                     ]
                     if not options:
                         break
@@ -366,13 +400,13 @@ class DirectPdfQA:
                         options,
                         key=lambda unit: (
                             not bool(re.search(r"(?:\bFig\.?|\(|\[)\s*$", unit.text)),
-                            -abs(unit.chunk_index - last_chunk),
+                            -abs(self.chunks[unit.chunk_index].pdf_page - last_page),
                             len(unit.text),
                             unit.score,
                         ),
                     )
                     sequence.append(selected_step)
-                    last_chunk = selected_step.chunk_index
+                    last_page = self.chunks[selected_step.chunk_index].pdf_page
                     expected += 1
                 if len(sequence) >= 2:
                     return sequence[:MAX_UNITS_PER_NEED]
@@ -432,25 +466,23 @@ class DirectPdfQA:
                 return False
             expected = numbers[-1] + 1
             last_chunk = units[-1].chunk_index
-            for chunk_index in range(
-                last_chunk,
-                min(len(self.chunks), last_chunk + 4),
-            ):
-                text = self.chunks[chunk_index].text
+            last = self.chunks[last_chunk]
+            continuation = sorted(
+                (
+                    (chunk_index, chunk)
+                    for chunk_index, chunk in enumerate(self.chunks)
+                    if last.pdf_page <= chunk.pdf_page <= last.pdf_page + 3
+                    and (chunk.pdf_page, chunk.page_index)
+                    >= (last.pdf_page, last.page_index)
+                ),
+                key=lambda item: (item[1].pdf_page, item[1].page_index),
+            )
+            for chunk_index, chunk in continuation:
+                text = chunk.text
                 if re.search(rf"(?m)^\s*{expected}[.)]\s+", text):
                     return False
-                if chunk_index > last_chunk and any(
-                    (
-                        HEADING_RE.match(compact(line))
-                        or (
-                            1 <= len(words(compact(line))) <= 10
-                            and bool(re.match(
-                                r"^(?:\d+(?:\.\d+)*\.?\s+)?[A-Z][A-Za-z ]+$",
-                                compact(line),
-                            ))
-                        )
-                    )
-                    for line in text.splitlines()
+                if chunk_index != last_chunk and any(
+                    is_section_heading(line) for line in text.splitlines()
                 ):
                     return True
             return False
