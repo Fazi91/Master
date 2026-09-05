@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import math
 import os
 import re
 import threading
@@ -49,6 +50,7 @@ GENERIC_SUBJECT_ROOTS = {
     "prepare", "collect", "label", "dispatch", "examine", "identify",
     "fix", "stain", "clean", "sterilize", "calculate", "convert",
     "differ", "preserve", "reject",
+    "not", "rather", "than", "between", "per", "number", "maximum",
 }
 CAUSAL_RE = re.compile(
     r"\b(?:because|therefore|so that|in order to|to permit|to prevent|"
@@ -81,7 +83,13 @@ def words(text: str) -> list[str]:
 
 def stem(word: str) -> str:
     value = word.casefold()
-    for suffix in ("ization", "isation", "ation", "ments", "ment", "ingly", "edly", "ing", "ied", "ed", "es", "s"):
+    if value.endswith("ies") and len(value) > 5:
+        value = value[:-3] + "y"
+    elif value.endswith(("sses", "xes", "zes", "ches", "shes")):
+        value = value[:-2]
+    elif value.endswith("s") and not value.endswith("ss") and len(value) > 4:
+        value = value[:-1]
+    for suffix in ("ization", "isation", "ation", "ments", "ment", "ingly", "edly", "ing", "ied", "ed"):
         if value.endswith(suffix) and len(value) > len(suffix) + 3:
             return value[: -len(suffix)]
     return value
@@ -89,6 +97,14 @@ def stem(word: str) -> str:
 
 def roots(text: str) -> set[str]:
     return {stem(word) for word in words(text) if word not in QUESTION_WORDS}
+
+
+def subject_match(required: set[str], available: set[str]) -> bool:
+    """Require the topic, without demanding every descriptive query word."""
+    if not required:
+        return True
+    minimum = max(1, math.ceil(len(required) * 0.6))
+    return len(required & available) >= minimum
 
 
 def normalize_for_exact_check(text: str) -> str:
@@ -180,14 +196,14 @@ class DirectPdfQA:
     @staticmethod
     def answer_type(question: str) -> str:
         lowered = question.casefold()
-        if re.search(r"\bwhy\b|\breason\b", lowered):
-            return "reason"
-        if re.search(r"\bhow\b|\bsteps?\b|\bprocedure\b|\bmethod\b", lowered):
-            return "procedure"
         if re.search(r"\bcalculat\w*\b|\bformula\b|\bcomput\w*\b", lowered):
             return "calculation"
         if re.search(r"\bcompare\b|\bdifference\b|\bversus\b|\bvs\.?\b", lowered):
             return "comparison"
+        if re.search(r"\bwhy\b|\breason\b", lowered):
+            return "reason"
+        if re.search(r"\bhow\b|\bsteps?\b|\bprocedure\b|\bmethod\b", lowered):
+            return "procedure"
         return "fact"
 
     @staticmethod
@@ -233,12 +249,28 @@ class DirectPdfQA:
         word_scores = (self.word_matrix @ word_query.T).toarray().ravel()
         char_scores = (self.char_matrix @ char_query.T).toarray().ravel()
         cheap_scores = 0.72 * word_scores + 0.28 * char_scores
-        required_subject = set(need.subject_terms) - GENERIC_SUBJECT_ROOTS
+        generic_roots = {stem(term) for term in GENERIC_SUBJECT_ROOTS}
+        required_subject = set(need.subject_terms) - generic_roots
         chunk_roots = [roots(chunk.text) for chunk in self.chunks]
+        figure_required = bool(re.search(r"\bfig(?:ure)?s?\b", need.query, re.I))
+        minimum_figures = 2 if re.search(r"\bfigures\b", need.query, re.I) else 1
+        requested_figures = set(re.findall(
+            r"\bFig(?:ure)?s?\.?\s*(\d+\.\d+)", need.query, re.I
+        ))
         eligible = np.asarray([
             index for index, item_roots in enumerate(chunk_roots)
-            if not required_subject or required_subject.issubset(item_roots)
+            if subject_match(required_subject, item_roots)
+            if not figure_required or len(re.findall(
+                r"\bFig(?:ure)?\.?\s*\d", self.chunks[index].text, re.I
+            )) >= minimum_figures
+            if not requested_figures or requested_figures.issubset(set(re.findall(
+                r"\bFig(?:ure)?\.?\s*(\d+\.\d+)",
+                self.chunks[index].text,
+                re.I,
+            )))
         ], dtype=int)
+        if not eligible.size and requested_figures:
+            return []
         if not eligible.size and required_subject:
             eligible = np.asarray([
                 index for index, item_roots in enumerate(chunk_roots)
@@ -287,7 +319,11 @@ class DirectPdfQA:
                 continue
             if HEADING_RE.match(block) and len(block.split()) <= 12:
                 continue
-            sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9—])", block)
+            protected = re.sub(r"\bFig\.", "Fig§", block, flags=re.I)
+            sentences = [
+                part.replace("Fig§", "Fig.")
+                for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9—])", protected)
+            ]
             if PROCEDURE_RE.match(block) or block.rstrip().endswith(":"):
                 result.append(block)
             else:
@@ -295,9 +331,12 @@ class DirectPdfQA:
         return result
 
     def extract(self, need: Need, ranked: list[tuple[int, float]]) -> list[Unit]:
+        chunk_rank_scores = dict(ranked)
         candidates: list[tuple[int, int, str]] = []
         candidate_limit = 60 if need.answer_type in {"procedure", "calculation"} else TOP_RERANK
         for chunk_index, _chunk_score in ranked[:candidate_limit]:
+            if self.chunks[chunk_index].text.rstrip().endswith("Table Table"):
+                continue
             for order, text in enumerate(self.units(self.chunks[chunk_index].text)):
                 candidates.append((chunk_index, order, text))
         if not candidates:
@@ -308,14 +347,23 @@ class DirectPdfQA:
         ).reshape(-1)
         ranked_units = sorted(
             (
-                Unit(chunk_index, order, text, float(score))
+                Unit(
+                    chunk_index,
+                    order,
+                    text,
+                    float(score) + 0.15 * chunk_rank_scores.get(chunk_index, 0.0),
+                )
                 for (chunk_index, order, text), score in zip(candidates, scores)
             ),
             key=lambda unit: unit.score,
             reverse=True,
         )
         subject_roots = set(need.subject_terms)
-        required_subject = subject_roots - GENERIC_SUBJECT_ROOTS
+        generic_roots = {stem(term) for term in GENERIC_SUBJECT_ROOTS}
+        required_subject = subject_roots - generic_roots
+        requested_figures = set(re.findall(
+            r"\bFig(?:ure)?s?\.?\s*(\d+\.\d+)", need.query, re.I
+        ))
         # Procedure steps often omit the subject after the section establishes it
         # (for example, "Ask the patient..." under sputum collection).  Keep
         # subject validation at chunk level for procedures, but at unit level
@@ -324,8 +372,18 @@ class DirectPdfQA:
             unit for unit in ranked_units
             if (
                 (
-                    required_subject.issubset(
-                        roots(self.chunks[unit.chunk_index].text)
+                    not requested_figures
+                    or bool(requested_figures & set(re.findall(
+                        r"\bFig(?:ure)?\.?\s*(\d+\.\d+)",
+                        self.chunks[unit.chunk_index].text,
+                        re.I,
+                    )))
+                )
+                and
+                (
+                    subject_match(
+                        required_subject,
+                        roots(self.chunks[unit.chunk_index].text),
                     )
                     if need.answer_type == "procedure"
                     else bool(required_subject & roots(unit.text))
@@ -348,11 +406,16 @@ class DirectPdfQA:
                 return [causal[0]]
         if need.answer_type == "procedure":
             numbered: list[tuple[int, Unit]] = []
-            for unit in filtered:
+            # Start inside a subject-qualified unit, then allow adjacent
+            # continuation chunks whose later steps naturally omit the subject.
+            for unit in ranked_units:
                 match = re.match(r"^\s*(\d+)[.)]\s+", unit.text)
                 if match:
                     numbered.append((int(match.group(1)), unit))
-            starts = [unit for number, unit in numbered if number == 1]
+            starts = [
+                unit for number, unit in numbered
+                if number == 1 and unit in filtered
+            ]
             if starts:
                 operation_roots = roots(need.query) - subject_roots
 
@@ -374,6 +437,7 @@ class DirectPdfQA:
                 )
                 sequence = [start]
                 expected = 2
+                last_unit = start
                 last_page = self.chunks[start.chunk_index].pdf_page
                 while expected <= 20:
                     options = [
@@ -381,15 +445,22 @@ class DirectPdfQA:
                         if number == expected
                         and last_page <= self.chunks[unit.chunk_index].pdf_page
                         <= last_page + 1
+                        and (
+                            (
+                                unit.chunk_index == last_unit.chunk_index
+                                and unit.order > last_unit.order
+                            )
+                            or (
+                                unit.chunk_index > last_unit.chunk_index
+                                and not any(
+                                    other.chunk_index == unit.chunk_index
+                                    and other.order < unit.order
+                                    and re.match(r"^\s*\d+[.)]\s+", other.text)
+                                    for other in ranked_units
+                                )
+                            )
+                        )
                     ]
-                    if not options:
-                        for chunk_index, chunk in enumerate(self.chunks):
-                            if not last_page <= chunk.pdf_page <= last_page + 1:
-                                continue
-                            for order, text in enumerate(self.units(chunk.text)):
-                                match = re.match(r"^\s*(\d+)[.)]\s+", text)
-                                if match and int(match.group(1)) == expected:
-                                    options.append(Unit(chunk_index, order, text, 0.0))
                     if not options:
                         break
                     selected_step = max(
@@ -401,6 +472,7 @@ class DirectPdfQA:
                         ),
                     )
                     sequence.append(selected_step)
+                    last_unit = selected_step
                     last_page = self.chunks[selected_step.chunk_index].pdf_page
                     expected += 1
                 if len(sequence) >= 2:
@@ -418,6 +490,46 @@ class DirectPdfQA:
                         lead = max(lead_candidates, key=lambda unit: unit.score)
                         return ([lead] + sequence)[:MAX_UNITS_PER_NEED]
                     return sequence[:MAX_UNITS_PER_NEED]
+        if "component" in roots(need.query):
+            component_roots = {"body", "head", "joint", "washer"}
+            chunk_candidates = {unit.chunk_index for unit in filtered}
+            if chunk_candidates:
+                chosen_chunk = max(
+                    chunk_candidates,
+                    key=lambda index: (
+                        len(component_roots & roots(self.chunks[index].text)),
+                        chunk_rank_scores.get(index, 0.0),
+                        max(
+                            unit.score for unit in filtered
+                            if unit.chunk_index == index
+                        ),
+                    ),
+                )
+                component_units = sorted(
+                    (
+                        unit for unit in ranked_units
+                        if unit.chunk_index == chosen_chunk
+                        and (
+                            component_roots & roots(unit.text)
+                            or "made up" in unit.text.casefold()
+                        )
+                        and len(unit.text) <= 320
+                    ),
+                    key=lambda unit: unit.order,
+                )
+                if component_units:
+                    return component_units[:MAX_UNITS_PER_NEED]
+        if requested_figures:
+            exact_figure_units = [
+                unit for unit in filtered
+                if requested_figures & set(re.findall(
+                    r"\bFig(?:ure)?\.?\s*(\d+\.\d+)", unit.text, re.I
+                ))
+            ]
+            if exact_figure_units:
+                filtered = exact_figure_units + [
+                    unit for unit in filtered if unit not in exact_figure_units
+                ]
         best = filtered[0]
         chosen = [best]
         if need.answer_type in {"procedure", "calculation"}:
@@ -444,9 +556,23 @@ class DirectPdfQA:
             chosen = same_chunk or chosen
         else:
             for unit in filtered[1:]:
-                if len(chosen) >= 3:
+                limit = 3 if need.answer_type == "comparison" else 4
+                if len(chosen) >= limit:
                     break
-                if unit.chunk_index == best.chunk_index and unit.text not in {x.text for x in chosen}:
+                if (
+                    self.chunks[unit.chunk_index].pdf_page
+                    == self.chunks[best.chunk_index].pdf_page
+                    and abs(unit.chunk_index - best.chunk_index) <= 1
+                    and (
+                        not requested_figures
+                        or bool(requested_figures & set(re.findall(
+                            r"\bFig(?:ure)?\.?\s*(\d+\.\d+)",
+                            unit.text,
+                            re.I,
+                        )))
+                    )
+                    and unit.text not in {x.text for x in chosen}
+                ):
                     chosen.append(unit)
         return chosen[:MAX_UNITS_PER_NEED]
 
