@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Literal
@@ -13,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 
-from webapp.pdf_direct_qa import DirectPdfQA, clean_question
+from webapp.pdf_direct_qa import DirectPdfQA, clean_question, roots
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,11 @@ EVALUATION_QUESTIONS = [
     {"id": 29, "category": "Image", "question": "How is a sputum sample collected as shown in the figure?"},
     {"id": 30, "category": "Image", "question": "How is an inoculating loop used to prepare a smear as shown in the figures?"},
 ]
+
+BENCHMARK_BY_QUESTION = {
+    re.sub(r"[^a-z0-9]+", " ", item["question"].casefold()).strip(): item
+    for item in EVALUATION_QUESTIONS
+}
 
 
 class EvaluationRequest(BaseModel):
@@ -145,6 +151,42 @@ class GraphVerifier:
         except Exception:
             return []
 
+    def search(self, terms: list[str]) -> list[str]:
+        """Search Neo4j independently; PDF retrieval results are not used as seeds."""
+        terms = sorted({term.casefold() for term in terms if len(term) >= 3})
+        if not terms:
+            return []
+        try:
+            if not self.connect():
+                return []
+            query = """
+            MATCH (chunk:Chunk)
+            OPTIONAL MATCH (chunk)-[:MENTIONS]->(entity:Entity)
+            WITH chunk,
+                 toLower(coalesce(chunk.text, chunk.chunk_text, '')) AS body,
+                 collect(DISTINCT toLower(coalesce(entity.name,
+                     entity.normalized_name, entity.canonical_name, ''))) AS names
+            WITH chunk,
+                 reduce(n = 0, term IN $terms |
+                     n + CASE WHEN body CONTAINS term THEN 1 ELSE 0 END) AS text_hits,
+                 reduce(n = 0, term IN $terms |
+                     n + CASE WHEN any(name IN names WHERE name CONTAINS term)
+                              THEN 1 ELSE 0 END) AS entity_hits
+            WHERE text_hits > 0 OR entity_hits > 0
+            RETURN chunk.id AS chunk_id,
+                   text_hits * 2 + entity_hits AS graph_score
+            ORDER BY graph_score DESC, chunk_id
+            LIMIT 80
+            """
+            with self.driver.session() as session:
+                return [
+                    record["chunk_id"]
+                    for record in session.run(query, terms=terms)
+                    if record["chunk_id"]
+                ]
+        except Exception:
+            return []
+
 
 class EvaluationService:
     def __init__(self) -> None:
@@ -152,6 +194,7 @@ class EvaluationService:
         self.graph = GraphVerifier()
         self.images = self._load_images()
         self.chunk_images = self._load_chunk_images()
+        self.page_images = self._load_page_images()
 
     @staticmethod
     def _load_images() -> dict[str, dict[str, str]]:
@@ -172,11 +215,43 @@ class EvaluationService:
                 mapping.setdefault(row["chunk_id"], []).append(row)
         return mapping
 
-    def related_images(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
+    @staticmethod
+    def _load_page_images() -> dict[int, list[dict[str, str]]]:
+        path = ROOT / "data" / "graph_v2" / "rel_page_image.csv"
+        mapping: dict[int, list[dict[str, str]]] = {}
+        if not path.exists():
+            return mapping
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                page = int(row.get("pdf_page") or 0)
+                if page:
+                    mapping.setdefault(page, []).append(row)
+        return mapping
+
+    def related_images(
+        self, chunk_ids: list[str], source_pages: list[int]
+    ) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         seen: set[str] = set()
+        relations: list[tuple[str, dict[str, str], str]] = []
         for chunk_id in chunk_ids:
-            for relation in self.chunk_images.get(chunk_id, []):
+            relations.extend(
+                (chunk_id, relation, "direct chunk-to-image relationship")
+                for relation in self.chunk_images.get(chunk_id, [])
+            )
+        for page in source_pages:
+            relations.extend(
+                ("", relation, "image linked to the cited PDF page")
+                for relation in self.page_images.get(page, [])
+            )
+        if not relations:
+            for page in source_pages:
+                for nearby_page in (page - 1, page + 1):
+                    relations.extend(
+                        ("", relation, "image linked to an adjacent continuation page")
+                        for relation in self.page_images.get(nearby_page, [])
+                    )
+        for chunk_id, relation, reason in relations:
                 image_id = relation.get("image_id", "")
                 if not image_id or image_id in seen:
                     continue
@@ -197,10 +272,46 @@ class EvaluationService:
                     "type": predicted,
                     "score": float(relation.get("semantic_score") or 0.0),
                     "relationship": relation.get("relation_type") or "ILLUSTRATED_BY",
-                    "verification_reason": "direct chunk-to-image relationship",
+                    "verification_reason": reason,
                     "url": f"/media/{filename}" if filename else None,
                 })
         return sorted(result, key=lambda item: item["score"], reverse=True)[:4]
+
+    @staticmethod
+    def _benchmark(question: str) -> dict[str, Any] | None:
+        key = re.sub(r"[^a-z0-9]+", " ", question.casefold()).strip()
+        return BENCHMARK_BY_QUESTION.get(key)
+
+    @staticmethod
+    def _scores(
+        result: dict[str, Any], graph_result: dict[str, Any],
+        benchmark: dict[str, Any] | None, images: list[dict[str, Any]], mode: str,
+    ) -> dict[str, Any]:
+        verification = result.get("verification", {})
+        total = max(int(verification.get("needs_total") or 0), 1)
+        covered = int(verification.get("needs_covered") or 0)
+        coverage = round(100 * min(covered / total, 1.0))
+        fidelity = 100 if verification.get("all_claims_are_exact_source_spans") else 0
+        graph = (
+            round(100 * len(graph_result.get("verified_chunks", [])) /
+                  max(len(result.get("sources", [])), 1))
+            if mode == "graph" else None
+        )
+        image_expected = bool(benchmark and benchmark["category"] == "Image")
+        image_support = (100 if images else 0) if image_expected else None
+        components = [coverage, fidelity]
+        if graph is not None:
+            components.append(min(graph, 100))
+        if image_support is not None:
+            components.append(image_support)
+        return {
+            "accuracy_pct": round(sum(components) / len(components)),
+            "need_coverage_pct": coverage,
+            "source_fidelity_pct": fidelity,
+            "neo4j_verification_pct": graph,
+            "image_support_pct": image_support,
+            "label": "evidence-based evaluation score",
+        }
 
     def ask(self, question: str, mode: str) -> dict[str, Any]:
         started = time.perf_counter()
@@ -222,9 +333,21 @@ class EvaluationService:
                 result["verification"]["complete"] = False
             else:
                 result["verification"]["neo4j_verified"] = True
+        benchmark = self._benchmark(question)
         result["mode"] = mode
         result["graph"] = graph_result
-        result["images"] = self.related_images(chunk_ids) if result["kind"] == "domain_answer" else []
+        source_pages = [int(source.get("pdf_page") or 0) for source in result.get("sources", [])]
+        result["images"] = (
+            self.related_images(chunk_ids, source_pages)
+            if result["kind"] == "domain_answer" else []
+        )
+        result["benchmark"] = (
+            {**benchmark, "recognized": True}
+            if benchmark else {"recognized": False}
+        )
+        result["scores"] = self._scores(
+            result, graph_result, benchmark, result["images"], mode
+        )
         result["timing_ms"] = round((time.perf_counter() - started) * 1000, 1)
         return result
 
@@ -243,7 +366,10 @@ class EvaluationService:
             seed_ids = [
                 self.pdf.chunks[index].chunk_id for index, _ in ranked[:10]
             ]
-            related_ids = self.graph.expand(seed_ids)
+            independent_ids = self.graph.search(list(need.subject_terms) + list(roots(need.query)))
+            related_ids = list(dict.fromkeys(
+                independent_ids + self.graph.expand(seed_ids)
+            ))
             expanded = dict(ranked)
             seed_floor = min((score for _, score in ranked[:10]), default=0.0)
             for offset, chunk_id in enumerate(related_ids):
@@ -257,7 +383,8 @@ class EvaluationService:
                 unit for unit in self.pdf.extract(need, graph_ranked)
                 if self.pdf.verify_unit(unit)
             ]
-            if not units:
+            need_is_complete = self.pdf.need_complete(need, units)
+            if not need_is_complete:
                 complete = False
             for unit in units:
                 if unit.chunk_index not in source_indices:
@@ -268,6 +395,7 @@ class EvaluationService:
                 "resolved_query": need.query,
                 "subject_terms": sorted(need.subject_terms),
                 "answer_type": need.answer_type,
+                "complete": need_is_complete,
                 "graph_candidates_added": len([
                     cid for cid in related_ids if cid in chunk_index
                 ]),
@@ -324,7 +452,7 @@ class EvaluationService:
                     for result in need_results for item in result["evidence"]
                 ),
                 "needs_covered": sum(
-                    bool(result["evidence"]) for result in need_results
+                    bool(result["complete"]) for result in need_results
                 ),
                 "needs_total": len(needs),
             },
@@ -407,6 +535,7 @@ HTML = r'''<!doctype html>
     <textarea id="customQuestion" placeholder="Or write a new question here…"></textarea>
     <div class="actions"><button class="primary" onclick="run('pdf')">Run PDF only</button><button class="secondary" onclick="run('graph')">Run PDF + Neo4j</button><button class="compare" onclick="compareBoth()">Compare both</button></div>
   </section>
+  <div id="comparison"></div>
   <section class="grid"><article class="result" id="pdfResult"></article><article class="result" id="graphResult"></article></section>
 </main>
 <script>
@@ -417,7 +546,8 @@ fetch('/questions').then(r=>r.json()).then(items=>{select.innerHTML='<option val
 select.addEventListener('change',()=>{if(select.selectedOptions[0]?.dataset.q)custom.value=select.selectedOptions[0].dataset.q});
 function question(){return custom.value.trim()||select.selectedOptions[0]?.dataset.q||''}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function render(mode,data){const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),ok=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[];target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${ok?'Verified':'Not verified'}</span></div><p class="answer ${ok?'':'error'}">${esc(data.answer)}</p><div class="meta"><div class="metric"><b>${data.verification?.needs_covered??0}/${data.verification?.needs_total??0}</b><span>needs covered</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j: ${esc(data.graph?.status)}</b><span>${(data.graph?.verified_chunks||[]).length} chunks verified</span></div>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:''}`}
+let results={};
+function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),ok=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{};target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${ok?'Verified':'Not verified'}</span></div><p class="answer ${ok?'':'error'}">${esc(data.answer)}</p><div class="metric"><b>${data.benchmark?.recognized?`Question ${String(data.benchmark.id).padStart(2,'0')} · ${esc(data.benchmark.category)}`:'Custom question'}</b><span>${data.benchmark?.recognized?'recognized benchmark question':'not one of the fixed 30 questions'}</span></div><div class="meta"><div class="metric"><b>${score.accuracy_pct??0}%</b><span>evaluation score</span></div><div class="metric"><b>${score.need_coverage_pct??0}%</b><span>need coverage</span></div><div class="metric"><b>${score.source_fidelity_pct??0}%</b><span>source fidelity</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>independent graph search plus chunk/location verification</span></div>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
 async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});render(mode,await r.json())}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
-async function compareBoth(){await run('pdf');await run('graph')}
+async function compareBoth(){results={};await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct??0,g=results.graph?.scores?.accuracy_pct??0,d=g-p;const verdict=d>0?`Neo4j improved the measured score by ${d} percentage points.`:d<0?`Neo4j scored ${Math.abs(d)} points lower; no improvement is claimed.`:'Neo4j did not change the measured score for this question.';document.getElementById('comparison').innerHTML=`<section class="panel" style="margin-top:20px"><b>Measured comparison: PDF ${p}% · PDF + Neo4j ${g}%</b><p class="subtitle">${verdict} This score measures need coverage, exact source support, graph verification and required image support; it is not a fabricated correctness claim.</p></section>`}
 </script></body></html>'''
