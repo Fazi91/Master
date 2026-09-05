@@ -44,6 +44,11 @@ ACTION_SUFFIXES = ("ed", "ing", "ize", "ise", "ate", "fy")
 GENERIC_SUBJECT_ROOTS = {
     "specimen", "container", "method", "procedure", "use",
     "shown", "figure", "purpose", "difference",
+    # Operations describe what to retrieve about the subject; they are not
+    # subject identity constraints.
+    "prepare", "collect", "label", "dispatch", "examine", "identify",
+    "fix", "stain", "clean", "sterilize", "calculate", "convert",
+    "differ", "preserve", "reject",
 }
 CAUSAL_RE = re.compile(
     r"\b(?:because|therefore|so that|in order to|to permit|to prevent|"
