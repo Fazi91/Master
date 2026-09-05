@@ -318,10 +318,13 @@ class DirectPdfQA:
         filtered = [
             unit for unit in ranked_units
             if (
-                bool(required_subject & roots(
-                    self.chunks[unit.chunk_index].text
-                    if need.answer_type == "procedure" else unit.text
-                ))
+                (
+                    required_subject.issubset(
+                        roots(self.chunks[unit.chunk_index].text)
+                    )
+                    if need.answer_type == "procedure"
+                    else bool(required_subject & roots(unit.text))
+                )
                 if required_subject else
                 (
                     not subject_roots
