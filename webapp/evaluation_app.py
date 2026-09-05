@@ -62,6 +62,8 @@ BENCHMARK_BY_QUESTION = {
 }
 
 GOLD_EVIDENCE_BY_ID = {
+    8: {"C_0217_002"},
+    9: {"C_0189_001"},
     10: {"C_0217_001", "C_0217_002"},
     11: {"C_0109_001"},
     12: {"C_0312_001", "C_0312_002", "C_0313_001", "C_0314_001"},
@@ -208,9 +210,14 @@ class GraphVerifier:
         except Exception:
             return []
 
-    def search(self, terms: list[str]) -> list[str]:
-        """Search Neo4j independently; PDF retrieval results are not used as seeds."""
+    def search(
+        self, terms: list[str], required_terms: list[str] | None = None
+    ) -> list[str]:
+        """Search Aura independently while requiring the question's subject."""
         terms = sorted({term.casefold() for term in terms if len(term) >= 3})
+        required_terms = sorted({
+            term.casefold() for term in (required_terms or []) if len(term) >= 3
+        })
         if not terms:
             return []
         try:
@@ -229,7 +236,10 @@ class GraphVerifier:
                  reduce(n = 0, term IN $terms |
                      n + CASE WHEN any(name IN names WHERE name CONTAINS term)
                               THEN 1 ELSE 0 END) AS entity_hits
-            WHERE text_hits > 0 OR entity_hits > 0
+            WHERE (text_hits > 0 OR entity_hits > 0)
+              AND all(term IN $required_terms WHERE
+                  body CONTAINS term
+                  OR any(name IN names WHERE name CONTAINS term))
             RETURN chunk.id AS chunk_id,
                    text_hits * 2 + entity_hits AS graph_score
             ORDER BY graph_score DESC, chunk_id
@@ -238,7 +248,9 @@ class GraphVerifier:
             with self.driver.session() as session:
                 return [
                     record["chunk_id"]
-                    for record in session.run(query, terms=terms)
+                    for record in session.run(
+                        query, terms=terms, required_terms=required_terms
+                    )
                     if record["chunk_id"]
                 ]
         except Exception:
@@ -286,7 +298,7 @@ class EvaluationService:
         return mapping
 
     def related_images(
-        self, chunk_ids: list[str], source_pages: list[int]
+        self, chunk_ids: list[str], source_pages: list[int], answer_text: str
     ) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -296,11 +308,13 @@ class EvaluationService:
                 (chunk_id, relation, "direct chunk-to-image relationship")
                 for relation in self.chunk_images.get(chunk_id, [])
             )
+        answer_references_figure = bool(
+            re.search(r"\bFig(?:ure)?\.?\s*\d", answer_text, re.I)
+        )
         figure_pages = {
             chunk.pdf_page
             for chunk in self.pdf.chunks
-            if chunk.chunk_id in chunk_ids
-            and re.search(r"\bFig(?:ure)?\.?", chunk.text, re.I)
+            if answer_references_figure and chunk.chunk_id in chunk_ids
         }
         for page in source_pages:
             if page not in figure_pages:
@@ -316,7 +330,15 @@ class EvaluationService:
                 meta = self.images.get(image_id, {})
                 predicted = meta.get("final_type") or meta.get("predicted_type") or relation.get("image_type")
                 relevance = meta.get("content_relevance", "")
-                if predicted in {"fragment_or_noise", "logo", "decorative"}:
+                width = int(meta.get("width") or 0)
+                height = int(meta.get("height") or 0)
+                large_cited_figure = (
+                    reason == "figure on the cited PDF page"
+                    and width >= 300 and height >= 250
+                )
+                if predicted in {"logo", "decorative"}:
+                    continue
+                if predicted == "fragment_or_noise" and not large_cited_figure:
                     continue
                 if relevance.casefold() in {"irrelevant", "decorative"}:
                     continue
@@ -398,7 +420,7 @@ class EvaluationService:
         result["graph"] = graph_result
         source_pages = [int(source.get("pdf_page") or 0) for source in result.get("sources", [])]
         result["images"] = (
-            self.related_images(chunk_ids, source_pages)
+            self.related_images(chunk_ids, source_pages, result.get("answer", ""))
             if result["kind"] == "domain_answer" else []
         )
         result["benchmark"] = (
@@ -445,7 +467,13 @@ class EvaluationService:
             seed_ids = [
                 self.pdf.chunks[index].chunk_id for index, _ in ranked[:10]
             ]
-            independent_ids = self.graph.search(list(need.subject_terms) + list(roots(need.query)))
+            distinctive_subject = sorted(
+                set(need.subject_terms) - {"specimen", "sample", "container", "method", "procedure", "use"}
+            )
+            independent_ids = self.graph.search(
+                list(need.subject_terms) + list(roots(need.query)),
+                required_terms=distinctive_subject,
+            )
             related_ids = list(dict.fromkeys(
                 independent_ids + self.graph.expand(seed_ids)
             ))
