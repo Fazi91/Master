@@ -15,7 +15,12 @@ from fastapi.staticfiles import StaticFiles
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 
-from webapp.pdf_direct_qa import DirectPdfQA, clean_question, roots
+from webapp.pdf_direct_qa import (
+    GENERIC_SUBJECT_ROOTS,
+    DirectPdfQA,
+    clean_question,
+    roots,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -471,10 +476,7 @@ class EvaluationService:
                 self.pdf.chunks[index].chunk_id for index, _ in ranked[:10]
             ]
             distinctive_subject = sorted(
-                set(need.subject_terms) - {
-                    "specimen", "container", "method", "procedure", "use",
-                    "shown", "figure", "purpose", "difference",
-                }
+                set(need.subject_terms) - GENERIC_SUBJECT_ROOTS
             )
             independent_ids = self.graph.search(
                 list(need.subject_terms) + list(roots(need.query)),
