@@ -257,6 +257,9 @@ class DirectPdfQA:
         cleaned = re.sub(r"(?<=[A-Za-z])-\n(?=[a-z])", "", cleaned)
         cleaned = re.sub(r"^\s*G\s+", "— ", cleaned, flags=re.M)
         cleaned = re.sub(r"\n(?=\s*\d+[.)]\s+[A-Z])", "\n\n", cleaned)
+        cleaned = re.sub(
+            r"(?<=[.!?])\s+(?=\d+[.)]\s+[A-Z])", "\n\n", cleaned
+        )
         blocks = re.split(r"\n\s*\n+", cleaned)
         result: list[str] = []
         for block in blocks:
@@ -311,7 +314,7 @@ class DirectPdfQA:
         if need.answer_type == "reason":
             causal = [unit for unit in filtered if CAUSAL_RE.search(unit.text)]
             if causal:
-                filtered = causal + [unit for unit in filtered if unit not in causal]
+                return [causal[0]]
         if need.answer_type == "procedure":
             numbered: list[tuple[int, Unit]] = []
             for unit in filtered:
@@ -370,6 +373,19 @@ class DirectPdfQA:
                     last_page = self.chunks[selected_step.chunk_index].pdf_page
                     expected += 1
                 if len(sequence) >= 2:
+                    lead_candidates = [
+                        unit for unit in filtered
+                        if unit not in sequence
+                        and unit.chunk_index <= start.chunk_index
+                        and self.chunks[unit.chunk_index].pdf_page
+                            == self.chunks[start.chunk_index].pdf_page
+                        and subject_roots & roots(unit.text)
+                        and re.search(r"\b(?:should|must|first|before|after)\b", unit.text, re.I)
+                        and len(unit.text) <= 300
+                    ]
+                    if lead_candidates:
+                        lead = max(lead_candidates, key=lambda unit: unit.score)
+                        return ([lead] + sequence)[:MAX_UNITS_PER_NEED]
                     return sequence[:MAX_UNITS_PER_NEED]
         best = filtered[0]
         chosen = [best]
