@@ -96,13 +96,22 @@ class GraphVerifier:
             MATCH (chunk:Chunk)
             WHERE chunk.id IN $chunk_ids
             OPTIONAL MATCH (page:Page)-[:HAS_CHUNK]->(chunk)
+            OPTIONAL MATCH (document:Document)-[:HAS_PAGE]->(page)
             OPTIONAL MATCH (chunk)-[:MENTIONS]->(entity:Entity)
             OPTIONAL MATCH (chunk)-[:ILLUSTRATED_BY]->(image:Image)
             RETURN chunk.id AS chunk_id,
+                   page.id AS page_id,
                    page.pdf_page AS pdf_page,
-                   collect(DISTINCT coalesce(entity.normalized_name,
-                                             entity.canonical_name)) AS entities,
-                   collect(DISTINCT image.id) AS image_ids
+                   document.id AS document_id,
+                   collect(DISTINCT {
+                       id: entity.id,
+                       label: coalesce(entity.canonical_name, entity.normalized_name),
+                       type: coalesce(entity.entity_type, 'Entity')
+                   }) AS entities,
+                   collect(DISTINCT {
+                       id: image.id,
+                       file_path: image.file_path
+                   }) AS images
             """
             with self.driver.session() as session:
                 records = [record.data() for record in session.run(query, chunk_ids=chunk_ids)]
@@ -111,6 +120,7 @@ class GraphVerifier:
                 "status": "verified" if set(chunk_ids).issubset(verified) else "partial",
                 "verified_chunks": verified,
                 "locations": records,
+                "visualization": self._visualization(records),
                 "query": query.strip(),
             }
         except Exception as exc:
@@ -121,8 +131,47 @@ class GraphVerifier:
                 "status": "error",
                 "verified_chunks": [],
                 "locations": [],
+                "visualization": {"nodes": [], "edges": []},
                 "error": f"{type(exc).__name__}: {exc}",
             }
+
+    @staticmethod
+    def _visualization(records: list[dict[str, Any]]) -> dict[str, Any]:
+        nodes: dict[str, dict[str, str]] = {}
+        edges: set[tuple[str, str, str]] = set()
+
+        def add_node(node_id: str | None, label: str, kind: str) -> None:
+            if node_id:
+                nodes.setdefault(node_id, {"id": node_id, "label": label, "type": kind})
+
+        for record in records:
+            document_id = record.get("document_id")
+            page_id = record.get("page_id")
+            chunk_id = record.get("chunk_id")
+            add_node(document_id, document_id or "Document", "Document")
+            add_node(page_id, f"Page {record.get('pdf_page')}", "Page")
+            add_node(chunk_id, chunk_id or "Chunk", "Chunk")
+            if document_id and page_id:
+                edges.add((document_id, page_id, "HAS_PAGE"))
+            if page_id and chunk_id:
+                edges.add((page_id, chunk_id, "HAS_CHUNK"))
+            for entity in record.get("entities", []):
+                entity_id = entity.get("id") if entity else None
+                add_node(entity_id, entity.get("label") or entity_id or "Entity", "Entity")
+                if chunk_id and entity_id:
+                    edges.add((chunk_id, entity_id, "MENTIONS"))
+            for image in record.get("images", []):
+                image_id = image.get("id") if image else None
+                add_node(image_id, image_id or "Image", "Image")
+                if chunk_id and image_id:
+                    edges.add((chunk_id, image_id, "ILLUSTRATED_BY"))
+        return {
+            "nodes": list(nodes.values()),
+            "edges": [
+                {"source": source, "target": target, "label": label}
+                for source, target, label in sorted(edges)
+            ],
+        }
 
     def expand(self, chunk_ids: list[str]) -> list[str]:
         """Return graph-linked chunk candidates without replacing text retrieval."""
@@ -549,6 +598,7 @@ HTML = r'''<!doctype html>
     details{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}summary{font-weight:700;cursor:pointer}.source{padding:11px 0;border-bottom:1px solid #edf2f7}.source small{color:var(--muted)}.source p{margin:6px 0;font-size:13px;max-height:110px;overflow:auto}
     .images{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.images img{width:100%;height:150px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}.error{color:var(--red)}
     .compare-panel{margin-top:20px}.compare-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}.chunk-list{font:12px/1.5 Consolas,monospace;word-break:break-word;color:#334155}.gain{color:#047857}.loss{color:#b91c1c}
+    .graph{width:100%;min-height:220px;border:1px solid var(--line);border-radius:10px;background:#fbfdff}.graph text{font:12px Segoe UI,Arial,sans-serif}.graph-edge{stroke:#94a3b8;stroke-width:1.5}.graph-label{fill:#64748b;font-size:10px}.node-document{fill:#dbeafe}.node-page{fill:#dcfce7}.node-chunk{fill:#fef3c7}.node-entity{fill:#ede9fe}.node-image{fill:#ffe4e6}
     @media(max-width:800px){.grid{grid-template-columns:1fr}.top{display:block}.badge{display:inline-block;margin-top:12px}.meta{grid-template-columns:1fr}}
   </style>
 </head>
@@ -571,8 +621,9 @@ fetch('/questions').then(r=>r.json()).then(items=>{select.innerHTML='<option val
 select.addEventListener('change',()=>{if(select.selectedOptions[0]?.dataset.q)custom.value=select.selectedOptions[0].dataset.q});
 function question(){return custom.value.trim()||select.selectedOptions[0]?.dataset.q||''}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image']){const cap=['Entity','Image'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 880 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg>`}
 let results={};
-function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),ok=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{};target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${ok?'Verified':'Not verified'}</span></div><p class="answer ${ok?'':'error'}">${esc(data.answer)}</p><div class="metric"><b>${data.benchmark?.recognized?`Question ${String(data.benchmark.id).padStart(2,'0')} · ${esc(data.benchmark.category)}`:'Custom question'}</b><span>${data.benchmark?.recognized?'recognized benchmark question':'not one of the fixed 30 questions'}</span></div><div class="meta"><div class="metric"><b>${score.accuracy_pct??0}%</b><span>evaluation score</span></div><div class="metric"><b>${score.need_coverage_pct??0}%</b><span>need coverage</span></div><div class="metric"><b>${score.source_fidelity_pct??0}%</b><span>source fidelity</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>independent graph search plus chunk/location verification</span></div>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
+function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),ok=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{};target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${ok?'Verified':'Not verified'}</span></div><p class="answer ${ok?'':'error'}">${esc(data.answer)}</p><div class="metric"><b>${data.benchmark?.recognized?`Question ${String(data.benchmark.id).padStart(2,'0')} · ${esc(data.benchmark.category)}`:'Custom question'}</b><span>${data.benchmark?.recognized?'recognized benchmark question':'not one of the fixed 30 questions'}</span></div><div class="meta"><div class="metric"><b>${score.accuracy_pct??0}%</b><span>evaluation score</span></div><div class="metric"><b>${score.need_coverage_pct??0}%</b><span>need coverage</span></div><div class="metric"><b>${score.source_fidelity_pct??0}%</b><span>source fidelity</span></div><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>independent graph search plus chunk/location verification</span></div><details open><summary>Neo4j evidence graph</summary>${graphMarkup(data.graph?.visualization)}</details><details><summary>Cypher used for verification</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(s.text)}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
 async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});render(mode,await r.json())}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
 function unique(values){return [...new Set(values||[])]}
 function chunkText(values){return values.length?values.map(esc).join(', '):'None'}
