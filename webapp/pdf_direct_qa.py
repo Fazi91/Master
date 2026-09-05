@@ -72,7 +72,7 @@ def words(text: str) -> list[str]:
 
 def stem(word: str) -> str:
     value = word.casefold()
-    for suffix in ("ization", "isation", "ments", "ment", "ingly", "edly", "ing", "ied", "ed", "es", "s"):
+    for suffix in ("ization", "isation", "ation", "ments", "ment", "ingly", "edly", "ing", "ied", "ed", "es", "s"):
         if value.endswith(suffix) and len(value) > len(suffix) + 3:
             return value[: -len(suffix)]
     return value
@@ -246,6 +246,7 @@ class DirectPdfQA:
         cleaned = text.replace("\r", "")
         cleaned = re.sub(r"(?<=[A-Za-z])-\n(?=[a-z])", "", cleaned)
         cleaned = re.sub(r"^\s*G\s+", "— ", cleaned, flags=re.M)
+        cleaned = re.sub(r"\n(?=\s*\d+[.)]\s+[A-Z])", "\n\n", cleaned)
         blocks = re.split(r"\n\s*\n+", cleaned)
         result: list[str] = []
         for block in blocks:
@@ -303,7 +304,24 @@ class DirectPdfQA:
                     numbered.append((int(match.group(1)), unit))
             starts = [unit for number, unit in numbered if number == 1]
             if starts:
-                start = max(starts, key=lambda unit: unit.score)
+                operation_roots = roots(need.query) - subject_roots
+
+                def section_operation_overlap(unit: Unit) -> int:
+                    source = self.chunks[unit.chunk_index].text
+                    heading_terms: set[str] = set()
+                    for raw_line in source.splitlines():
+                        line = compact(raw_line)
+                        tokens = words(line)
+                        if not 1 < len(tokens) <= 12 or line.endswith((".", ";")):
+                            continue
+                        if HEADING_RE.match(line) or not re.search(r"[,!?]", line):
+                            heading_terms.update(roots(line))
+                    return len(operation_roots & heading_terms)
+
+                start = max(
+                    starts,
+                    key=lambda unit: (section_operation_overlap(unit), unit.score),
+                )
                 sequence = [start]
                 expected = 2
                 last_chunk = start.chunk_index
@@ -404,6 +422,14 @@ class DirectPdfQA:
                 "subject_terms": sorted(need.subject_terms),
                 "answer_type": need.answer_type,
                 "complete": need_is_complete,
+                "retrieved_chunks": [
+                    {
+                        "chunk_id": self.chunks[index].chunk_id,
+                        "pdf_page": self.chunks[index].pdf_page,
+                        "score": round(score, 4),
+                    }
+                    for index, score in ranked[:10]
+                ],
                 "evidence": [
                     {
                         "text": unit.text,
