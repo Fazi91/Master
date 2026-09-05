@@ -468,7 +468,10 @@ class EvaluationService:
                 self.pdf.chunks[index].chunk_id for index, _ in ranked[:10]
             ]
             distinctive_subject = sorted(
-                set(need.subject_terms) - {"specimen", "container", "method", "procedure", "use"}
+                set(need.subject_terms) - {
+                    "specimen", "container", "method", "procedure", "use",
+                    "shown", "figure", "purpose", "difference",
+                }
             )
             independent_ids = self.graph.search(
                 list(need.subject_terms) + list(roots(need.query)),
