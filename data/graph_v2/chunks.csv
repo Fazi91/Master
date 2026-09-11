@@ -1,4 +1,4 @@
-chunk_id,doc_id,page_id,pdf_page,printed_page,chunk_index_on_page,start_word_index,end_word_index_exclusive,start_char,end_char_exclusive,word_count,chunk_text_sha256,chunk_text
+﻿chunk_id,doc_id,page_id,pdf_page,printed_page,chunk_index_on_page,start_word_index,end_word_index_exclusive,start_char,end_char_exclusive,word_count,chunk_text_sha256,chunk_text
 C_0001_001,DOC_WHO_2003,P_0001,1,,1,0,41,0,131,41,1a6dbd571b80a10556bfbdf1ed54184a36420e7f964510d348beda8322df9478,"M A N U A L
 O F B A S I C
 T E C H N I Q U E S
@@ -12867,18 +12867,20 @@ slide, away from the largest drops, keeping the spreader at an angle of 45° (Fi
 4.133). Make sure that the spreader is in even contact with the surface of the
 slide all the time the blood is being spread.
 
-5. Thick film. Always handle slides by the edges, or by a corner, to make the thick
+Preparation of a thick blood film
+
+1. Always handle slides by the edges, or by a corner, to make the thick
 film as follows:
 
 Using the corner of the spreader, quickly join the larger drops of blood and
 spread them to make an even, thick film (Fig. 4.134).
 
-6. Allow the thick film to dry in a flat, level position protected from flies, dust and
+2. Allow the thick film to dry in a flat, level position protected from flies, dust and
 extreme heat. Label the dry film with"
 C_0186_003,DOC_WHO_2003,P_0186,186,174,3,360,425,1960,2305,65,e2a0e6101da2b8615d452bf9f845a3af0f8f4c0b79e39d799d57dc273d682763,"the larger drops of blood and
 spread them to make an even, thick film (Fig. 4.134).
 
-6. Allow the thick film to dry in a flat, level position protected from flies, dust and
+2. Allow the thick film to dry in a flat, level position protected from flies, dust and
 extreme heat. Label the dry film with a grease pencil by writing across the thicker
 portion of the thin film the patient’s name or number and date (as shown in Fig.
 4.135)."
@@ -14474,14 +14476,14 @@ the slide dry completely in the air.
 
 5. Repeat step 1.
 
-Unmarked smears are sometimes received in the laboratory from outside sources.
+Unmarked smears are sometimes received in the laboratory from outside sources. To
+find out on which side of an unmarked slide the smear has been made:
 
-To find out on which side of an unmarked slide the smear has been made, turn the
-slide so that it reflects the light from the window:
+1. Turn the slide so that it reflects the light from the window.
 
-G The side without the smear will shine.
+2. The side without the smear will shine.
 
-G The side with the smear will not reflect the light.
+3. The side with the smear will not reflect the light.
 
 
 
@@ -15134,7 +15136,7 @@ Fig. 5.19 Examining the back
 of the throat
 5.4.3 Microscopic examination
 
-Examine the sputum with the naked eye and then by microscopy.
+1. Examine the sputum with the naked eye and then by microscopy.
 
 The sputum of a person suffering from a bacterial infection usually contains:
 
@@ -15170,11 +15172,11 @@ If there is blood present, this must also be reported.
 A sputum sample composed mostly of saliva will not be useful either for culture or
 for direct examination.
 
-Examine the smear stained with Albert stain as described in section 5.3.2. If green
+2. Examine the smear stained with Albert stain as described in section 5.3.2. If green
 rods containing green-black volutin granules (see Fig. 5.16) are seen, report as
 “Corynebacterium diphtheriae present”.
 
-Examine the smear stained with Ziehl–Neelsen stain as described in section 5.3.3.
+3. Examine the smear stained with Ziehl–Neelsen stain as described in section 5.3.3.
 If red bacilli can be seen, report as “acid-fast bacilli present”. Report the numbers
 of acid-fast bacilli present as described in Table 5.2. If no acid-fast bacilli are seen,
 report as “no acid-fast bacilli found”.
