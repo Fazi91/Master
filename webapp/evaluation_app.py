@@ -112,6 +112,31 @@ GOLD_EVIDENCE_BY_ID = {
     12: {"C_0312_001", "C_0312_002", "C_0313_001", "C_0314_001"},
     13: {"C_0186_002", "C_0186_003"},
     14: {"C_0210_001"},
+    # 31-39: the id>30 population the Neo4j override in _graph_answer is
+    # allowed to touch. Gold-annotating it too (not just 8-14) closes the
+    # exact gap that let question 35 read as "PASS, Neo4j contributed"
+    # despite the override having swapped in an unrelated chunk -- source-
+    # exact verification alone confirms a sentence is quoted correctly,
+    # never that it is quoted from the right place.
+    31: {"C_0240_001"},
+    32: {"C_0251_001", "C_0251_002"},
+    # Steps 1-6 (the full preparation) are complete within these two
+    # chunks alone; C_0265_001 covers the following "microscopic
+    # examination" sub-task, not the preparation this question asks
+    # about, so it does not belong in this question's gold set.
+    33: {"C_0264_001", "C_0264_002"},
+    34: {"C_0267_002"},
+    35: {"C_0268_002"},
+    36: {"C_0262_001", "C_0262_002"},
+    37: {"C_0125_001"},
+    38: {"C_0147_002", "C_0148_001"},
+    # PDF-only's own top pick here (C_0373_002) is a different, wrong
+    # buffered-water recipe missing potassium dihydrogen phosphate
+    # entirely. The correct recipe's own 14 numbered steps span two
+    # chunk-boundary cuts (an overlap split mid-step-7, then a page
+    # break into 43) -- all four chunks are needed for the complete
+    # method, not just the one the override first lands on.
+    39: {"C_0042_001", "C_0042_002", "C_0043_001", "C_0043_002"},
 }
 
 
@@ -659,12 +684,74 @@ class EvaluationService:
                 if best_id not in pdf_chunk_ids:
                     top_index = chunk_index.get(best_id)
                     if top_index is not None:
+                        # A single chunk in isolation starves extract()'s own
+                        # numbered-step continuation walk (it looks for step
+                        # 8, 9, ... among the candidates it was given): a
+                        # procedure that spans a chunk or page boundary --
+                        # very common, since chunk cuts fall mid-sentence --
+                        # would be silently truncated at whatever step the
+                        # chosen chunk happens to end on. Include a generous
+                        # window of chunks immediately after it in document
+                        # order (chunks are stored in reading order, so this
+                        # is literally "the next several pages"), the same
+                        # neighbourhood the normal PDF retrieval path already
+                        # supplies, so a genuine multi-chunk procedure can
+                        # still be walked to completion even when the real
+                        # answer runs to two or more pages. extract()'s own
+                        # continuation walk still requires each step to
+                        # follow the last in strict sequence one page apart
+                        # at most, and to actually be found -- a wide window
+                        # only gives it more candidates to search, it cannot
+                        # by itself pull in unrelated later content. ~2
+                        # chunks per page in this corpus, so 10 chunks is
+                        # about 4-5 pages -- comfortably past any real
+                        # procedure in this manual without reaching so far
+                        # that an unrelated later section could plausibly
+                        # interfere.
+                        window_end = min(top_index + 10, len(self.pdf.chunks))
+                        override_ranked = [
+                            (index, 1.0 - 0.01 * offset)
+                            for offset, index in enumerate(range(top_index, window_end))
+                        ]
                         override_units = [
-                            unit for unit in self.pdf.extract(need, [(top_index, 1.0)])
+                            unit for unit in self.pdf.extract(need, override_ranked)
                             if self.pdf.verify_unit(unit)
                         ]
                         if override_units and self.pdf.need_complete(need, override_units):
-                            units = override_units
+                            # "Different chunk, structurally complete" is not
+                            # by itself proof PDF was wrong -- a large multi-
+                            # topic chunk can share the subject's vocabulary
+                            # (a table row, a passing mention) without being
+                            # about what the question actually asks (e.g. a
+                            # Pandy-test chunk that merely mentions CSF, for
+                            # a question about what a bloodstained CSF
+                            # appearance means). Only trust Aura's candidate
+                            # over an already-complete PDF answer when both
+                            # hold: (1) PDF's own answer demonstrably misses
+                            # a term the question names that Aura's answer
+                            # actually supplies -- real evidence of a gap,
+                            # not just a different pick -- and (2) Aura's
+                            # full answer still reads as genuinely relevant
+                            # to the question, not merely sharing that one
+                            # term out of context.
+                            pdf_covered = roots(
+                                " ".join(unit.text for unit in pdf_units)
+                            )
+                            override_covered = roots(
+                                " ".join(unit.text for unit in override_units)
+                            )
+                            missing_from_pdf = set(distinctive_subject) - pdf_covered
+                            fills_a_real_gap = bool(missing_from_pdf & override_covered)
+                            if fills_a_real_gap:
+                                override_answer_score = self.pdf.reranker.predict(
+                                    [[
+                                        need.query,
+                                        " ".join(unit.text for unit in override_units),
+                                    ]],
+                                    show_progress_bar=False,
+                                )[0]
+                                if float(override_answer_score) > -2:
+                                    units = override_units
             need_is_complete = self.pdf.need_complete(need, units)
             if not need_is_complete:
                 complete = False

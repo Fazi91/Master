@@ -59,6 +59,15 @@ FIELD_LABEL_RE = re.compile(r"^([A-Z][A-Za-z](?:[A-Za-z \-]{0,20}[A-Za-z])?):\s"
 ENTITY_FIG_HEADING_RE = re.compile(
     r"^[A-Z][\w.\-' ]{2,60}\(Figs?\.?\s*\d+\.\d+(?:,\s*\d+\.\d+)*\)$"
 )
+# A running page header ("3. General laboratory procedures 77", "4.
+# Parasitology 121") repeats the chapter number on every page of that
+# chapter -- "N. " followed by a short, unpunctuated title and a trailing
+# bare page number -- and is easily mistaken for numbered step "N." by any
+# check that only looks at the leading digit. A real step is a sentence: it
+# carries other punctuation, or ends in one.
+RUNNING_HEADER_RE = re.compile(
+    r"^\d{1,2}[.)]\s+[A-Za-z][A-Za-z ,\-]{0,60}?\s+\d{1,4}\s*$"
+)
 
 
 def promises_a_list(text: str) -> bool:
@@ -560,7 +569,7 @@ class DirectPdfQA:
             # continuation chunks whose later steps naturally omit the subject.
             for unit in ranked_units:
                 match = re.match(r"^\s*(\d+)[.)]\s+", unit.text)
-                if match:
+                if match and not RUNNING_HEADER_RE.match(unit.text.strip()):
                     numbered.append((int(match.group(1)), unit))
             number_by_unit = {unit: number for number, unit in numbered}
             distinctive_subject = subject_roots - generic_roots
@@ -639,7 +648,27 @@ class DirectPdfQA:
                 expected = number_by_unit[start] + 1
                 last_unit = start
                 last_page = self.chunks[start.chunk_index].pdf_page
+                text_by_number = {number_by_unit[start]: start.text}
                 while expected <= 20:
+                    def restates_a_consumed_step(candidate: Unit) -> bool:
+                        # An overlapping chunk boundary often restates the
+                        # last few steps already consumed before its new
+                        # content starts (the same sliding window that
+                        # split step 7's own sentence in two) -- that is
+                        # not a foreign list, just the source text repeated
+                        # across the cut. A DIFFERENT step that merely
+                        # reuses an already-seen number (its own unrelated
+                        # "2.", "3." from some other procedure elsewhere in
+                        # the manual) is not the same restatement, so the
+                        # text itself -- not just the number -- must match.
+                        match = re.match(r"^\s*(\d+)[.)]\s+", candidate.text)
+                        if not match:
+                            return False
+                        seen_text = text_by_number.get(int(match.group(1)))
+                        if seen_text is None:
+                            return False
+                        a, b = normalize_for_exact_check(candidate.text), normalize_for_exact_check(seen_text)
+                        return a in b or b in a
                     options = [
                         unit for number, unit in numbered
                         if number == expected
@@ -652,10 +681,21 @@ class DirectPdfQA:
                             )
                             or (
                                 unit.chunk_index > last_unit.chunk_index
+                                # A chunk earning this candidate for having
+                                # nothing numbered before it in the chunk is
+                                # how the walk avoids jumping into the
+                                # middle of some unrelated list -- an
+                                # overlap restatement of an already-consumed
+                                # step (see restates_a_consumed_step) is the
+                                # one exception, since it is the same source
+                                # text repeated across a chunk cut, not a
+                                # foreign list.
                                 and not any(
                                     other.chunk_index == unit.chunk_index
                                     and other.order < unit.order
                                     and re.match(r"^\s*\d+[.)]\s+", other.text)
+                                    and not RUNNING_HEADER_RE.match(other.text.strip())
+                                    and not restates_a_consumed_step(other)
                                     for other in ranked_units
                                 )
                             )
@@ -674,6 +714,7 @@ class DirectPdfQA:
                     sequence.append(selected_step)
                     last_unit = selected_step
                     last_page = self.chunks[selected_step.chunk_index].pdf_page
+                    text_by_number[expected] = selected_step.text
                     expected += 1
 
                 def with_continuations(steps: list[Unit]) -> list[Unit]:
@@ -733,10 +774,17 @@ class DirectPdfQA:
                         and not re.match(r"^\s*\d+[.)]\s+", unit.text)
                         and not unit.text.rstrip().endswith(":")
                     ]
+                    # A numbered sequence already has its own natural
+                    # boundary -- it stops the moment the next expected
+                    # number can't be found -- so the flat MAX_UNITS_PER_NEED
+                    # cap used elsewhere to bound loosely-related sentence
+                    # picks would only serve to truncate a genuinely long,
+                    # fully-numbered procedure (e.g. a 14-step recipe)
+                    # partway through.
                     if lead_candidates:
                         lead = max(lead_candidates, key=lambda unit: unit.score)
-                        return with_continuations([lead] + sequence)[:MAX_UNITS_PER_NEED]
-                    return with_continuations(sequence)[:MAX_UNITS_PER_NEED]
+                        return with_continuations([lead] + sequence)
+                    return with_continuations(sequence)
         if "component" in roots(need.query):
             component_roots = {"body", "head", "joint", "washer"}
             chunk_candidates = {unit.chunk_index for unit in filtered}
