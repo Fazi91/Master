@@ -55,6 +55,10 @@ GENERIC_SUBJECT_ROOTS = {
 CONTRASTIVE_TERM_PAIRS = ({"thick", "thin"},)
 SELF_LABELED_STEP_RE = re.compile(r"^\s*\d+[.)]\s*([A-Za-z]+)\s+(?:film|smear)\.\s")
 MID_COLON_BULLET_RE = re.compile(r":\s*[-—•]")
+FIELD_LABEL_RE = re.compile(r"^([A-Z][A-Za-z](?:[A-Za-z \-]{0,20}[A-Za-z])?):\s")
+ENTITY_FIG_HEADING_RE = re.compile(
+    r"^[A-Z][\w.\-' ]{2,60}\(Figs?\.?\s*\d+\.\d+(?:,\s*\d+\.\d+)*\)$"
+)
 
 
 def promises_a_list(text: str) -> bool:
@@ -62,13 +66,26 @@ def promises_a_list(text: str) -> bool:
     # sentence-ending punctuation separates them), so the colon is no
     # longer the last character -- check for it followed by a bullet too.
     return bool(text.rstrip().endswith(":") or MID_COLON_BULLET_RE.search(text))
+
+
+def field_label_roots(text: str) -> set[str]:
+    # A structured identification block ("Size: 8-12mm.", "Shape: oval...")
+    # names its own topic only in the label, not in the sentence body, so a
+    # sentence-level reranker score alone can badly under-rate it against a
+    # question that names that exact field.
+    match = FIELD_LABEL_RE.match(text)
+    return roots(match.group(1)) if match else set()
 CAUSAL_RE = re.compile(
     r"\b(?:because|therefore|so that|in order to|to permit|to prevent|"
     r"reason|not suitable|not useful|unsuitable|due to|otherwise)\b",
     re.I,
 )
 PROCEDURE_RE = re.compile(
-    r"^\s*(?:\d+[.)]|[a-z][.)]|[-—•]|(?:important|warning|note)\s*:)",
+    # A section/subsection number ("3.4.3", "3.5.1") also starts with
+    # "digit, dot" -- (?!\d) keeps it from being mistaken for a numbered
+    # step "3." by requiring nothing but the step's own trailing space
+    # right after the marker.
+    r"^\s*(?:\d+[.)](?!\d)|[a-z][.)]|[-—•]|(?:important|warning|note)\s*:)",
     re.I,
 )
 HEADING_RE = re.compile(r"^\s*\d+(?:\.\d+)+\s+\S")
@@ -359,7 +376,14 @@ class DirectPdfQA:
         result: list[str] = []
         for block in blocks:
             block = compact(block)
-            if len(block) < 20:
+            # A short "Label: value." field (e.g. "Size: 8-12mm.") is a
+            # complete, real statement even under the usual length floor --
+            # unlike an arbitrary short fragment, its label plus closing
+            # punctuation already confirm it is not a truncated artefact.
+            is_short_field = bool(
+                FIELD_LABEL_RE.match(block) and re.search(r"[.!?:;]$", block)
+            )
+            if len(block) < 20 and not is_short_field:
                 continue
             if re.match(r"^\d+\s+(?:Manual|Index)\b", block, re.I):
                 continue
@@ -377,10 +401,22 @@ class DirectPdfQA:
             else:
                 # Drop fragments with no closing punctuation: they are almost
                 # always a chunk-boundary artefact (an overlap tail cut off
-                # mid-sentence), not a real standalone statement.
+                # mid-sentence), not a real standalone statement -- except an
+                # "Entity name (Fig. N.NN)" sub-heading, which never carries
+                # closing punctuation of its own but is real content: the one
+                # place a later "Label: value." field (e.g. "Shape: oval...")
+                # can find out which entry it belongs to, in identification
+                # lists that cover several entries back to back.
                 result.extend(
                     part for part in map(compact, sentences)
-                    if len(part) >= 20 and re.search(r"[.!?:;]$", part)
+                    if (
+                        len(part) >= 20
+                        or (FIELD_LABEL_RE.match(part) and re.search(r"[.!?:;]$", part))
+                    )
+                    and (
+                        re.search(r"[.!?:;]$", part)
+                        or ENTITY_FIG_HEADING_RE.match(part)
+                    )
                 )
         return result
 
@@ -741,6 +777,45 @@ class DirectPdfQA:
                 filtered = exact_figure_units + [
                     unit for unit in filtered if unit not in exact_figure_units
                 ]
+        query_roots = roots(need.query)
+        if need.answer_type == "fact":
+            # A terse "Label: value." field states its own topic only in
+            # the label; a bare reranker score badly under-rates it against
+            # sibling fields in the same structured block (e.g. a "Fibril:"
+            # line elsewhere in the chunk can out-score "Shape:" simply for
+            # being longer and richer). When the question names a field's
+            # label explicitly, trust that literal match over the score.
+            field_matches = [
+                unit for unit in filtered if field_label_roots(unit.text) & query_roots
+            ]
+            if field_matches:
+                required_subject_terms = required_subject if required_subject else subject_roots
+
+                def anchor_distance(unit: Unit) -> int:
+                    # A block can list the same field label for several
+                    # entries back to back (e.g. one identification entry
+                    # per species); prefer the field nearest a mention of
+                    # the question's OTHER subject terms (its entity name,
+                    # not the field label itself), so the right entry wins
+                    # even when a wrong-entry sibling reads better in
+                    # isolation to the reranker.
+                    anchor_terms = required_subject_terms - field_label_roots(unit.text)
+                    if not anchor_terms:
+                        return 0
+                    distances = [
+                        abs(other.order - unit.order)
+                        for other in ranked_units
+                        if other.chunk_index == unit.chunk_index
+                        and anchor_terms & roots(other.text)
+                    ]
+                    return min(distances) if distances else 999
+
+                field_matches = sorted(
+                    field_matches, key=lambda unit: (anchor_distance(unit), -unit.score)
+                )
+                filtered = field_matches + [
+                    unit for unit in filtered if unit not in field_matches
+                ]
         best = filtered[0]
         if need.answer_type == "comparison" and ranked and best.chunk_index != ranked[0][0]:
             # A comparison question is usually answered by a passage that
@@ -791,24 +866,71 @@ class DirectPdfQA:
                 if PROCEDURE_RE.match(unit.text) or promises_a_list(unit.text)
             ]
             if structural:
-                best = structural[0]
+                # The chunk-level subject check above lets every unit in a
+                # multi-topic chunk through (so a step that omits the
+                # subject still counts) -- but that also lets an unrelated
+                # numbered/bulleted list elsewhere in the same chunk win
+                # here purely for having a marker. Prefer one actually
+                # anchored to the subject before falling back to the
+                # unanchored top scorer.
+                def structural_anchor(unit: Unit) -> bool:
+                    if required_subject & roots(unit.text):
+                        return True
+                    return any(
+                        other.chunk_index == unit.chunk_index
+                        and other.order == unit.order - 1
+                        and required_subject & roots(other.text)
+                        for other in ranked_units
+                    )
+                anchored = [unit for unit in structural if structural_anchor(unit)]
+                if anchored:
+                    best = anchored[0]
+                elif not required_subject:
+                    best = structural[0]
             # A colon-led promise only calls for what comes after it (the
             # list it introduces); a numbered step can have relevant
             # neighbours on either side.
             best_promises_list = promises_a_list(best.text)
-            same_chunk = sorted(
-                (
-                    unit for unit in ranked_units
-                    if unit.chunk_index == best.chunk_index
-                    and (
-                        best.order <= unit.order <= best.order + 4
-                        if best_promises_list
-                        else abs(unit.order - best.order) <= 4
-                    )
-                    and (PROCEDURE_RE.match(unit.text) or promises_a_list(unit.text))
-                ),
-                key=lambda unit: unit.order,
-            )
+            if PROCEDURE_RE.match(best.text) or best_promises_list:
+                same_chunk = sorted(
+                    (
+                        unit for unit in ranked_units
+                        if unit.chunk_index == best.chunk_index
+                        and (
+                            best.order <= unit.order <= best.order + 4
+                            if best_promises_list
+                            else abs(unit.order - best.order) <= 4
+                        )
+                        and (PROCEDURE_RE.match(unit.text) or promises_a_list(unit.text))
+                    ),
+                    key=lambda unit: unit.order,
+                )
+            else:
+                # `best` is itself an ordinary sentence describing the
+                # procedure (e.g. "The stopcock ... should be kept well
+                # greased."), not a numbered/bulleted item -- a manual
+                # procedure is not always a list. Walk forward collecting
+                # its plain continuation sentences instead of requiring
+                # each one to carry its own marker, stopping at the next
+                # heading or figure caption so an unrelated section right
+                # after it in the same chunk is never swept in.
+                same_chunk = [best]
+                for unit in sorted(
+                    (
+                        u for u in ranked_units
+                        if u.chunk_index == best.chunk_index and u.order > best.order
+                    ),
+                    key=lambda u: u.order,
+                ):
+                    if unit.order > best.order + 6:
+                        break
+                    if (
+                        HEADING_RE.match(unit.text)
+                        or ENTITY_FIG_HEADING_RE.match(unit.text)
+                        or re.match(r"^\s*Fig(?:ure)?\.?\s*\d", unit.text, re.I)
+                    ):
+                        break
+                    same_chunk.append(unit)
             chosen = same_chunk or chosen
         else:
             fact_action_roots = roots(need.query) - subject_roots
@@ -836,9 +958,32 @@ class DirectPdfQA:
                             )
                         )
                     )
-                    # Still keep out sentences that just happen to sit
-                    # nearby on a clearly unrelated topic.
-                    and unit.score > -2
+                    # A block can list the same field label for several
+                    # entries back to back (e.g. one identification entry
+                    # per species): a labelled field the question names
+                    # (e.g. "Size:") scores similarly well no matter which
+                    # entry it belongs to, so score alone cannot tell them
+                    # apart -- require it to sit near `best`'s own entry.
+                    # A field that does not match a label the question
+                    # names is unaffected and keeps the plain score gate,
+                    # with that gate relaxed for a nearby one that does --
+                    # those terse fields are exactly the case a bare score
+                    # under-rates.
+                    and (
+                        not (field_label_roots(unit.text) & query_roots)
+                        or (
+                            unit.chunk_index == best.chunk_index
+                            and abs(unit.order - best.order) <= 4
+                        )
+                    )
+                    and (
+                        unit.score > -2
+                        or (
+                            unit.chunk_index == best.chunk_index
+                            and abs(unit.order - best.order) <= 4
+                            and field_label_roots(unit.text) & query_roots
+                        )
+                    )
                     and (
                         not requested_figures
                         or bool(requested_figures & set(re.findall(
@@ -909,7 +1054,16 @@ class DirectPdfQA:
             return False
         has_lead_in = any(promises_a_list(unit.text) for unit in units)
         has_instruction = any(PROCEDURE_RE.match(unit.text) for unit in units)
-        return has_lead_in and has_instruction
+        if has_lead_in and has_instruction:
+            return True
+        # A procedure is not always written as a numbered or bulleted list
+        # or a colon lead-in -- it can be an ordinary paragraph (e.g. "The
+        # stopcock ... should be kept well greased. To grease ..., apply
+        # ..."). Extraction's own heading-bounded gather (see extract()'s
+        # plain-prose fallback) already establishes such a passage as one
+        # coherent, complete block; two or more contiguous sentences from
+        # the same source chunk is that shape's signature.
+        return len(units) >= 2 and len({unit.chunk_index for unit in units}) == 1
 
     def answer(self, question: str) -> dict[str, Any]:
         cleaned = clean_question(question)
