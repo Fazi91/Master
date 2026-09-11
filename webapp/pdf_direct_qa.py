@@ -1077,6 +1077,71 @@ class DirectPdfQA:
         claim = normalize_for_exact_check(unit.text)
         return bool(claim) and claim in source
 
+    def extend_across_chunk_boundary(self, need: Need, units: list[Unit]) -> list[Unit]:
+        """Check the chunk immediately before and after the answer's own
+        chunks for a genuine continuation, so a real answer split across a
+        chunk cut is never silently dropped -- purely additive (nothing
+        already selected is ever removed or replaced). Sharing a subject
+        word is not enough to cross into a neighbour (a whole chapter can
+        repeat the same word without being the same answer); the neighbour
+        must itself read as relevant to the question via the same semantic
+        reranker used everywhere else, past the same relevance floor used
+        elsewhere in this file. Chains at most two chunks each way.
+        """
+        if not units:
+            return units
+        extended = list(units)
+        for direction in (1, -1):
+            chunk_idx = (extended[-1] if direction == 1 else extended[0]).chunk_index
+            for _ in range(2):
+                neighbor_idx = chunk_idx + direction
+                if not 0 <= neighbor_idx < len(self.chunks):
+                    break
+                neighbor_texts = self.units(self.chunks[neighbor_idx].text)
+                if not neighbor_texts:
+                    break
+                probe_text = neighbor_texts[0] if direction == 1 else neighbor_texts[-1]
+                # An overlapping chunk boundary restates content right at
+                # the edge (the same sliding window seen elsewhere in this
+                # file); that is not new material, and including it as
+                # well can corrupt a strict check downstream (e.g. two
+                # copies of numbered step 1 breaking need_complete's
+                # sequence check) -- stop rather than duplicate.
+                normalized_probe = normalize_for_exact_check(probe_text)
+                if any(
+                    normalized_probe in normalize_for_exact_check(existing.text)
+                    or normalize_for_exact_check(existing.text) in normalized_probe
+                    for existing in extended
+                ):
+                    break
+                # A neighbouring section commonly restarts its own step
+                # numbering from 1 (a distinct sub-procedure, e.g.
+                # "collect the specimen" before "centrifuge it"): a
+                # candidate step number that collides with one already in
+                # the answer is a different procedure's step, not this
+                # one's continuation, even when it scores well on its own.
+                probe_number = re.match(r"^\s*(\d+)[.)]\s+", probe_text)
+                if probe_number and any(
+                    re.match(r"^\s*(\d+)[.)]\s+", existing.text)
+                    and re.match(r"^\s*(\d+)[.)]\s+", existing.text).group(1)
+                        == probe_number.group(1)
+                    for existing in extended
+                ):
+                    break
+                score = float(self.reranker.predict(
+                    [[need.query, probe_text]], show_progress_bar=False
+                )[0])
+                if score <= -2:
+                    break
+                order = 0 if direction == 1 else len(neighbor_texts) - 1
+                candidate = Unit(neighbor_idx, order, probe_text, score)
+                if direction == 1:
+                    extended.append(candidate)
+                else:
+                    extended.insert(0, candidate)
+                chunk_idx = neighbor_idx
+        return extended
+
     @staticmethod
     def need_complete(need: Need, units: list[Unit]) -> bool:
         if not units:
@@ -1122,6 +1187,10 @@ class DirectPdfQA:
         for need in needs:
             ranked = self.retrieve(need)
             units = [unit for unit in self.extract(need, ranked) if self.verify_unit(unit)]
+            units = [
+                unit for unit in self.extend_across_chunk_boundary(need, units)
+                if self.verify_unit(unit)
+            ]
             need_is_complete = self.need_complete(need, units)
             if not need_is_complete:
                 complete = False

@@ -593,6 +593,10 @@ class EvaluationService:
                 unit for unit in self.pdf.extract(need, ranked)
                 if self.pdf.verify_unit(unit)
             ]
+            pdf_units = [
+                unit for unit in self.pdf.extend_across_chunk_boundary(need, pdf_units)
+                if self.pdf.verify_unit(unit)
+            ]
             pdf_complete = self.pdf.need_complete(need, pdf_units)
             seed_ids = [
                 self.pdf.chunks[index].chunk_id for index, _ in ranked[:10]
@@ -620,6 +624,10 @@ class EvaluationService:
             )
             graph_units = [
                 unit for unit in self.pdf.extract(need, graph_ranked)
+                if self.pdf.verify_unit(unit)
+            ]
+            graph_units = [
+                unit for unit in self.pdf.extend_across_chunk_boundary(need, graph_units)
                 if self.pdf.verify_unit(unit)
             ]
             # Aura may fill a missing need, but it must not replace an already
