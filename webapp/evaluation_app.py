@@ -860,7 +860,8 @@ HTML = r'''<!doctype html>
   <header class="top"><div><h1>Grounded PDF QA Evaluation</h1><p class="subtitle">Compare direct PDF evidence with Neo4j-grounded verification using the same question set.</p></div><span class="badge" id="questionCountBadge">benchmark</span></header>
   <section class="panel">
     <label class="label" for="questionSelect">Evaluation question</label>
-    <select id="questionSelect"><option value="">Loading questions…</option></select>
+    <select id="questionSelect" onchange="customQuestion.value=''"><option value="">Loading questions…</option></select>
+    <textarea id="customQuestion" placeholder="Or type your own question about the manual…"></textarea>
     <div class="actions"><button class="primary" onclick="run('pdf')">Run PDF only</button><button class="secondary" onclick="run('graph')">Run PDF + Neo4j</button><button class="compare" onclick="compareBoth()">Compare both</button></div>
   </section>
   <div id="comparison"></div>
@@ -871,7 +872,8 @@ const select=document.getElementById('questionSelect');
 function empty(title){return `<div class="head"><h2>${title}</h2><span class="state idle">Not run</span></div><p class="subtitle">Choose a question and run this mode.</p>`}
 document.getElementById('pdfResult').innerHTML=empty('PDF only');document.getElementById('graphResult').innerHTML=empty('PDF + Neo4j');
 fetch('/questions').then(r=>r.json()).then(items=>{select.innerHTML=`<option value="">Select one of ${items.length} questions…</option>`+items.map(q=>`<option value="${q.id}" data-q="${q.question.replaceAll('&','&amp;').replaceAll('"','&quot;')}">${String(q.id).padStart(2,'0')} · ${q.question}</option>`).join('');document.getElementById('questionCountBadge').textContent=`${items.length}-question benchmark`});
-function question(){return select.selectedOptions[0]?.dataset.q||''}
+const customQuestion=document.getElementById('customQuestion');
+function question(){return customQuestion.value.trim()||select.selectedOptions[0]?.dataset.q||''}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function cleanSource(text){return String(text??'').replace(/^\d+\s+Manual of basic techniques for a health laboratory\s*/i,'').trim()}
 function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image']){const cap=['Entity','Image'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 880 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg>`}
