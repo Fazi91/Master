@@ -1181,6 +1181,13 @@ class DirectPdfQA:
                 chunk_idx = neighbor_idx
         return extended
 
+    def extract_verified(self, need: Need, ranked: list[tuple[int, float]]) -> list[Unit]:
+        units = [unit for unit in self.extract(need, ranked) if self.verify_unit(unit)]
+        return [
+            unit for unit in self.extend_across_chunk_boundary(need, units)
+            if self.verify_unit(unit)
+        ]
+
     @staticmethod
     def need_complete(need: Need, units: list[Unit]) -> bool:
         if not units:
@@ -1225,11 +1232,7 @@ class DirectPdfQA:
         complete = True
         for need in needs:
             ranked = self.retrieve(need)
-            units = [unit for unit in self.extract(need, ranked) if self.verify_unit(unit)]
-            units = [
-                unit for unit in self.extend_across_chunk_boundary(need, units)
-                if self.verify_unit(unit)
-            ]
+            units = self.extract_verified(need, ranked)
             need_is_complete = self.need_complete(need, units)
             if not need_is_complete:
                 complete = False

@@ -457,15 +457,20 @@ class EvaluationService:
         # The question text is always sent to retrieval unmodified. Gold
         # labels and the benchmark catalog are used only for post-hoc
         # scoring below, never to alter what the pipeline searches for.
-        # The original 30-question benchmark is extensively hand-verified;
-        # Aura's independent chunk-ranking is a simple term-count heuristic
-        # that can rank an already-correct chunk below an unrelated one just
-        # as easily as it can catch a genuinely wrong one, so letting it
-        # override PDF-only there risks breaking answers that are already
-        # right. Only questions added after that original set (or a custom
-        # question typed fresh, with no established track record either
-        # way) are allowed to be corrected by Aura's independent search.
-        allow_graph_override = not benchmark or benchmark["id"] > 30
+        # This used to be restricted to questions added after the original
+        # 30-question benchmark, since Aura's raw chunk-ranking is a simple
+        # term-count heuristic that can rank an already-correct chunk below
+        # an unrelated one just as easily as it can catch a genuinely wrong
+        # one. That is no longer the actual safety mechanism: the override
+        # below only ever fires when PDF's own answer is missing a term the
+        # question names that Aura's candidate actually supplies (a real,
+        # provable gap), and Aura's full candidate answer must still clear
+        # the same semantic relevance floor used elsewhere in this file.
+        # Those two checks are what protects an already-correct answer, not
+        # which question happened to be asked -- and a free-text box means
+        # a fixed question id can't be the gate anyway, since most
+        # questions will have no id at all.
+        allow_graph_override = True
         result = (
             self._graph_answer(question, allow_graph_override)
             if mode == "graph" else self.pdf.answer(question)
@@ -577,16 +582,26 @@ class EvaluationService:
             # Aura may fill a missing need, but it must not replace an already
             # complete PDF result with a weaker graph candidate.
             units = pdf_units if pdf_complete else graph_units
-            if allow_override and pdf_complete and independent_ids:
+            # "Reason" and "comparison" answers explain or contrast in
+            # whatever words the source uses, which routinely shares few
+            # of the question's own surface words by design -- the term-
+            # gap check below reads that as "PDF is missing something"
+            # even when PDF's own answer is already the more directly
+            # relevant one (e.g. it names the actual distinguishing fact,
+            # while Aura's differently-worded candidate about a related
+            # but different aspect just happens to supply the "missing"
+            # term). Both were observed to be false positives in testing.
+            override_eligible_type = need.answer_type not in {"reason", "comparison"}
+            if allow_override and pdf_complete and independent_ids and override_eligible_type:
                 # Aura's own top hit already had to contain every
                 # distinctive subject term verbatim (a stricter bar than
                 # the PDF path's ~60% overlap); when the PDF's own chosen
                 # chunk isn't that hit, that is real evidence the PDF path
-                # anchored on the wrong section. Only ever applied to
-                # questions with no established track record (see
-                # allow_override's caller) -- Aura's simple term-count
-                # ranking is not reliable enough to overrule an
-                # already-verified answer.
+                # anchored on the wrong section. What actually protects an
+                # already-correct answer here is the term-gap and semantic-
+                # relevance checks further down, not which question was
+                # asked -- Aura's simple term-count ranking on its own is
+                # not reliable enough to overrule an existing answer.
                 pdf_chunk_ids = {
                     self.pdf.chunks[unit.chunk_index].chunk_id for unit in pdf_units
                 }
