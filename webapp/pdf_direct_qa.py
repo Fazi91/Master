@@ -10,16 +10,21 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
 from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import CrossEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CHUNKS_FILE = ROOT / "data" / "graph_v2" / "chunks.csv"
 RERANK_MODEL = os.getenv(
     "RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+)
+GENERATOR_MODEL = os.getenv(
+    "LOCAL_ANSWER_MODEL", "Qwen/Qwen2.5-1.5B-Instruct"
 )
 TOP_LEXICAL = 90
 TOP_RERANK = 24
@@ -167,6 +172,29 @@ def content_roots(text: str) -> set[str]:
     return roots(text) - generic
 
 
+NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def numbers_are_grounded(generated: str, source: str) -> bool:
+    """The one class of hallucination a fluency-only rephrase could still
+    introduce is inventing or altering a quantity (a reagent amount, a
+    time, a temperature) -- exactly the detail that matters most in a
+    laboratory procedure. Reject the rephrase outright if it states any
+    number the verified source text does not itself contain; a step
+    number ("1.", "2.") is exempt since the source's own numbered list
+    supplies those independently of this check."""
+    source_numbers = set(NUMBER_RE.findall(source))
+    for match in NUMBER_RE.finditer(generated):
+        value = match.group(0)
+        if value in source_numbers:
+            continue
+        prefix = generated[:match.start()].rstrip()
+        if re.search(r"(?:^|[.\n])\s*$", prefix) or not prefix:
+            continue  # a step-number heading a new sentence, not a claimed quantity
+        return False
+    return True
+
+
 def subject_match(required: set[str], available: set[str]) -> bool:
     """Require the topic, without demanding every descriptive query word."""
     if not required:
@@ -232,6 +260,8 @@ class DirectPdfQA:
         self.word_matrix = self.word_index.fit_transform(corpus)
         self.char_matrix = self.char_index.fit_transform(corpus)
         self._reranker: CrossEncoder | None = None
+        self._generator = None
+        self._generator_tokenizer = None
         self._model_lock = threading.Lock()
 
     @staticmethod
@@ -260,6 +290,79 @@ class DirectPdfQA:
                 if self._reranker is None:
                     self._reranker = CrossEncoder(RERANK_MODEL)
         return self._reranker
+
+    def _ensure_generator(self) -> None:
+        if self._generator is not None:
+            return
+        with self._model_lock:
+            if self._generator is not None:
+                return
+            self._generator_tokenizer = AutoTokenizer.from_pretrained(GENERATOR_MODEL)
+            generator = AutoModelForCausalLM.from_pretrained(
+                GENERATOR_MODEL,
+                torch_dtype="auto",
+                device_map="auto" if torch.cuda.is_available() else None,
+            )
+            if not torch.cuda.is_available():
+                generator.to("cpu")
+            generator.eval()
+            self._generator = generator
+
+    def rephrase(self, question: str, verified_text: str) -> str | None:
+        """Restate an already exact-span-verified extractive answer in
+        fluent language -- the model's only job is wording, not content: it
+        is handed nothing but text that has already passed verify_unit(),
+        and told explicitly not to add anything beyond it. This is
+        deliberately not open-ended RAG generation from raw chunks, which
+        would give the model room to introduce a fact the source never
+        stated; confined to rephrasing already-verified text, it has none.
+        Returns None (falls back to the extractive answer) if generation
+        is unavailable or the output fails the post-hoc number check.
+        """
+        if not verified_text.strip():
+            return None
+        try:
+            self._ensure_generator()
+        except Exception:
+            return None
+        system = (
+            "You restate already-verified laboratory manual text in clear, "
+            "natural English. Use only the facts given to you. Do not add "
+            "any number, quantity, reagent, or step that is not already in "
+            "the given text. Do not answer from general knowledge."
+        )
+        prompt = (
+            f"Question: {question}\n\n"
+            f"Verified source text:\n{verified_text}\n\n"
+            "Restate this as a clear, natural answer to the question, "
+            "using only facts present in the source text above."
+        )
+        rendered = self._generator_tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        encoded = self._generator_tokenizer(rendered, return_tensors="pt")
+        device = next(self._generator.parameters()).device
+        encoded = {name: tensor.to(device) for name, tensor in encoded.items()}
+        with torch.inference_mode():
+            output = self._generator.generate(
+                **encoded,
+                max_new_tokens=220,
+                do_sample=False,
+                repetition_penalty=1.04,
+                pad_token_id=self._generator_tokenizer.eos_token_id,
+            )
+        generated = self._generator_tokenizer.decode(
+            output[0][encoded["input_ids"].shape[1]:],
+            skip_special_tokens=True,
+        ).strip()
+        if not generated or not numbers_are_grounded(generated, verified_text):
+            return None
+        return generated
 
     @staticmethod
     def answer_type(question: str) -> str:
@@ -1295,10 +1398,18 @@ class DirectPdfQA:
             round(len(question_terms & answer_terms) / len(question_terms), 2)
             if question_terms else 1.0
         )
+        natural_answer = None
+        if complete:
+            verified_text = "\n".join(
+                evidence["text"]
+                for result in need_results for evidence in result["evidence"]
+            )
+            natural_answer = self.rephrase(cleaned, verified_text)
         return {
             "kind": "domain_answer" if complete else "not_found",
             "question": cleaned,
             "answer": answer_text if complete else "No complete extractive answer was verified.",
+            "natural_answer": natural_answer,
             "needs": need_results,
             "sources": sources,
             "verification": {
