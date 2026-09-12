@@ -351,7 +351,7 @@ class DirectPdfQA:
         with torch.inference_mode():
             output = self._generator.generate(
                 **encoded,
-                max_new_tokens=220,
+                max_new_tokens=420,
                 do_sample=False,
                 repetition_penalty=1.04,
                 pad_token_id=self._generator_tokenizer.eos_token_id,
