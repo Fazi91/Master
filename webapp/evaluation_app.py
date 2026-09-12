@@ -32,31 +32,6 @@ ENGINE_REVISION = hashlib.sha256(
 load_dotenv(ROOT / ".env")
 
 
-def _image_dhash(path: Path, hash_size: int = 8) -> int | None:
-    """A cheap perceptual hash used only to catch near-identical figures
-    (e.g. two consecutive frames of the same hand-drawn illustration
-    sequence) -- not semantic similarity, just "is this basically the
-    same picture". Distinct figures score far apart (~30-40 bits differ
-    out of 64); true near-duplicates score close (~10 or fewer)."""
-    try:
-        from PIL import Image
-        with Image.open(path) as im:
-            im = im.convert("L").resize((hash_size + 1, hash_size), Image.LANCZOS)
-            pixels = list(im.getdata())
-        bits = 0
-        for row in range(hash_size):
-            offset = row * (hash_size + 1)
-            for col in range(hash_size):
-                bits = (bits << 1) | (1 if pixels[offset + col] < pixels[offset + col + 1] else 0)
-        return bits
-    except Exception:
-        return None
-
-
-def _hamming(a: int, b: int) -> int:
-    return bin(a ^ b).count("1")
-
-
 EVALUATION_QUESTIONS = [
     {"id": 1, "category": "Fact", "question": "What is the maximum preservation time for a sputum specimen?"},
     {"id": 2, "category": "Fact", "question": "What are the components of a tap?"},
@@ -419,23 +394,6 @@ class EvaluationService:
                     continue
                 if relevance.casefold() in {"irrelevant", "decorative"}:
                     continue
-                # A page can hold several unrelated figures; when we only
-                # know "this image sits on the cited page" (no direct
-                # chunk link), drop anything too small to be a real figure
-                # rather than a caption watermark or icon-sized fragment.
-                # A real technique illustration can still be short and wide
-                # (a single hand-drawn panel), so judge by area, not by
-                # requiring every side to individually clear a floor.
-                if reason == "figure on the cited PDF page" and width * height < 15000:
-                    continue
-                # Banner/watermark strips (running headers, faint background
-                # labels) are real images on the page but never a genuine
-                # technique figure in this manual -- they are always far
-                # more elongated than any real illustration.
-                if reason == "figure on the cited PDF page" and width and height:
-                    aspect_ratio = max(width, height) / min(width, height)
-                    if aspect_ratio > 4:
-                        continue
                 file_path = meta.get("file_path", "")
                 filename = Path(file_path).name if file_path else ""
                 seen.add(image_id)
@@ -451,23 +409,9 @@ class EvaluationService:
                     "_file_path": file_path,
                 })
         ranked = sorted(result, key=lambda item: item["score"], reverse=True)
-        kept: list[dict[str, Any]] = []
-        kept_hashes: list[int] = []
         for item in ranked:
-            file_path = item.pop("_file_path")
-            image_hash = _image_dhash(ROOT / file_path) if file_path else None
-            # Two frames from the same hand-drawn illustration sequence
-            # (e.g. consecutive steps of the same figure) can be near-
-            # identical; keep only the higher-scored one of any such pair
-            # rather than showing what looks like the same picture twice.
-            if image_hash is not None and any(
-                _hamming(image_hash, kept_hash) <= 15 for kept_hash in kept_hashes
-            ):
-                continue
-            kept.append(item)
-            if image_hash is not None:
-                kept_hashes.append(image_hash)
-        return kept
+            item.pop("_file_path")
+        return ranked
 
     @staticmethod
     def _benchmark(question: str) -> dict[str, Any] | None:

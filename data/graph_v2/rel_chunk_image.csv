@@ -17,7 +17,6 @@ rel_chunk_image_000015,C_0099_002,img_000594,ILLUSTRATED_BY,P_0099,99,0.281892,m
 rel_chunk_image_000016,C_0103_002,img_000728,ILLUSTRATED_BY,P_0103,103,0.268174,microscopy,clip_same_page:openai/clip-vit-base-patch32
 rel_chunk_image_000017,C_0120_001,img_000418,ILLUSTRATED_BY,P_0120,120,0.277564,clinical_or_laboratory,clip_same_page:openai/clip-vit-base-patch32
 rel_chunk_image_000018,C_0120_002,img_000461,ILLUSTRATED_BY,P_0120,120,0.254512,clinical_or_laboratory,clip_same_page:openai/clip-vit-base-patch32
-rel_chunk_image_000019,C_0120_002,img_000565,ILLUSTRATED_BY,P_0120,120,0.218476,diagram_or_chart,clip_same_page:openai/clip-vit-base-patch32
 rel_chunk_image_000020,C_0121_001,img_000664,ILLUSTRATED_BY,P_0121,121,0.257524,clinical_or_laboratory,clip_same_page:openai/clip-vit-base-patch32
 rel_chunk_image_000021,C_0123_002,img_000113,ILLUSTRATED_BY,P_0123,123,0.305380,microscopy,clip_same_page:openai/clip-vit-base-patch32
 rel_chunk_image_000022,C_0125_002,img_000312,ILLUSTRATED_BY,P_0125,125,0.299624,microscopy,clip_same_page:openai/clip-vit-base-patch32
