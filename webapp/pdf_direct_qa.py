@@ -50,6 +50,14 @@ GENERIC_SUBJECT_ROOTS = {
     "prepare", "collect", "label", "dispatch", "examine", "identify",
     "fix", "stain", "clean", "sterilize", "calculate", "convert",
     "differ", "preserve", "reject",
+    # The stemmer only strips a literal "-ation"/"-ization" suffix, so it
+    # does not equate a verb already listed above with its own noun form
+    # (stem("examine") stays "examine", but stem("examination") becomes
+    # "examin") -- without these, a question phrased with the noun form
+    # ("the examination of...", "sample preparation") would wrongly treat
+    # that operation word as the question's actual topic.
+    "examination", "preparation", "identification", "calculation",
+    "sterilization", "collection",
     "not", "rather", "than", "between", "per", "number", "maximum",
 }
 CONTRASTIVE_TERM_PAIRS = ({"thick", "thin"},)
@@ -144,6 +152,19 @@ def stem(word: str) -> str:
 
 def roots(text: str) -> set[str]:
     return {stem(word) for word in words(text) if word not in QUESTION_WORDS}
+
+
+def content_roots(text: str) -> set[str]:
+    """`roots()` minus the same question-framing/generic-action words the
+    rest of this file already excludes from a need's subject (GENERIC_
+    SUBJECT_ROOTS) -- the words that describe the shape of the ask ("what
+    treatment", "how should", "for the purpose of") rather than its actual
+    topic. Used to measure whether an answer's own text actually covers
+    the meaningful words of an arbitrary, unseen question -- a free-text
+    box can be asked anything, so this has to work from the question's own
+    words alone, never a per-question list."""
+    generic = {stem(term) for term in GENERIC_SUBJECT_ROOTS}
+    return roots(text) - generic
 
 
 def subject_match(required: set[str], available: set[str]) -> bool:
@@ -839,24 +860,42 @@ class DirectPdfQA:
             if field_matches:
                 required_subject_terms = required_subject if required_subject else subject_roots
 
-                def anchor_distance(unit: Unit) -> int:
+                def anchor_distance(unit: Unit) -> tuple[int, int]:
                     # A block can list the same field label for several
                     # entries back to back (e.g. one identification entry
                     # per species); prefer the field nearest a mention of
                     # the question's OTHER subject terms (its entity name,
                     # not the field label itself), so the right entry wins
                     # even when a wrong-entry sibling reads better in
-                    # isolation to the reranker.
+                    # isolation to the reranker. A dedicated "Entity name
+                    # (Fig. N.NN)" heading naming the entity is a far
+                    # stronger anchor than an ordinary sentence that merely
+                    # mentions it in passing (e.g. one entry's description
+                    # comparing itself to another: "Similar to the eggs of
+                    # Clonorchis sinensis...") -- that kind of cross-
+                    # reference can sit closer, by raw distance, than the
+                    # entity's own heading is to its own fields, so a
+                    # heading anchor always outranks a plain-text one
+                    # regardless of which is numerically closer.
                     anchor_terms = required_subject_terms - field_label_roots(unit.text)
                     if not anchor_terms:
-                        return 0
-                    distances = [
+                        return (1, 0)
+                    heading_distances = [
+                        abs(other.order - unit.order)
+                        for other in ranked_units
+                        if other.chunk_index == unit.chunk_index
+                        and anchor_terms & roots(other.text)
+                        and ENTITY_FIG_HEADING_RE.match(other.text.strip())
+                    ]
+                    if heading_distances:
+                        return (0, min(heading_distances))
+                    any_distances = [
                         abs(other.order - unit.order)
                         for other in ranked_units
                         if other.chunk_index == unit.chunk_index
                         and anchor_terms & roots(other.text)
                     ]
-                    return min(distances) if distances else 999
+                    return (1, min(any_distances) if any_distances else 999)
 
                 field_matches = sorted(
                     field_matches, key=lambda unit: (anchor_distance(unit), -unit.score)
@@ -1246,10 +1285,17 @@ class DirectPdfQA:
             }
             for index in source_indices
         ]
+        answer_text = "\n\n".join(answer_parts) if complete else ""
+        question_terms = content_roots(cleaned)
+        answer_terms = content_roots(answer_text)
+        question_term_coverage = (
+            round(len(question_terms & answer_terms) / len(question_terms), 2)
+            if question_terms else 1.0
+        )
         return {
             "kind": "domain_answer" if complete else "not_found",
             "question": cleaned,
-            "answer": "\n\n".join(answer_parts) if complete else "No complete extractive answer was verified.",
+            "answer": answer_text if complete else "No complete extractive answer was verified.",
             "needs": need_results,
             "sources": sources,
             "verification": {
@@ -1260,6 +1306,8 @@ class DirectPdfQA:
                 ),
                 "needs_covered": sum(bool(result["complete"]) for result in need_results),
                 "needs_total": len(needs),
+                "question_term_coverage": question_term_coverage,
+                "question_terms_missing": sorted(question_terms - answer_terms),
             },
         }
 
