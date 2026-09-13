@@ -907,6 +907,28 @@ class DirectPdfQA:
                                 if re.match(r"^\s*\d+[.)]\s+", candidate.text):
                                     break
                                 expanded.append(candidate)
+                        elif following is None and distinctive_subject:
+                            # A trailing remark right after the final step,
+                            # in the same chunk (e.g. "If neither X nor Y is
+                            # available, do Z instead") can name the exact
+                            # reagents/subject the question asked about
+                            # without being part of the numbered sequence
+                            # itself -- unlike the mid-sequence case above,
+                            # there is no next step to bound the search, so
+                            # only take a couple of immediately-following
+                            # sentences and only when they are genuinely
+                            # on-topic, not just whatever comes next.
+                            for candidate in sorted(
+                                (
+                                    c for c in ranked_units
+                                    if c.chunk_index == unit.chunk_index
+                                    and unit.order < c.order <= unit.order + 2
+                                    and not re.match(r"^\s*\d+[.)]\s+", c.text)
+                                ),
+                                key=lambda c: c.order,
+                            ):
+                                if distinctive_subject & roots(candidate.text):
+                                    expanded.append(candidate)
                     return expanded
 
                 if len(sequence) >= 2:
@@ -1282,11 +1304,42 @@ class DirectPdfQA:
                 # copies of numbered step 1 breaking need_complete's
                 # sequence check) -- stop rather than duplicate.
                 normalized_probe = normalize_for_exact_check(probe_text)
-                if any(
-                    normalized_probe in normalize_for_exact_check(existing.text)
-                    or normalize_for_exact_check(existing.text) in normalized_probe
-                    for existing in extended
-                ):
+                # A chunk-overlap boundary can cut a sentence off mid-way
+                # (the same sliding window seen elsewhere in this file):
+                # the already-included unit is then a strict prefix of
+                # this neighbour's fuller version of that same sentence,
+                # not new material -- replace the truncated copy with the
+                # complete one instead of tacking on a near-duplicate.
+                replaced_truncated = False
+                already_have_fuller = False
+                for index, existing in enumerate(extended):
+                    normalized_existing = normalize_for_exact_check(existing.text)
+                    if normalized_existing == normalized_probe:
+                        already_have_fuller = True
+                        break
+                    if normalized_probe and normalized_probe in normalized_existing:
+                        # probe is fully contained in what we already have
+                        # (a prefix, a suffix -- e.g. a heading-plus-fact
+                        # unit already carries this same fact on its own --
+                        # or a middle excerpt of it): nothing new here.
+                        already_have_fuller = True
+                        break
+                    if normalized_existing and normalized_existing in normalized_probe:
+                        if normalized_probe.startswith(normalized_existing):
+                            extended[index] = Unit(
+                                existing.chunk_index, existing.order, probe_text, existing.score,
+                            )
+                            replaced_truncated = True
+                        else:
+                            # existing appears somewhere within probe but
+                            # not as its opening (a suffix or middle
+                            # excerpt): probe still isn't new material.
+                            already_have_fuller = True
+                        break
+                if replaced_truncated:
+                    chunk_idx = neighbor_idx
+                    continue
+                if already_have_fuller:
                     break
                 # A neighbouring section commonly restarts its own step
                 # numbering from 1 (a distinct sub-procedure, e.g.
