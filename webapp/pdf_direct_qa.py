@@ -859,10 +859,46 @@ class DirectPdfQA:
                     ]
                     if not options:
                         break
+                    # A chunk-overlap boundary can cut a step's own sentence
+                    # short (the same-chunk copy ends mid-sentence, a
+                    # neighbouring chunk has the complete continuation) --
+                    # that must still win on completeness regardless of
+                    # which one is "closer", so drop any candidate that is
+                    # only a strict prefix of another before ranking by
+                    # position at all.
+                    def is_strict_prefix_of_another(unit: Unit) -> bool:
+                        normalized = normalize_for_exact_check(unit.text)
+                        return any(
+                            other is not unit
+                            and normalized != normalize_for_exact_check(other.text)
+                            and normalize_for_exact_check(other.text).startswith(normalized)
+                            for other in options
+                        )
+                    options = [
+                        unit for unit in options
+                        if not is_strict_prefix_of_another(unit)
+                    ]
+                    # A chunk can hold two independent numbered lists that
+                    # both restart at 1 (e.g. "Collection of samples" and,
+                    # further down the same page, "Performing the test"):
+                    # once past step 2, both lists have their own genuine
+                    # "3.", and ranking by text length alone can pick the
+                    # wrong list's step just for reading longer. The right
+                    # step is the one immediately after the last one in the
+                    # source; that beats raw length whenever both live in
+                    # the same chunk (a genuine cross-chunk completion, the
+                    # case just above, no longer competes on length at all
+                    # by this point).
+                    def order_distance(unit: Unit) -> int:
+                        if unit.chunk_index != last_unit.chunk_index:
+                            return 999
+                        return abs(unit.order - last_unit.order)
+
                     selected_step = max(
                         options,
                         key=lambda unit: (
                             not bool(re.search(r"(?:\bFig\.?|\(|\[)\s*$", unit.text)),
+                            -order_distance(unit),
                             len(unit.text),
                             unit.score,
                         ),
