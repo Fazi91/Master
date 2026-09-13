@@ -20,6 +20,7 @@ from webapp.pdf_direct_qa import (
     DirectPdfQA,
     clean_question,
     roots,
+    small_talk_response,
     stem,
 )
 
@@ -118,6 +119,11 @@ GOLD_EVIDENCE_BY_ID = {
 class EvaluationRequest(BaseModel):
     question: str
     mode: Literal["pdf", "graph"] = "pdf"
+
+
+class RephraseRequest(BaseModel):
+    question: str
+    verified_text: str
 
 
 class GraphVerifier:
@@ -481,7 +487,7 @@ class EvaluationService:
             "verified_chunks": [],
             "locations": [],
         }
-        if mode == "graph":
+        if mode == "graph" and result["kind"] != "small_talk":
             graph_result = self.graph.verify(chunk_ids)
             if graph_result["status"] != "verified":
                 result["kind"] = "not_found"
@@ -529,6 +535,22 @@ class EvaluationService:
     def _graph_answer(self, question: str, allow_override: bool = False) -> dict[str, Any]:
         """Use Neo4j to expand each need's text candidates before extraction."""
         cleaned = clean_question(question)
+        canned = small_talk_response(cleaned)
+        if canned is not None:
+            return {
+                "kind": "small_talk",
+                "question": cleaned,
+                "answer": canned,
+                "natural_answer": None,
+                "needs": [],
+                "sources": [],
+                "verification": {
+                    "complete": True,
+                    "all_claims_are_exact_source_spans": False,
+                    "needs_covered": 0,
+                    "needs_total": 0,
+                },
+            }
         needs = self.pdf.plan(cleaned)
         chunk_index = {
             chunk.chunk_id: index for index, chunk in enumerate(self.pdf.chunks)
@@ -778,13 +800,8 @@ class EvaluationService:
             }
             for index in source_indices
         ]
-        natural_answer = None
-        if complete:
-            verified_text = "\n".join(
-                evidence["text"]
-                for result in need_results for evidence in result["evidence"]
-            )
-            natural_answer = self.pdf.rephrase(cleaned, verified_text)
+        # Rephrasing happens on demand via the /rephrase endpoint, not
+        # here -- see the matching note in DirectPdfQA.answer().
         return {
             "kind": "domain_answer" if complete else "not_found",
             "question": cleaned,
@@ -792,7 +809,7 @@ class EvaluationService:
                 "\n\n".join(answer_parts)
                 if complete else "No complete extractive answer was verified."
             ),
-            "natural_answer": natural_answer,
+            "natural_answer": None,
             "needs": need_results,
             "sources": sources,
             "verification": {
@@ -849,6 +866,17 @@ def ask(request: EvaluationRequest) -> dict[str, Any]:
     return service().ask(question, request.mode)
 
 
+@app.post("/rephrase")
+def rephrase(request: RephraseRequest) -> dict[str, Any]:
+    # Separate from /ask so the fast, already-verified extractive answer
+    # never has to wait on this: the local model has no usable GPU on this
+    # deployment and can take tens of seconds per call.
+    question = clean_question(request.question)
+    if not question or not request.verified_text.strip():
+        return {"natural_answer": None}
+    return {"natural_answer": service().pdf.rephrase(question, request.verified_text)}
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return HTML
@@ -902,8 +930,8 @@ function cleanSource(text){return String(text??'').replace(/^\d+\s+Manual of bas
 function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image']){const cap=['Entity','Image'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 880 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg>`}
 function graphStats(viz){const nodes=viz?.nodes||[],edges=viz?.edges||[];return `${nodes.length} real Aura nodes · ${edges.length} real relationships`}
 let results={};
-function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),sourceExact=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{},goldMeasured=score.gold_annotated===true,goldCorrect=score.gold_correct===true,ok=goldMeasured?goldCorrect:sourceExact,status=goldMeasured?(goldCorrect?'Gold evidence matched':'Gold evidence incomplete'):(sourceExact?'Source-exact · answer accuracy not measured':'Not verified');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${status}</span></div><p class="answer ${sourceExact?'':'error'}">${esc(data.answer)}</p>${data.natural_answer?`<details open><summary>Rephrased answer (LLM, constrained to the verified text above)</summary><p class="subtitle">${esc(data.natural_answer)}</p></details>`:''}<div class="meta"><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j traceability: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>share of selected source chunks located in Aura; not answer accuracy</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(cleanSource(s.text))}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
-async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});render(mode,await r.json())}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
+function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),sourceExact=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{},goldMeasured=score.gold_annotated===true,goldCorrect=score.gold_correct===true,ok=goldMeasured?goldCorrect:sourceExact,status=goldMeasured?(goldCorrect?'Gold evidence matched':'Gold evidence incomplete'):(sourceExact?'Source-exact · answer accuracy not measured':'Not verified');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${status}</span></div><p class="answer ${sourceExact?'':'error'}">${esc(data.answer)}</p>${sourceExact&&data.kind!=='small_talk'?`<details open><summary>Rephrased answer (LLM, constrained to the verified text above)</summary><p class="subtitle" id="rephrase-${mode}">Generating…</p></details>`:''}<div class="meta"><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j traceability: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>share of selected source chunks located in Aura; not answer accuracy</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(cleanSource(s.text))}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
+async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});const data=await r.json();render(mode,data);const sourceExact=data.kind==='domain_answer'&&data.verification?.complete;if(sourceExact&&data.kind!=='small_talk'){const verifiedText=(data.sources||[]).map(s=>s.text).join('\n');fetch('/rephrase',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,verified_text:verifiedText})}).then(rr=>rr.json()).then(rd=>{const el=document.getElementById(`rephrase-${mode}`);if(el)el.textContent=rd.natural_answer||'Not available for this answer.'}).catch(()=>{const el=document.getElementById(`rephrase-${mode}`);if(el)el.textContent='Not available for this answer.'})}}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
 function unique(values){return [...new Set(values||[])]}
 function chunkText(values){return values.length?values.map(esc).join(', '):'None'}
 async function compareBoth(){results={};document.getElementById('comparison').innerHTML='';await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct,g=results.graph?.scores?.accuracy_pct,measured=p!=null&&g!=null,d=measured?g-p:null,pdfAccepted=unique(results.pdf?.retrieval_trace?.accepted_chunks),graphAccepted=unique(results.graph?.retrieval_trace?.accepted_chunks),graphCandidates=unique(results.graph?.retrieval_trace?.neo4j_independent_chunks),common=pdfAccepted.filter(id=>graphAccepted.includes(id)),graphOnly=graphAccepted.filter(id=>!pdfAccepted.includes(id)),pdfOnly=pdfAccepted.filter(id=>!graphAccepted.includes(id)),candidateOnly=graphCandidates.filter(id=>!pdfAccepted.includes(id));const improved=measured&&d>0,verdict=!measured?'No Gold annotation exists for this question, so no comparison is reported.':d>0?'Neo4j retrieved more of the correct evidence than the PDF-only search.':d<0?'Neo4j retrieved less of the correct evidence than the PDF-only search.':'Neo4j did not improve evidence retrieval for this question.';document.getElementById('comparison').innerHTML=`<section class="panel compare-panel"><div class="head"><h2>PDF vs Neo4j comparison</h2><span class="state ${improved?'ok':'idle'}">${improved?'Measured graph gain':'No measured gain'}</span></div><p class="subtitle ${d<0?'loss':d>0?'gain':''}">${verdict}</p><div class="compare-grid"><div class="metric"><b>PDF accepted</b><div class="chunk-list">${chunkText(pdfAccepted)}</div></div><div class="metric"><b>Common evidence</b><div class="chunk-list">${chunkText(common)}</div></div><div class="metric"><b>Neo4j-only accepted</b><div class="chunk-list">${chunkText(graphOnly)}</div></div><div class="metric"><b>PDF-only accepted</b><div class="chunk-list">${chunkText(pdfOnly)}</div></div></div><details><summary>Independent Neo4j candidates not returned by PDF</summary><p class="chunk-list">${chunkText(candidateOnly)}</p></details><p class="subtitle">A Neo4j improvement is reported only against independently annotated Gold evidence.</p></section>`}

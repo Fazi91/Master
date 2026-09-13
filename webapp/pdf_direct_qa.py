@@ -137,6 +137,30 @@ def clean_question(text: str) -> str:
     return value
 
 
+# A free-text box can be asked plain conversational small talk that has no
+# business going through retrieval at all -- there is no "source chunk"
+# for "hi". Matched by exact text after normalization (casefold, strip
+# trailing punctuation) so a real question that merely contains one of
+# these words ("How is a thick blood film prepared?") is never caught by
+# accident. More pairs are expected to be added here over time.
+SMALL_TALK_RESPONSES: dict[str, str] = {
+    "hi": "Hi! Ask me anything about the laboratory manual.",
+    "hello": "Hello! Ask me anything about the laboratory manual.",
+    "hey": "Hey! Ask me anything about the laboratory manual.",
+    "bye": "Goodbye!",
+    "goodbye": "Goodbye!",
+    "how are you": "I'm just a document assistant, but I'm ready to help -- ask me anything about the laboratory manual.",
+    "how are you today": "I'm just a document assistant, but I'm ready to help -- ask me anything about the laboratory manual.",
+    "thanks": "You're welcome!",
+    "thank you": "You're welcome!",
+}
+
+
+def small_talk_response(question: str) -> str | None:
+    normalized = re.sub(r"[?!.]+$", "", question.strip().casefold()).strip()
+    return SMALL_TALK_RESPONSES.get(normalized)
+
+
 def words(text: str) -> list[str]:
     return [match.group(0).casefold() for match in WORD_RE.finditer(text)]
 
@@ -297,6 +321,12 @@ class DirectPdfQA:
         with self._model_lock:
             if self._generator is not None:
                 return
+            if not torch.cuda.is_available():
+                # PyTorch's CPU thread pool defaults to half the logical
+                # core count on some setups; this machine's generation
+                # speed is CPU-bound (no usable GPU), so give it every
+                # thread the machine actually has.
+                torch.set_num_threads(os.cpu_count() or 4)
             self._generator_tokenizer = AutoTokenizer.from_pretrained(GENERATOR_MODEL)
             generator = AutoModelForCausalLM.from_pretrained(
                 GENERATOR_MODEL,
@@ -525,8 +555,9 @@ class DirectPdfQA:
             if HEADING_RE.match(block) and len(block.split()) <= 12:
                 continue
             protected = re.sub(r"\bFig\.", "Fig§", block, flags=re.I)
+            protected = re.sub(r"\bq\.s\.", "q§s§", protected, flags=re.I)
             sentences = [
-                part.replace("Fig§", "Fig.")
+                part.replace("Fig§", "Fig.").replace("q§s§", "q.s.")
                 for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9—])", protected)
             ]
             if PROCEDURE_RE.match(block) or block.rstrip().endswith(":"):
@@ -645,8 +676,9 @@ class DirectPdfQA:
                 # (e.g. a different film's fixation step). Narrow down to
                 # just the sentence(s) that actually give the reason.
                 protected = re.sub(r"\bFig\.", "Fig§", block.text, flags=re.I)
+                protected = re.sub(r"\bq\.s\.", "q§s§", protected, flags=re.I)
                 raw_sentences = [
-                    part.replace("Fig§", "Fig.")
+                    part.replace("Fig§", "Fig.").replace("q§s§", "q.s.")
                     for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9—])", protected)
                 ]
                 # A leading step marker ("2.") can itself get split off as
@@ -1329,6 +1361,24 @@ class DirectPdfQA:
 
     def answer(self, question: str) -> dict[str, Any]:
         cleaned = clean_question(question)
+        canned = small_talk_response(cleaned)
+        if canned is not None:
+            return {
+                "kind": "small_talk",
+                "question": cleaned,
+                "answer": canned,
+                "natural_answer": None,
+                "needs": [],
+                "sources": [],
+                "verification": {
+                    "complete": True,
+                    "all_claims_are_exact_source_spans": False,
+                    "needs_covered": 0,
+                    "needs_total": 0,
+                    "question_term_coverage": 1.0,
+                    "question_terms_missing": [],
+                },
+            }
         needs = self.plan(cleaned)
         need_results: list[dict[str, Any]] = []
         source_indices: list[int] = []
@@ -1398,18 +1448,17 @@ class DirectPdfQA:
             round(len(question_terms & answer_terms) / len(question_terms), 2)
             if question_terms else 1.0
         )
-        natural_answer = None
-        if complete:
-            verified_text = "\n".join(
-                evidence["text"]
-                for result in need_results for evidence in result["evidence"]
-            )
-            natural_answer = self.rephrase(cleaned, verified_text)
+        # Rephrasing is a separate, on-demand call (see the /rephrase
+        # endpoint) rather than done here: the LLM step is CPU-bound and
+        # can take tens of seconds on hardware with no usable GPU, and
+        # answer() itself needs to stay fast so the verified extractive
+        # answer -- already fully correct on its own -- appears
+        # immediately instead of waiting on a slow rewrite of it.
         return {
             "kind": "domain_answer" if complete else "not_found",
             "question": cleaned,
             "answer": answer_text if complete else "No complete extractive answer was verified.",
-            "natural_answer": natural_answer,
+            "natural_answer": None,
             "needs": need_results,
             "sources": sources,
             "verification": {
