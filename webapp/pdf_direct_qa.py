@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from fastapi import FastAPI
 from pydantic import BaseModel
-from sentence_transformers import CrossEncoder
+from sentence_transformers import CrossEncoder, SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -26,6 +26,12 @@ RERANK_MODEL = os.getenv(
 GENERATOR_MODEL = os.getenv(
     "LOCAL_ANSWER_MODEL", "Qwen/Qwen2.5-1.5B-Instruct"
 )
+NLI_MODEL = os.getenv(
+    "NLI_VERIFIER_MODEL", "cross-encoder/nli-deberta-v3-small"
+)
+CONTRADICTION_NOISE_FLOOR = float(os.getenv("NLI_CONTRADICTION_FLOOR", "0.02"))
+EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+EMBED_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 TOP_LEXICAL = 90
 TOP_RERANK = 24
 TOP_CHUNKS_PER_NEED = 5
@@ -111,6 +117,7 @@ PROCEDURE_RE = re.compile(
     re.I,
 )
 HEADING_RE = re.compile(r"^\s*\d+(?:\.\d+)+\s+\S")
+NUMBERED_STEP_LINE_RE = re.compile(r"(?m)^\s*\d+[.)]\s+")
 LABEL_ONLY_RE = re.compile(r"\blabel(?:led|ling|s)?\b", re.I)
 FIGURE_DEPICTION_RE = re.compile(
     r"\b(?:shown|illustrated|depicted|pictured|labell?ed)\b.{0,40}\b(?:figure|diagram|fig\.?)\b",
@@ -286,6 +293,9 @@ class DirectPdfQA:
         self._reranker: CrossEncoder | None = None
         self._generator = None
         self._generator_tokenizer = None
+        self._nli: CrossEncoder | None = None
+        self._embedder: SentenceTransformer | None = None
+        self._chunk_embeddings: np.ndarray | None = None
         self._model_lock = threading.Lock()
 
     @staticmethod
@@ -337,6 +347,159 @@ class DirectPdfQA:
                 generator.to("cpu")
             generator.eval()
             self._generator = generator
+
+    def _ensure_embedder(self) -> None:
+        if self._chunk_embeddings is not None:
+            return
+        with self._model_lock:
+            if self._chunk_embeddings is not None:
+                return
+            embedder = SentenceTransformer(EMBED_MODEL)
+            # Corpus is small (a few hundred chunks) -- brute-force cosine
+            # similarity over a plain in-memory matrix is exact and, at
+            # this size, effectively instant, so there is no need for an
+            # approximate-search index (FAISS et al.) built for corpora
+            # orders of magnitude larger than this one.
+            embeddings = embedder.encode(
+                [chunk.text for chunk in self.chunks],
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            self._embedder = embedder
+            self._chunk_embeddings = np.asarray(embeddings)
+
+    def semantic_candidates(self, query: str, top_k: int = 8) -> list[tuple[int, float]]:
+        """Rank chunks by embedding similarity to the query -- a meaning-
+        based alternative to literal keyword matching, so a chunk that
+        answers the question in different words (or whose one shared
+        keyword is buried in an unrelated passage) is not simply invisible
+        to the search the way it is to substring/term-count matching."""
+        self._ensure_embedder()
+        query_vec = self._embedder.encode(
+            [EMBED_QUERY_PREFIX + query],
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )[0]
+        scores = self._chunk_embeddings @ query_vec
+        top_indices = np.argsort(-scores)[:top_k]
+        return [(int(index), float(scores[index])) for index in top_indices]
+
+    def relevant_window(
+        self,
+        query: str,
+        anchor_index: int,
+        max_radius_forward: int = 10,
+        max_radius_backward: int = 2,
+    ) -> list[int]:
+        """Grow a verified chunk into a window of neighbours actually worth
+        extracting from, instead of handing extract() a flat, unconditional
+        block of however-many following chunks (which let it wander into a
+        different, merely-nearby procedure -- observed live: asked to
+        prepare Giemsa stain, it walked past the Giemsa steps into a later,
+        unrelated staining method that also happened to start a numbered
+        list). Step outward one chunk at a time in each direction; a
+        neighbour is included, and expansion continues past it, if either
+        it is itself still relevant to the query, or the chunk just
+        confirmed contains an open numbered step -- chunk boundaries
+        routinely cut a procedure step in half, and its continuation often
+        carries none of the question's own vocabulary for the reranker to
+        recognise. Expansion in that direction stops the first time neither
+        holds.
+
+        The two directions are not symmetric. Forward keeps the wider
+        radius a multi-chunk procedure has always needed here. Backward is
+        kept short on purpose: a document routinely opens a topic with a
+        general definition/overview before its specific procedure or
+        finding (observed live: walking back from a chunk describing what
+        a positive CATT reaction looks like reached, a few chunks earlier,
+        a plain "CATT is a serological test used to diagnose..." sentence
+        -- itself relevant enough to individually clear the floor, but it
+        then outcompeted the anchor's own, actually-requested content in
+        extract()'s selection). A short leash still catches a step split
+        across a page break without reopening that door.
+        """
+        window = {anchor_index}
+        for direction, max_radius in ((1, max_radius_forward), (-1, max_radius_backward)):
+            index = anchor_index
+            for _ in range(max_radius):
+                neighbour = index + direction
+                if neighbour < 0 or neighbour >= len(self.chunks):
+                    break
+                if not NUMBERED_STEP_LINE_RE.search(self.chunks[index].text):
+                    score = float(self.reranker.predict(
+                        [[query, self.chunks[neighbour].text[:600]]],
+                        show_progress_bar=False,
+                    )[0])
+                    if score <= -2:
+                        break
+                window.add(neighbour)
+                index = neighbour
+        return sorted(window)
+
+    def _ensure_nli(self) -> None:
+        if self._nli is not None:
+            return
+        with self._model_lock:
+            if self._nli is None:
+                self._nli = CrossEncoder(NLI_MODEL)
+
+    def _rephrase_is_entailed(self, source: str, generated: str) -> bool:
+        """numbers_are_grounded only catches an invented quantity; a
+        rephrase can still drift into a claim the source never made
+        without using any number at all (observed live: asked about a
+        CATT test result, the model answered about reticulocyte counts --
+        a real diagnostic term, just not one the cited passage mentioned).
+        An NLI model checks the claim as a whole: does the verified source
+        text (premise) actually support this generated sentence (hypothesis)?
+
+        This model, measured on real rephrases here, calls almost every
+        full-paragraph premise/hypothesis pair "neutral" (0.95+) even for a
+        clearly faithful restatement -- it was trained on short, single-
+        clause sentence pairs, not paraphrases of a multi-clause technical
+        passage, so requiring its entailment probability to clear an
+        absolute bar rejects good rephrases along with bad ones. With
+        neutral this dominant, entailment and contradiction both often sit
+        near zero for a genuinely faithful rephrase too (observed as low as
+        0.0005 and 0.0008 respectively) -- noise at that scale, not signal,
+        so comparing them directly flips on a coin toss. A real drift
+        (observed: 0.05 contradiction on the CATT/reticulocyte case) clears
+        that noise floor by roughly an order of magnitude, so only treat
+        contradiction outscoring entailment as meaningful once it is also
+        clearly above the floor faithful rephrases sit at.
+
+        If the NLI model itself is unavailable, this fails open -- rephrase
+        already has numbers_are_grounded as a first line of defence, and a
+        missing model shouldn't silently disable all rephrasing.
+        """
+        try:
+            self._ensure_nli()
+        except Exception:
+            return True
+        raw = np.asarray(
+            self._nli.predict([[source, generated]], show_progress_bar=False)
+        )
+        if raw.ndim != 2:
+            return True
+        probabilities = torch.softmax(torch.tensor(raw), dim=1).numpy()[0]
+        labels = [
+            str(label).lower() for label in self._nli.model.config.id2label.values()
+        ]
+        entailment_index = next(
+            (index for index, label in enumerate(labels) if "entail" in label),
+            None,
+        )
+        contradiction_index = next(
+            (index for index, label in enumerate(labels) if "contra" in label),
+            None,
+        )
+        if entailment_index is None or contradiction_index is None:
+            return True
+        contradiction_score = float(probabilities[contradiction_index])
+        entailment_score = float(probabilities[entailment_index])
+        return not (
+            contradiction_score > entailment_score
+            and contradiction_score > CONTRADICTION_NOISE_FLOOR
+        )
 
     def rephrase(self, question: str, verified_text: str) -> str | None:
         """Restate an already exact-span-verified extractive answer in
@@ -391,6 +554,8 @@ class DirectPdfQA:
             skip_special_tokens=True,
         ).strip()
         if not generated or not numbers_are_grounded(generated, verified_text):
+            return None
+        if not self._rephrase_is_entailed(verified_text, generated):
             return None
         return generated
 

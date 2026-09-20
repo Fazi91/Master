@@ -148,7 +148,9 @@ class GraphVerifier:
         self.driver.verify_connectivity()
         return True
 
-    def verify(self, chunk_ids: list[str]) -> dict[str, Any]:
+    def verify(
+        self, chunk_ids: list[str], question_terms: list[str] | None = None
+    ) -> dict[str, Any]:
         if not chunk_ids:
             return {"status": "not_run", "verified_chunks": [], "locations": []}
         try:
@@ -178,11 +180,16 @@ class GraphVerifier:
             with self.driver.session(database=self.database) as session:
                 records = [record.data() for record in session.run(query, chunk_ids=chunk_ids)]
             verified = [record["chunk_id"] for record in records]
+            content_relevance, content_relevance_summary = self._content_relevance(
+                records, question_terms
+            )
             return {
                 "status": "verified" if set(chunk_ids).issubset(verified) else "partial",
                 "verified_chunks": verified,
                 "locations": records,
                 "visualization": self._visualization(records),
+                "content_relevance": content_relevance,
+                "content_relevance_summary": content_relevance_summary,
                 "query": query.strip(),
             }
         except Exception as exc:
@@ -194,8 +201,46 @@ class GraphVerifier:
                 "verified_chunks": [],
                 "locations": [],
                 "visualization": {"nodes": [], "edges": []},
+                "content_relevance": {},
+                "content_relevance_summary": {
+                    "relevant": 0, "no_overlap": 0, "no_entities": 0, "not_checked": 0
+                },
                 "error": f"{type(exc).__name__}: {exc}",
             }
+
+    @staticmethod
+    def _content_relevance(
+        records: list[dict[str, Any]], question_terms: list[str] | None
+    ) -> tuple[dict[str, str], dict[str, int]]:
+        """Judge, per chunk, whether its own graph entities actually relate
+        to the question -- not just that the chunk node exists in Neo4j.
+        A chunk with no linked entities can't be judged either way (sparse
+        entity coverage in the graph is not evidence the chunk is
+        irrelevant), so it is reported separately rather than counted as a
+        pass or a fail.
+        """
+        relevance: dict[str, str] = {}
+        summary = {"relevant": 0, "no_overlap": 0, "no_entities": 0, "not_checked": 0}
+        terms = set(question_terms or [])
+        for record in records:
+            chunk_id = record.get("chunk_id")
+            if not chunk_id:
+                continue
+            labels = [
+                entity.get("label")
+                for entity in record.get("entities", [])
+                if entity and entity.get("label")
+            ]
+            if not terms:
+                verdict = "not_checked"
+            elif not labels:
+                verdict = "no_entities"
+            else:
+                entity_terms = roots(" ".join(labels))
+                verdict = "relevant" if entity_terms & terms else "no_overlap"
+            relevance[chunk_id] = verdict
+            summary[verdict] += 1
+        return relevance, summary
 
     @staticmethod
     def _visualization(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -313,6 +358,59 @@ class GraphVerifier:
                 ]
         except Exception:
             return []
+
+    def rank_by_entity_overlap(
+        self, chunk_ids: list[str], required_terms: list[str]
+    ) -> list[str]:
+        """Cheaply narrow a wide candidate pool using the graph's own
+        entity relationships before the expensive semantic reranker ever
+        runs on any of them. A chunk's embedding similarity reflects its
+        whole text, so a chunk that is mostly about something else but
+        contains one on-topic sentence can rank below several chunks that
+        merely resemble the question throughout without answering it
+        (observed live: the correct "purpose of a thick blood film" chunk
+        ranked 8th by embedding, past the top-5 window ever inspected,
+        while a graph-entity check against the same 15-candidate pool
+        immediately narrowed it to the 2 chunks whose own MENTIONS
+        entities actually covered every distinctive question term).
+        Returns chunk_ids reordered by how many of required_terms their
+        entities cover, most-covering first, ties broken by original
+        order; a chunk with no entities in the graph is neither promoted
+        nor dropped, just left at the back of its tier -- sparse entity
+        coverage is not evidence a chunk is off-topic, only that the
+        graph has less to say about it.
+        """
+        if not chunk_ids or not required_terms:
+            return chunk_ids
+        try:
+            if not self.connect():
+                return chunk_ids
+            query = """
+            UNWIND $chunk_ids AS cid
+            MATCH (c:Chunk {id: cid})
+            OPTIONAL MATCH (c)-[:MENTIONS]->(e:Entity)
+            RETURN cid AS chunk_id,
+                   collect(DISTINCT coalesce(e.canonical_name, e.normalized_name)) AS names
+            """
+            with self.driver.session(database=self.database) as session:
+                entities_by_chunk = {
+                    record["chunk_id"]: record["names"]
+                    for record in session.run(query, chunk_ids=chunk_ids)
+                }
+        except Exception:
+            return chunk_ids
+        required = set(required_terms)
+        original_order = {cid: index for index, cid in enumerate(chunk_ids)}
+
+        def overlap_count(cid: str) -> int:
+            names = entities_by_chunk.get(cid) or []
+            entity_terms = roots(" ".join(name for name in names if name))
+            return len(required & entity_terms)
+
+        return sorted(
+            chunk_ids,
+            key=lambda cid: (-overlap_count(cid), original_order[cid]),
+        )
 
 
 class EvaluationService:
@@ -445,11 +543,19 @@ class EvaluationService:
                   max(len(result.get("sources", [])), 1))
             if mode == "graph" else None
         )
+        relevance_summary = graph_result.get("content_relevance_summary") or {}
+        judged = relevance_summary.get("relevant", 0) + relevance_summary.get("no_overlap", 0)
+        relevance_pct = (
+            round(100 * relevance_summary.get("relevant", 0) / judged)
+            if mode == "graph" and judged else None
+        )
         return {
             "accuracy_pct": f1,
             "gold_precision_pct": precision,
             "gold_recall_pct": recall,
             "neo4j_verification_pct": graph,
+            "neo4j_relevance_pct": relevance_pct,
+            "neo4j_relevance_detail": relevance_summary if mode == "graph" else None,
             "gold_annotated": gold is not None,
             "gold_correct": f1 == 100.0 if f1 is not None else None,
             "source_exact": bool(result.get("verification", {}).get("complete")),
@@ -488,7 +594,12 @@ class EvaluationService:
             "locations": [],
         }
         if mode == "graph" and result["kind"] != "small_talk":
-            graph_result = self.graph.verify(chunk_ids)
+            question_terms = sorted(set(
+                term
+                for need in result.get("needs", [])
+                for term in need.get("distinctive_subject_terms", [])
+            ))
+            graph_result = self.graph.verify(chunk_ids, question_terms=question_terms)
             if graph_result["status"] != "verified":
                 result["kind"] = "not_found"
                 result["answer"] = "The textual evidence could not be fully verified in Neo4j."
@@ -581,6 +692,22 @@ class EvaluationService:
                 list(need.subject_terms) + list(roots(need.query)),
                 required_terms=distinctive_subject,
             )
+            # Neo4j's own search is literal term-count matching, which can
+            # rank a passage that merely names the subject once above the
+            # chunk that actually explains it in different words, or bury
+            # the right chunk outside whatever window later code inspects
+            # (observed live: the correct Giemsa-stain recipe ranked 8th on
+            # term count and was never reached). Embedding similarity finds
+            # the same chunk by meaning even when it shares few or no terms
+            # with the question, so merge it in ahead of the term-count
+            # list rather than replacing it -- Neo4j's exact-terminology
+            # matching still catches a specific technical term embeddings
+            # alone can blur.
+            semantic_ids = [
+                self.pdf.chunks[index].chunk_id
+                for index, _ in self.pdf.semantic_candidates(need.query)
+            ]
+            independent_ids = list(dict.fromkeys(semantic_ids + independent_ids))
             related_ids = list(dict.fromkeys(
                 independent_ids + self.graph.expand(seed_ids)
             ))
@@ -649,9 +776,28 @@ class EvaluationService:
                             hits += len(required & roots(line))
                     return hits
 
+                # A top-5 cut straight off embedding/term rank keeps missing
+                # the right chunk when its match is one on-topic sentence
+                # inside an otherwise-generic chunk (observed live: the
+                # correct answer ranked 8th by embedding, never reaching
+                # this window). Widen the pool first, then cheaply narrow it
+                # with the graph's own entity relationships -- how many of
+                # the question's distinctive terms each candidate's own
+                # MENTIONS entities cover -- before spending the expensive
+                # reranker on only the top 5 of *that*.
+                wide_pool = list(dict.fromkeys(
+                    [
+                        self.pdf.chunks[index].chunk_id
+                        for index, _ in self.pdf.semantic_candidates(need.query, top_k=15)
+                    ] + independent_ids
+                ))[:15]
+                ranked_pool = self.graph.rank_by_entity_overlap(
+                    wide_pool, distinctive_subject
+                )
                 top_candidates = [
-                    cid for cid in independent_ids[:5] if cid in chunk_index
+                    cid for cid in ranked_pool[:5] if cid in chunk_index
                 ]
+                best_id = None
                 if top_candidates:
                     pairs = [
                         [need.query, self.pdf.chunks[chunk_index[cid]].text[:600]]
@@ -660,17 +806,35 @@ class EvaluationService:
                     semantic_scores = self.pdf.reranker.predict(
                         pairs, show_progress_bar=False
                     )
-                    # A weighted sum, not a strict priority order: a chunk
-                    # padded with many short reagent-list lines can rack up
-                    # heading hits without being the right section, so that
-                    # alone must not outrank a much stronger semantic match.
-                    best_id = max(
+                    # Order candidates by the same weighted signal as
+                    # before (raw relevance plus a bonus for naming the
+                    # subject in a heading-like line: a chunk padded with
+                    # many short reagent-list lines can rack up heading
+                    # hits without being the right section, so that alone
+                    # must not outrank a much stronger semantic match) --
+                    # but do not simply trust whichever ranks first. Walk
+                    # that order and anchor on the first candidate that is
+                    # both actually new (a candidate PDF's own retrieval
+                    # already settled on can't be the fix for PDF's own
+                    # retrieval -- observed live: embedding similarity
+                    # ranked a same-chemistry buffer recipe from an
+                    # unrelated section above the correct one, and it also
+                    # happened to be PDF's own wrong pick, which silently
+                    # cancelled the override instead of moving on to the
+                    # next candidate) and whose own relevance genuinely
+                    # clears the same floor used everywhere else in this
+                    # file. A candidate that fails either check is skipped
+                    # outright, not patched over -- the next independently-
+                    # found candidate gets the same chance.
+                    for cid, score in sorted(
                         zip(top_candidates, semantic_scores),
                         key=lambda item: float(item[1]) + 0.3 * heading_hits(item[0]),
-                    )[0]
-                else:
-                    best_id = independent_ids[0]
-                if best_id not in pdf_chunk_ids:
+                        reverse=True,
+                    ):
+                        if cid not in pdf_chunk_ids and float(score) > -2:
+                            best_id = cid
+                            break
+                if best_id is not None and best_id not in pdf_chunk_ids:
                     top_index = chunk_index.get(best_id)
                     if top_index is not None:
                         # A single chunk in isolation starves extract()'s own
@@ -679,28 +843,34 @@ class EvaluationService:
                         # procedure that spans a chunk or page boundary --
                         # very common, since chunk cuts fall mid-sentence --
                         # would be silently truncated at whatever step the
-                        # chosen chunk happens to end on. Include a generous
-                        # window of chunks immediately after it in document
-                        # order (chunks are stored in reading order, so this
-                        # is literally "the next several pages"), the same
-                        # neighbourhood the normal PDF retrieval path already
-                        # supplies, so a genuine multi-chunk procedure can
-                        # still be walked to completion even when the real
-                        # answer runs to two or more pages. extract()'s own
-                        # continuation walk still requires each step to
-                        # follow the last in strict sequence one page apart
-                        # at most, and to actually be found -- a wide window
-                        # only gives it more candidates to search, it cannot
-                        # by itself pull in unrelated later content. ~2
-                        # chunks per page in this corpus, so 10 chunks is
-                        # about 4-5 pages -- comfortably past any real
-                        # procedure in this manual without reaching so far
-                        # that an unrelated later section could plausibly
-                        # interfere.
-                        window_end = min(top_index + 10, len(self.pdf.chunks))
+                        # chosen chunk happens to end on. Grow a window of
+                        # neighbours actually verified relevant to this
+                        # query (or that continue an open numbered step)
+                        # instead of an unconditional flat block of
+                        # following chunks, which let extraction wander
+                        # into a different, merely-nearby procedure.
+                        window_indices = self.pdf.relevant_window(
+                            need.query, top_index
+                        )
+                        # A backward neighbour and a forward neighbour the
+                        # same distance from the anchor must not tie: a
+                        # backward chunk is more often the general lead-in
+                        # to the topic (observed live -- a "how the thick
+                        # film is made" step here, two chunks before the
+                        # anchor, beat the actual Giemsa recipe extract()
+                        # was supposed to find, once distance alone made
+                        # them score equally and stable-sort order settled
+                        # the tie toward whichever came first). Score every
+                        # backward chunk below every forward one so a tie
+                        # in distance never lets extract() prefer it.
                         override_ranked = [
-                            (index, 1.0 - 0.01 * offset)
-                            for offset, index in enumerate(range(top_index, window_end))
+                            (
+                                index,
+                                1.0 - 0.01 * (index - top_index)
+                                if index >= top_index
+                                else -0.01 * (top_index - index)
+                            )
+                            for index in window_indices
                         ]
                         override_units = [
                             unit for unit in self.pdf.extract(need, override_ranked)
@@ -731,15 +901,72 @@ class EvaluationService:
                             )
                             missing_from_pdf = set(distinctive_subject) - pdf_covered
                             fills_a_real_gap = bool(missing_from_pdf & override_covered)
-                            if fills_a_real_gap:
-                                override_answer_score = self.pdf.reranker.predict(
-                                    [[
-                                        need.query,
-                                        " ".join(unit.text for unit in override_units),
-                                    ]],
+                            # The fragment itself -- the exact text that
+                            # would be shown, not the anchor chunk's wider
+                            # context -- is independent evidence PDF chose
+                            # wrong even without a term-gap: PDF's own wrong
+                            # chunk can already contain every distinctive
+                            # word (a neighbouring paragraph, same topic)
+                            # while answering a different question (observed
+                            # live: both the wrong and the right "thick
+                            # blood film" chunks say "thick", "blood" and
+                            # "film" -- only one is actually about its
+                            # purpose, and its own extracted sentence scores
+                            # strongly relevant on its own). This must stay
+                            # a high, fragment-only bar, not a comparison
+                            # against the anchor chunk's wider context: a
+                            # heading-like line elsewhere in that context
+                            # can share the question's words out of context
+                            # and score high regardless of whether the
+                            # actual answer text is relevant (observed live:
+                            # a "Boxes and jars for collecting sputum
+                            # specimens" heading made an unrelated carton-
+                            # folding procedure's *context* outscore PDF's
+                            # own correct sputum-collection answer, even
+                            # though that same carton-folding text scored
+                            # very low as a fragment on its own).
+                            fragment_score = float(self.pdf.reranker.predict(
+                                [[
+                                    need.query,
+                                    " ".join(unit.text for unit in override_units),
+                                ]],
+                                show_progress_bar=False,
+                            )[0])
+                            if fills_a_real_gap or fragment_score > 2:
+                                # extract() keeps only the verified answer
+                                # span, which can drop the heading/context
+                                # words (e.g. the subject's own name) that
+                                # told the reranker what the passage was
+                                # about in the first place -- scoring only
+                                # that narrower fragment then judges a
+                                # correct answer out of context. Restore
+                                # context from the chunk(s) the accepted
+                                # text was actually drawn from -- not the
+                                # window's anchor chunk, since extract()'s
+                                # own walk over the window can settle on a
+                                # different, less relevant chunk within it
+                                # (e.g. a same-window table entry that only
+                                # superficially matches). This fuller-context
+                                # rescue only matters for the term-gap path
+                                # above (fragment_score already cleared a
+                                # high bar on its own for the other path):
+                                # whichever scoring -- the narrow fragment or
+                                # its own fuller context -- sees the passage
+                                # as relevant is enough to clear the floor.
+                                override_source_indices = sorted({
+                                    unit.chunk_index for unit in override_units
+                                })
+                                context_scores = self.pdf.reranker.predict(
+                                    [
+                                        [need.query, self.pdf.chunks[i].text[:600]]
+                                        for i in override_source_indices
+                                    ],
                                     show_progress_bar=False,
-                                )[0]
-                                if float(override_answer_score) > -2:
+                                )
+                                override_answer_score = max(
+                                    fragment_score, float(max(context_scores))
+                                )
+                                if override_answer_score > -2:
                                     units = override_units
             need_is_complete = self.pdf.need_complete(need, units)
             if not need_is_complete:
@@ -753,6 +980,7 @@ class EvaluationService:
                 "resolved_query": need.query,
                 "subject_terms": sorted(need.subject_terms),
                 "answer_type": need.answer_type,
+                "distinctive_subject_terms": distinctive_subject,
                 "complete": need_is_complete,
                 "graph_candidates_added": len([
                     cid for cid in related_ids if cid in chunk_index

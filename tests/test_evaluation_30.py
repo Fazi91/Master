@@ -59,10 +59,14 @@ def graph_contribution(pdf_result: dict, graph_result: dict) -> str:
 
 def main() -> int:
     rows: list[dict] = []
+    relevance_totals = {"relevant": 0, "no_overlap": 0, "no_entities": 0, "not_checked": 0}
     started = time.perf_counter()
     for item in EVALUATION_QUESTIONS:
         pdf_result = ask(item["question"], "pdf")
         graph_result = ask(item["question"], "graph")
+        relevance_detail = graph_result.get("scores", {}).get("neo4j_relevance_detail") or {}
+        for key in relevance_totals:
+            relevance_totals[key] += relevance_detail.get(key, 0)
         rows.append({
             "id": item["id"],
             "category": item["category"],
@@ -73,6 +77,7 @@ def main() -> int:
             "graph_nodes": len(graph_result.get("graph", {}).get("visualization", {}).get("nodes", [])),
             "images": len(graph_result.get("images", [])),
             "contribution": graph_contribution(pdf_result, graph_result),
+            "neo4j_relevance_pct": graph_result.get("scores", {}).get("neo4j_relevance_pct"),
         })
 
     header = f"{'ID':>3} {'Category':<11} {'PDF':<5} {'Graph':<5} {'Aura':<10} {'Img':>3}  Contribution"
@@ -94,6 +99,15 @@ def main() -> int:
     print(f"PDF-only:  {pdf_passed}/{len(rows)} passed")
     print(f"PDF+Neo4j: {graph_passed}/{len(rows)} passed")
     print(f"Questions where Neo4j measurably contributed: {gains}/{len(rows)}")
+    judged = relevance_totals["relevant"] + relevance_totals["no_overlap"]
+    print(
+        "Neo4j content-relevance (entities linked to the accepted chunk vs. "
+        f"the question's own terms): relevant={relevance_totals['relevant']} "
+        f"no_overlap={relevance_totals['no_overlap']} "
+        f"no_entities_in_graph={relevance_totals['no_entities']} "
+        f"not_checked={relevance_totals['not_checked']}"
+        + (f"  ({round(100 * relevance_totals['relevant'] / judged)}% of judgeable chunks)" if judged else "")
+    )
     print(f"Total time: {elapsed:.1f}s")
 
     failures = (len(rows) - pdf_passed) + (len(rows) - graph_passed)
