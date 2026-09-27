@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
 import os
 import re
 import time
@@ -19,6 +20,8 @@ from webapp.pdf_direct_qa import (
     GENERIC_SUBJECT_ROOTS,
     DirectPdfQA,
     clean_question,
+    content_roots,
+    detect_specimen_types,
     roots,
     small_talk_response,
     stem,
@@ -56,7 +59,7 @@ EVALUATION_QUESTIONS = [
     {"id": 20, "category": "Comparison", "question": "What is the difference between a random urine specimen and an early morning urine specimen?"},
     {"id": 21, "category": "Comparison", "question": "How do leukocytes differ from erythrocytes in terms of their nucleus?"},
     {"id": 22, "category": "Calculation", "question": "How is the number of leukocytes per litre of blood calculated from the counting chamber?"},
-    {"id": 23, "category": "Calculation", "question": "How is the number of erythrocytes per litre of blood calculated from the counting chamber?"},
+    {"id": 23, "category": "Calculation", "question": "How is the number of leukocytes in cerebrospinal fluid calculated from the counting chamber?"},
     {"id": 24, "category": "Calculation", "question": "How is a cell count converted to the number of cells per litre?"},
     {"id": 25, "category": "Cross-chunk", "question": "How is a slit skin smear collected for the diagnosis of cutaneous leishmaniasis?"},
     {"id": 26, "category": "Cross-chunk", "question": "How is the erythrocyte sedimentation rate measured using a Westergren tube and trisodium citrate?"},
@@ -121,9 +124,18 @@ class EvaluationRequest(BaseModel):
     mode: Literal["pdf", "graph"] = "pdf"
 
 
+class RephraseSource(BaseModel):
+    chunk_id: str
+    pdf_page: int | None = None
+    printed_page: str | None = None
+    text: str
+    score: float | None = None
+
+
 class RephraseRequest(BaseModel):
     question: str
     verified_text: str
+    sources: list[RephraseSource] = []
 
 
 class GraphVerifier:
@@ -156,30 +168,80 @@ class GraphVerifier:
         try:
             if not self.connect():
                 return {"status": "unavailable", "verified_chunks": [], "locations": []}
+            # Two distinct image relations exist in the graph: Chunk
+            # -[:ILLUSTRATED_BY]-> Image is the narrow, CLIP-similarity-
+            # filtered link saying "this image is specifically what this
+            # chunk's text is about" (corpus-wide, only ~21% of images clear
+            # that bar for any chunk). Page -[:CONTAINS_IMAGE]-> Image is
+            # unconditional and covers every image (100% of images have it) --
+            # it just says "this image appears on this page" without judging
+            # relevance to any one chunk. Both are surfaced (as `images` and
+            # `page_images`) so a page's images aren't silently dropped just
+            # because none of them individually cleared the CLIP threshold.
+            # Each OPTIONAL MATCH is collected via its own WITH before the
+            # next one starts: chaining independent OPTIONAL MATCHes off the
+            # same node without collecting first cross-multiplies them (a
+            # chunk with 35 entities and 4 images returned 140 rows instead
+            # of 4 before this was fixed).
             query = """
             MATCH (chunk:Chunk)
             WHERE chunk.id IN $chunk_ids
             OPTIONAL MATCH (page:Page)-[:HAS_CHUNK]->(chunk)
             OPTIONAL MATCH (document:Document)-[:HAS_PAGE]->(page)
             OPTIONAL MATCH (chunk)-[:MENTIONS]->(entity:Entity)
-            OPTIONAL MATCH (chunk)-[:ILLUSTRATED_BY]->(image:Image)
+            WITH chunk, page, document, collect(DISTINCT {
+                       id: entity.id,
+                       label: coalesce(entity.canonical_name, entity.normalized_name),
+                       type: coalesce(entity.entity_type, 'Entity')
+                   }) AS entities
+            OPTIONAL MATCH (chunk)-[illustrated:ILLUSTRATED_BY]->(image:Image)
+            WITH chunk, page, document, entities, collect(DISTINCT {
+                       id: image.id,
+                       file_path: image.file_path,
+                       figure_number: illustrated.figure_number,
+                       keywords: image.keywords
+                   }) AS images
+            OPTIONAL MATCH (page)-[:CONTAINS_IMAGE]->(page_image:Image)
             RETURN chunk.id AS chunk_id,
                    page.id AS page_id,
                    page.pdf_page AS pdf_page,
                    document.id AS document_id,
+                   entities,
+                   images,
                    collect(DISTINCT {
-                       id: entity.id,
-                       label: coalesce(entity.canonical_name, entity.normalized_name),
-                       type: coalesce(entity.entity_type, 'Entity')
-                   }) AS entities,
-                   collect(DISTINCT {
-                       id: image.id,
-                       file_path: image.file_path
-                   }) AS images
+                       id: page_image.id,
+                       file_path: page_image.file_path
+                   }) AS page_images
             """
             with self.driver.session(database=self.database) as session:
                 records = [record.data() for record in session.run(query, chunk_ids=chunk_ids)]
             verified = [record["chunk_id"] for record in records]
+            # The data-extraction query above returns scalar/collected fields,
+            # which Neo4j Browser renders as a table. Pasting it in wouldn't
+            # even run standalone anyway, since $chunk_ids is only bound by
+            # the driver call above. For copy-paste into Neo4j Browser, build
+            # a separate query that (a) inlines the literal ids so it runs
+            # standalone and (b) returns the actual node/relationship objects
+            # -- Neo4j Browser only draws its graph view when a query returns
+            # real graph elements, not extracted properties -- and (c) also
+            # follows Page-[:CONTAINS_IMAGE]->Image (every image on the page,
+            # not just the ones that cleared the CLIP-similarity threshold
+            # for this specific chunk via ILLUSTRATED_BY), so a page's other
+            # images are visible too, not silently absent from the graph.
+            # Each relation is collected via its own WITH before the next
+            # OPTIONAL MATCH starts, to avoid cross-multiplying independent
+            # matches off the same node (a chunk with 35 entities and 4
+            # images returned 140 rows instead of 4 before this was fixed).
+            browser_query = f"""MATCH (chunk:Chunk)
+WHERE chunk.id IN {json.dumps(chunk_ids)}
+OPTIONAL MATCH (page:Page)-[r1:HAS_CHUNK]->(chunk)
+OPTIONAL MATCH (document:Document)-[r2:HAS_PAGE]->(page)
+OPTIONAL MATCH (chunk)-[r3:MENTIONS]->(entity:Entity)
+WITH chunk, page, document, r1, r2, collect(DISTINCT entity) AS entities, collect(DISTINCT r3) AS mentionRels
+OPTIONAL MATCH (chunk)-[r4:ILLUSTRATED_BY]->(image:Image)
+WITH chunk, page, document, r1, r2, entities, mentionRels, collect(DISTINCT image) AS chunkImages, collect(DISTINCT r4) AS illustratedRels
+OPTIONAL MATCH (page)-[r5:CONTAINS_IMAGE]->(pageImage:Image)
+RETURN chunk, page, document, entities, chunkImages, pageImage, r1, r2, mentionRels, illustratedRels, r5"""
             content_relevance, content_relevance_summary = self._content_relevance(
                 records, question_terms
             )
@@ -190,7 +252,7 @@ class GraphVerifier:
                 "visualization": self._visualization(records),
                 "content_relevance": content_relevance,
                 "content_relevance_summary": content_relevance_summary,
-                "query": query.strip(),
+                "query": browser_query,
             }
         except Exception as exc:
             if self.driver is not None:
@@ -272,6 +334,23 @@ class GraphVerifier:
                 add_node(image_id, image_id or "Image", "Image")
                 if chunk_id and image_id:
                     edges.add((chunk_id, image_id, "ILLUSTRATED_BY"))
+        # Every image on the page, not just the ones that individually
+        # cleared the CLIP-similarity threshold for a specific chunk -- see
+        # the comment on the query above for why both relations are needed.
+        # An image already added above (ILLUSTRATED_BY) is genuinely relevant
+        # to a chunk's content, so it keeps the "Image" type/color; one only
+        # reachable via CONTAINS_IMAGE is just co-located on the page and is
+        # tagged "PageImage" instead, so the two aren't visually
+        # indistinguishable -- otherwise a page with many figures buries the
+        # one image actually tied to the answer among unrelated ones.
+        for record in records:
+            page_id = record.get("page_id")
+            for image in record.get("page_images", []):
+                image_id = image.get("id") if image else None
+                kind = "Image" if image_id in nodes else "PageImage"
+                add_node(image_id, image_id or "Image", kind)
+                if page_id and image_id:
+                    edges.add((page_id, image_id, "CONTAINS_IMAGE"))
         return {
             "nodes": list(nodes.values()),
             "edges": [
@@ -458,15 +537,13 @@ class EvaluationService:
     ) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         seen: set[str] = set()
+        answer_fignums = set(re.findall(r"Fig(?:ure)?\.?\s*(\d+\.\d+)", answer_text, re.I))
+        answer_keywords = content_roots(answer_text)
         relations: list[tuple[str, dict[str, str], str]] = []
         for chunk_id in chunk_ids:
-            relations.extend(
-                (chunk_id, relation, "direct chunk-to-image relationship")
-                for relation in self.chunk_images.get(chunk_id, [])
-            )
-        answer_references_figure = bool(
-            re.search(r"\bFig(?:ure)?\.?\s*\d", answer_text, re.I)
-        )
+            for relation in self.chunk_images.get(chunk_id, []):
+                relations.append((chunk_id, relation, "direct chunk-to-image relationship"))
+        answer_references_figure = bool(answer_fignums)
         figure_pages = {
             chunk.pdf_page
             for chunk in self.pdf.chunks
@@ -492,6 +569,37 @@ class EvaluationService:
                     reason == "figure on the cited PDF page"
                     and width >= 300 and height >= 250
                 )
+                # Every image has a short set of descriptive keywords (its
+                # own caption text, or, for the minority with no caption
+                # anywhere, the body text immediately around it on the
+                # page) -- see build_image_keywords.py. Chunk/page
+                # membership, and even an exact figure-number citation, only
+                # prove an image is located near the source text -- not that
+                # it depicts what the *answer* actually says (a chunk can
+                # cite one figure while the extracted answer sentence is
+                # about an unrelated part of the same chunk). Treat a
+                # figure-number match and a keyword match as two
+                # independent, either-suffices signals of relevance: two
+                # shared keywords is required (one is treated as
+                # coincidental -- e.g. a parasite-morphology figure's
+                # keywords happening to include the generic word "present",
+                # which also appears in an unrelated answer sentence about
+                # parasite density -- observed live). An image with no
+                # stored keywords at all (no caption and no nearby text
+                # could be extracted) is passed through unfiltered on this
+                # check, since there is nothing to check it against either
+                # way.
+                figure_number = relation.get("figure_number")
+                cites_matching_figure = bool(figure_number) and figure_number in answer_fignums
+                image_keywords = set(meta.get("keywords", "").split())
+                keyword_match = (
+                    len(answer_keywords & image_keywords) >= 2 if image_keywords else True
+                )
+                if figure_number:
+                    if not (cites_matching_figure or keyword_match):
+                        continue
+                elif not keyword_match:
+                    continue
                 if predicted in {"logo", "decorative"}:
                     continue
                 if predicted == "fragment_or_noise" and not large_cited_figure:
@@ -740,7 +848,20 @@ class EvaluationService:
             # while Aura's differently-worded candidate about a related
             # but different aspect just happens to supply the "missing"
             # term). Both were observed to be false positives in testing.
-            override_eligible_type = need.answer_type not in {"reason", "comparison"}
+            # "What is the purpose of X?" asks for the same kind of
+            # rationale as a "why" question and fails the override for the
+            # identical reason, but the answer_type() classifier (used
+            # elsewhere for reason-specific extraction narrowing that must
+            # not change for this question shape) does not recognize
+            # "purpose" as a reason trigger -- it is checked directly here,
+            # against the question text alone, instead of widening that
+            # classifier and risking a change to unrelated extraction
+            # behavior for every other "reason"-classified question.
+            is_purpose_question = bool(re.search(r"\bpurpose\b", need.query, re.I))
+            override_eligible_type = (
+                need.answer_type not in {"reason", "comparison"}
+                and not is_purpose_question
+            )
             if allow_override and pdf_complete and independent_ids and override_eligible_type:
                 # Aura's own top hit already had to contain every
                 # distinctive subject term verbatim (a stricter bar than
@@ -925,13 +1046,25 @@ class EvaluationService:
                             # own correct sputum-collection answer, even
                             # though that same carton-folding text scored
                             # very low as a fragment on its own).
-                            fragment_score = float(self.pdf.reranker.predict(
-                                [[
-                                    need.query,
-                                    " ".join(unit.text for unit in override_units),
-                                ]],
-                                show_progress_bar=False,
-                            )[0])
+                            # PDF's own already-accepted fragment is scored
+                            # the same way, so the override can be required
+                            # to actually beat it below -- otherwise (observed
+                            # live, "purpose of a thick blood film" and "when
+                            # should blood be collected") a candidate could
+                            # clear the floor checks above on its own merits
+                            # while still being the objectively worse of the
+                            # two passages, and would replace an answer that
+                            # was never shown to be inferior in the first
+                            # place.
+                            fragment_score, pdf_fragment_score = (
+                                float(s) for s in self.pdf.reranker.predict(
+                                    [
+                                        [need.query, " ".join(unit.text for unit in override_units)],
+                                        [need.query, " ".join(unit.text for unit in pdf_units)],
+                                    ],
+                                    show_progress_bar=False,
+                                )
+                            )
                             if fills_a_real_gap or fragment_score > 2:
                                 # extract() keeps only the verified answer
                                 # span, which can drop the heading/context
@@ -966,7 +1099,36 @@ class EvaluationService:
                                 override_answer_score = max(
                                     fragment_score, float(max(context_scores))
                                 )
-                                if override_answer_score > -2:
+                                # Term-overlap and relevance-floor checks above
+                                # can both pass while the override candidate is
+                                # still about the wrong specimen (blood, urine,
+                                # CSF, stool, sputum, ...) -- procedural
+                                # wording repeats near-identically across
+                                # specimen sections, so a fragment can score as
+                                # relevant while answering a different
+                                # specimen's version of the same procedure
+                                # entirely (observed live: a blood-leukocyte
+                                # question's override landed on a CSF-leukocyte
+                                # passage). Reuse the same specimen-detection
+                                # function already used for claim-level
+                                # verification to veto the override whenever
+                                # the question names a specimen the candidate
+                                # text does not share.
+                                question_specimens = detect_specimen_types(question)
+                                override_specimens = detect_specimen_types(
+                                    " ".join(unit.text for unit in override_units)
+                                )
+                                specimen_mismatch = bool(
+                                    question_specimens
+                                    and override_specimens
+                                    and not (question_specimens & override_specimens)
+                                )
+                                beats_pdf_answer = override_answer_score > pdf_fragment_score
+                                if (
+                                    override_answer_score > -2
+                                    and not specimen_mismatch
+                                    and beats_pdf_answer
+                                ):
                                     units = override_units
             need_is_complete = self.pdf.need_complete(need, units)
             if not need_is_complete:
@@ -1101,8 +1263,105 @@ def rephrase(request: RephraseRequest) -> dict[str, Any]:
     # deployment and can take tens of seconds per call.
     question = clean_question(request.question)
     if not question or not request.verified_text.strip():
-        return {"natural_answer": None}
-    return {"natural_answer": service().pdf.rephrase(question, request.verified_text)}
+        return {"natural_answer": None, "claims": []}
+    natural_answer = service().pdf.rephrase(question, request.verified_text)
+    if not natural_answer:
+        return {"natural_answer": None, "claims": []}
+    if request.sources:
+        claims = service().pdf.attribute_claims_to_chunks(
+            natural_answer, [source.model_dump() for source in request.sources]
+        )
+        _attach_claim_graph_evidence(claims)
+    else:
+        claims = service().pdf.verify_answer_claims(request.verified_text, natural_answer)
+    _flag_specimen_mismatch(question, claims)
+    return {"natural_answer": natural_answer, "claims": claims}
+
+
+def _flag_specimen_mismatch(question: str, claims: list[dict[str, Any]]) -> None:
+    """A second, independent hallucination-risk axis alongside the NLI
+    status: does the specimen type this claim's cited source text is
+    actually about (blood/urine/CSF/stool/sputum/...) match the specimen
+    type the question asked about? Procedural wording (drops, centrifuge,
+    ml, stain) repeats near-identically across specimen types in this
+    document, which is exactly the overlap that can make word-level NLI
+    call a claim "supported" even when it was answered from the wrong
+    specimen's section entirely -- this flag catches that case regardless
+    of the NLI verdict.
+    """
+    question_specimens = detect_specimen_types(question)
+    if not question_specimens:
+        return
+    for claim in claims:
+        source_text = claim.get("source_text")
+        if not source_text:
+            continue
+        claim_specimens = detect_specimen_types(source_text)
+        claim["specimen_mismatch"] = bool(claim_specimens) and not (claim_specimens & question_specimens)
+
+
+def _attach_claim_graph_evidence(claims: list[dict[str, Any]]) -> None:
+    """Look up the page/image the graph already links each claim's cited
+    chunk to (one batched Neo4j round trip for every claim in the answer,
+    not one per claim), so a claim's evidence can point at the same
+    illustration or page a reader would find in the Aura graph -- reusing
+    the /media/<filename> URL convention the rest of this file already
+    uses for image evidence.
+    """
+    chunk_ids = sorted({claim["chunk_id"] for claim in claims if claim.get("chunk_id")})
+    if not chunk_ids:
+        for claim in claims:
+            claim["image"] = None
+            claim["graph_path"] = None
+        return
+    records = {
+        record["chunk_id"]: record
+        for record in service().graph.verify(chunk_ids).get("locations", [])
+    }
+    for claim in claims:
+        record = records.get(claim.get("chunk_id"))
+        if not record:
+            claim["image"] = None
+            claim["graph_path"] = None
+            continue
+        images = [img for img in record.get("images", []) if img.get("id")]
+        # A citation-derived image's figure_number, or an image's own
+        # descriptive keywords (see build_image_keywords.py and the longer
+        # comment in related_images()), are only meaningful for *this*
+        # claim if the claim's own text actually names that figure or
+        # shares those keywords -- otherwise the image may belong to a
+        # different topic within the same multi-topic chunk. Prefer a
+        # match on either signal; an image with neither a figure_number
+        # nor any stored keywords imposes no requirement and remains the
+        # fallback.
+        claim_text = f"{claim.get('text', '')} {claim.get('source_text', '')}"
+        claim_fignums = set(re.findall(r"Fig(?:ure)?\.?\s*(\d+\.\d+)", claim_text, re.I))
+        claim_keywords = content_roots(claim_text)
+
+        def claim_matches(img: dict[str, Any]) -> bool:
+            figure_number = img.get("figure_number")
+            image_keywords = set((img.get("keywords") or "").split())
+            if figure_number and figure_number in claim_fignums:
+                return True
+            if image_keywords:
+                return len(claim_keywords & image_keywords) >= 2
+            return not figure_number
+
+        candidates = [img for img in images if claim_matches(img)]
+        image = candidates[0] if candidates else None
+        claim["image"] = (
+            {
+                "image_id": image["id"],
+                "url": f"/media/{Path(image['file_path']).name}" if image.get("file_path") else None,
+            }
+            if image else None
+        )
+        path_parts = [f"Chunk {claim['chunk_id']}"]
+        if record.get("pdf_page") is not None:
+            path_parts.append(f"Page {record['pdf_page']}")
+        if image:
+            path_parts.append(f"Image {image['id']}")
+        claim["graph_path"] = " -> ".join(path_parts)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1130,8 +1389,8 @@ HTML = r'''<!doctype html>
     .answer{white-space:pre-wrap;margin:0 0 16px}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.metric{padding:9px;background:#f8fafc;border-radius:8px}.metric b{display:block;font-size:13px}.metric span{font-size:12px;color:var(--muted)}
     details{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}summary{font-weight:700;cursor:pointer}.source{padding:11px 0;border-bottom:1px solid #edf2f7}.source small{color:var(--muted)}.source p{margin:6px 0;font-size:13px;max-height:110px;overflow:auto}
     .images{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.images img{width:100%;height:150px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}.error{color:var(--red)}
-    .compare-panel{margin-top:20px}.compare-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}.chunk-list{font:12px/1.5 Consolas,monospace;word-break:break-word;color:#334155}.gain{color:#047857}.loss{color:#b91c1c}
-    .graph{width:100%;min-height:220px;border:1px solid var(--line);border-radius:10px;background:#fbfdff}.graph text{font:12px Segoe UI,Arial,sans-serif}.graph-edge{stroke:#94a3b8;stroke-width:1.5}.graph-label{fill:#64748b;font-size:10px}.node-document{fill:#dbeafe}.node-page{fill:#dcfce7}.node-chunk{fill:#fef3c7}.node-entity{fill:#ede9fe}.node-image{fill:#ffe4e6}
+    .compare-panel{margin-top:20px}.compare-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}.chunk-list{font:12px/1.5 Consolas,monospace;word-break:break-word;color:#334155}.gain{color:#047857}.loss{color:#b91c1c}
+    .graph{width:100%;min-height:220px;border:1px solid var(--line);border-radius:10px;background:#fbfdff}.graph text{font:12px Segoe UI,Arial,sans-serif}.graph-edge{stroke:#94a3b8;stroke-width:1.5}.graph-label{fill:#64748b;font-size:10px}.node-document{fill:#dbeafe}.node-page{fill:#dcfce7}.node-chunk{fill:#fef3c7}.node-entity{fill:#ede9fe}.node-image{fill:#ffe4e6}.node-pageimage{fill:#f1f5f9;stroke-dasharray:3,2}
     @media(max-width:800px){.grid{grid-template-columns:1fr}.top{display:block}.badge{display:inline-block;margin-top:12px}.meta{grid-template-columns:1fr}}
   </style>
 </head>
@@ -1155,12 +1414,29 @@ const customQuestion=document.getElementById('customQuestion');
 function question(){return customQuestion.value.trim()||select.selectedOptions[0]?.dataset.q||''}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function cleanSource(text){return String(text??'').replace(/^\d+\s+Manual of basic techniques for a health laboratory\s*/i,'').trim()}
-function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image']){const cap=['Entity','Image'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 880 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg>`}
+function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image','PageImage']){const cap=['Entity','Image','PageImage'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790,PageImage:960},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 1060 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg><p class="subtitle">Solid pink = image directly matched to this chunk (relevant). Dashed grey = other images on the same page (context only).</p>`}
 function graphStats(viz){const nodes=viz?.nodes||[],edges=viz?.edges||[];return `${nodes.length} real Aura nodes · ${edges.length} real relationships`}
 let results={};
-function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),sourceExact=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{},goldMeasured=score.gold_annotated===true,goldCorrect=score.gold_correct===true,ok=goldMeasured?goldCorrect:sourceExact,status=goldMeasured?(goldCorrect?'Gold evidence matched':'Gold evidence incomplete'):(sourceExact?'Source-exact · answer accuracy not measured':'Not verified');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${status}</span></div><p class="answer ${sourceExact?'':'error'}">${esc(data.answer)}</p>${sourceExact&&data.kind!=='small_talk'?`<details open><summary>Rephrased answer (LLM, constrained to the verified text above)</summary><p class="subtitle" id="rephrase-${mode}">Generating…</p></details>`:''}<div class="meta"><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j traceability: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>share of selected source chunks located in Aura; not answer accuracy</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(cleanSource(s.text))}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}<br>${esc(i.verification_reason)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
-async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});const data=await r.json();render(mode,data);const sourceExact=data.kind==='domain_answer'&&data.verification?.complete;if(sourceExact&&data.kind!=='small_talk'){const verifiedText=(data.sources||[]).map(s=>s.text).join('\n');fetch('/rephrase',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,verified_text:verifiedText})}).then(rr=>rr.json()).then(rd=>{const el=document.getElementById(`rephrase-${mode}`);if(el)el.textContent=rd.natural_answer||'Not available for this answer.'}).catch(()=>{const el=document.getElementById(`rephrase-${mode}`);if(el)el.textContent='Not available for this answer.'})}}catch(e){target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
+function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),sourceExact=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{},goldMeasured=score.gold_annotated===true,goldCorrect=score.gold_correct===true,ok=goldMeasured?goldCorrect:sourceExact,status=goldMeasured?(goldCorrect?'Gold evidence matched':'Gold evidence incomplete'):(sourceExact?'Source-exact · answer accuracy not measured':'Not verified');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${status}</span></div><p class="answer ${sourceExact?'':'error'}">${esc(data.answer)}</p>${sourceExact&&data.kind!=='small_talk'?`<details open><summary>Rephrased answer (LLM, constrained to the verified text above)</summary><p class="subtitle" id="rephrase-${mode}">Generating…</p></details>`:''}<div class="meta"><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j traceability: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>share of selected source chunks located in Aura; not answer accuracy</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(cleanSource(s.text))}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
+const runToken={pdf:0,graph:0};
+async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const token=++runToken[mode];const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>Answer</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});if(runToken[mode]!==token)return;const data=await r.json();render(mode,data);const sourceExact=data.kind==='domain_answer'&&data.verification?.complete;if(sourceExact&&data.kind!=='small_talk'){const evidenceItems=(data.needs||[]).flatMap(n=>n.evidence||[]);const verifiedText=evidenceItems.map(e=>e.text).join('\n');fetch('/rephrase',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,verified_text:verifiedText,sources:evidenceItems})}).then(rr=>rr.json()).then(rd=>{if(runToken[mode]!==token)return;const el=document.getElementById(`rephrase-${mode}`);if(el)el.innerHTML=renderClaims(rd)}).catch(()=>{if(runToken[mode]!==token)return;const el=document.getElementById(`rephrase-${mode}`);if(el)el.textContent='Not available for this answer.'})}}catch(e){if(runToken[mode]===token)target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
+function renderClaims(rd){if(!rd.natural_answer)return 'Not available for this answer.';if(!rd.claims||!rd.claims.length)return esc(rd.natural_answer);const badge={supported:'ok',contradicted:'bad',insufficient_evidence:'idle',not_checked:'idle'};return rd.claims.map(c=>{
+  // A contradicted claim is drift the model introduced, not a fact worth
+  // showing in red next to everything else -- replace it with the exact
+  // source wording it was checked against (shown as verified/green) instead
+  // of leaving the wrong sentence on screen at all.
+  if(c.status==='contradicted'&&c.source_text){
+    const cite=c.chunk_id?` <small>[${esc(c.chunk_id)}${c.graph_path?` · ${esc(c.graph_path)}`:''}]</small>`:'';
+    const img=c.image&&c.image.url?` <a href="${esc(c.image.url)}" target="_blank">[image]</a>`:'';
+    return `<span class="state ok" style="display:inline;white-space:normal" title="Replaced: the generated sentence drifted from the source">${esc(c.source_text)}</span>${cite}${img}`;
+  }
+  const cls=badge[c.status]||'idle';const cite=c.chunk_id?` <small>[${esc(c.chunk_id)}${c.graph_path?` · ${esc(c.graph_path)}`:''}]</small>`:'';const img=c.image&&c.image.url?` <a href="${esc(c.image.url)}" target="_blank">[image]</a>`:'';
+  // Independent of the NLI verdict: the cited source may simply be about
+  // the wrong specimen (e.g. CSF instead of blood) -- wording overlap can
+  // make NLI call that "supported" anyway, so this warns regardless.
+  const mismatch=c.specimen_mismatch?' <small class="state bad">⚠ possibly wrong specimen type in cited source</small>':'';
+  return `<span class="state ${cls}" style="display:inline;white-space:normal">${esc(c.text)}</span>${mismatch}${cite}${img}`}).join(' ')}
 function unique(values){return [...new Set(values||[])]}
-function chunkText(values){return values.length?values.map(esc).join(', '):'None'}
-async function compareBoth(){results={};document.getElementById('comparison').innerHTML='';await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct,g=results.graph?.scores?.accuracy_pct,measured=p!=null&&g!=null,d=measured?g-p:null,pdfAccepted=unique(results.pdf?.retrieval_trace?.accepted_chunks),graphAccepted=unique(results.graph?.retrieval_trace?.accepted_chunks),graphCandidates=unique(results.graph?.retrieval_trace?.neo4j_independent_chunks),common=pdfAccepted.filter(id=>graphAccepted.includes(id)),graphOnly=graphAccepted.filter(id=>!pdfAccepted.includes(id)),pdfOnly=pdfAccepted.filter(id=>!graphAccepted.includes(id)),candidateOnly=graphCandidates.filter(id=>!pdfAccepted.includes(id));const improved=measured&&d>0,verdict=!measured?'No Gold annotation exists for this question, so no comparison is reported.':d>0?'Neo4j retrieved more of the correct evidence than the PDF-only search.':d<0?'Neo4j retrieved less of the correct evidence than the PDF-only search.':'Neo4j did not improve evidence retrieval for this question.';document.getElementById('comparison').innerHTML=`<section class="panel compare-panel"><div class="head"><h2>PDF vs Neo4j comparison</h2><span class="state ${improved?'ok':'idle'}">${improved?'Measured graph gain':'No measured gain'}</span></div><p class="subtitle ${d<0?'loss':d>0?'gain':''}">${verdict}</p><div class="compare-grid"><div class="metric"><b>PDF accepted</b><div class="chunk-list">${chunkText(pdfAccepted)}</div></div><div class="metric"><b>Common evidence</b><div class="chunk-list">${chunkText(common)}</div></div><div class="metric"><b>Neo4j-only accepted</b><div class="chunk-list">${chunkText(graphOnly)}</div></div><div class="metric"><b>PDF-only accepted</b><div class="chunk-list">${chunkText(pdfOnly)}</div></div></div><details><summary>Independent Neo4j candidates not returned by PDF</summary><p class="chunk-list">${chunkText(candidateOnly)}</p></details><p class="subtitle">A Neo4j improvement is reported only against independently annotated Gold evidence.</p></section>`}
+function chunkText(values){return values.length?values.map(esc).join(', '):'<span class="subtitle">None (same evidence as the other mode)</span>'}
+async function compareBoth(){results={};document.getElementById('comparison').innerHTML='';await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct,g=results.graph?.scores?.accuracy_pct,measured=p!=null&&g!=null,d=measured?g-p:null,pdfAccepted=unique(results.pdf?.retrieval_trace?.accepted_chunks),graphAccepted=unique(results.graph?.retrieval_trace?.accepted_chunks),common=pdfAccepted.filter(id=>graphAccepted.includes(id));const improved=measured&&d>0,verdict=!measured?'No Gold annotation exists for this question, so no comparison is reported.':d>0?'Neo4j retrieved more of the correct evidence than the PDF-only search.':d<0?'Neo4j retrieved less of the correct evidence than the PDF-only search.':'Both modes accepted the same evidence for this question.';document.getElementById('comparison').innerHTML=`<section class="panel compare-panel"><div class="head"><h2>PDF vs Neo4j comparison</h2><span class="state ${improved?'ok':'idle'}">${improved?'Measured graph gain':'No measured gain'}</span></div><p class="subtitle ${d<0?'loss':d>0?'gain':''}">${verdict}</p><div class="compare-grid"><div class="metric"><b>PDF accepted</b><div class="chunk-list">${chunkText(pdfAccepted)}</div></div><div class="metric"><b>Common evidence</b><div class="chunk-list">${chunkText(common)}</div></div></div></section>`}
 </script></body></html>'''

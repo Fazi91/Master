@@ -203,7 +203,69 @@ def content_roots(text: str) -> set[str]:
     return roots(text) - generic
 
 
+# The specimen a technique is performed on is a hard, unambiguous
+# constraint this document repeats across every section (Part III's own
+# structure is literally "examination of urine, cerebrospinal fluid and
+# blood") -- yet a claim can still get attributed to a chunk about the
+# wrong specimen, because the surrounding procedural vocabulary (drops,
+# centrifuge, ml, stain) is nearly identical across specimen types, which
+# is exactly the kind of overlap that fools word-level NLI. This check is
+# a second, independent axis from the NLI status: it flags a mismatch
+# between the specimen named in the question and the specimen named in
+# the claim's own cited source text, regardless of whether NLI called
+# that claim supported or contradicted.
+SPECIMEN_TYPES = {
+    "blood": {"blood"},
+    "urine": {"urine", "urinary"},
+    "cerebrospinal fluid (csf)": {"csf", "cerebrospinal"},
+    "stool": {"stool", "stools", "faeces", "feces", "faecal", "fecal"},
+    "sputum": {"sputum"},
+    "serum": {"serum"},
+    "plasma": {"plasma"},
+}
+
+
+def detect_specimen_types(text: str) -> set[str]:
+    """Which of this document's specimen categories a piece of text names,
+    by literal word match -- general across the whole corpus (these are
+    the manual's own top-level specimen categories, not anything tied to
+    one question), and used only as a same/different signal, not as a
+    retrieval mechanism of its own."""
+    lowered = text.casefold()
+    return {
+        label for label, words in SPECIMEN_TYPES.items()
+        if any(re.search(rf"\b{re.escape(word)}\b", lowered) for word in words)
+    }
+
+
 NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)*")
+_UNIT_ALIASES = {
+    "g": "g", "gram": "g", "grams": "g", "gm": "g",
+    "mg": "mg", "milligram": "mg", "milligrams": "mg",
+    "kg": "kg", "kilogram": "kg", "kilograms": "kg",
+    "ml": "ml", "milliliter": "ml", "milliliters": "ml", "millilitre": "ml", "millilitres": "ml",
+    "l": "l", "liter": "l", "liters": "l", "litre": "l", "litres": "l",
+    "mm": "mm", "millimeter": "mm", "millimeters": "mm", "millimetre": "mm", "millimetres": "mm",
+    "cm": "cm", "centimeter": "cm", "centimeters": "cm", "centimetre": "cm", "centimetres": "cm",
+    "minute": "min", "minutes": "min", "min": "min", "mins": "min",
+    "hour": "hr", "hours": "hr", "hr": "hr", "hrs": "hr",
+    "second": "sec", "seconds": "sec", "sec": "sec", "secs": "sec",
+    "%": "%",
+}
+NUMBER_WITH_UNIT_RE = re.compile(
+    r"(\d+(?:[.,]\d+)*)\s*(" + "|".join(sorted(_UNIT_ALIASES, key=len, reverse=True)) + r")\b",
+    re.I,
+)
+
+
+def _number_unit_pairs(text: str) -> set[tuple[str, str]]:
+    pairs = set()
+    for match in NUMBER_WITH_UNIT_RE.finditer(text):
+        value = match.group(1).replace(",", "")
+        unit = _UNIT_ALIASES.get(match.group(2).lower())
+        if unit:
+            pairs.add((value, unit))
+    return pairs
 
 
 def numbers_are_grounded(generated: str, source: str) -> bool:
@@ -213,9 +275,30 @@ def numbers_are_grounded(generated: str, source: str) -> bool:
     laboratory procedure. Reject the rephrase outright if it states any
     number the verified source text does not itself contain; a step
     number ("1.", "2.") is exempt since the source's own numbered list
-    supplies those independently of this check."""
+    supplies those independently of this check.
+
+    A bare digit-only check is not enough: a source with several reagent
+    amounts (e.g. "Phenol red crystals 0.1g" next to "Distilled water
+    10ml") already contains the digit "10" somewhere, so a rephrase that
+    misquotes the phenol red amount as "10 grams" would pass a check that
+    only asks whether "10" appears anywhere in the source. Whenever a
+    number carries a recognizable unit, require that exact (number, unit)
+    pair -- not just the bare digit -- to appear in the source; only
+    numbers without an attached unit (step numbers, section references)
+    fall back to the bare-digit check.
+    """
+    source_pairs = _number_unit_pairs(source)
+    unit_claimed_spans: list[tuple[int, int]] = []
+    for match in NUMBER_WITH_UNIT_RE.finditer(generated):
+        unit_claimed_spans.append(match.span())
+        value = match.group(1).replace(",", "")
+        unit = _UNIT_ALIASES.get(match.group(2).lower())
+        if unit and (value, unit) not in source_pairs:
+            return False
     source_numbers = set(NUMBER_RE.findall(source))
     for match in NUMBER_RE.finditer(generated):
+        if any(start <= match.start() and match.end() <= end for start, end in unit_claimed_spans):
+            continue  # already checked above as a number+unit pair
         value = match.group(0)
         if value in source_numbers:
             continue
@@ -443,43 +526,39 @@ class DirectPdfQA:
             if self._nli is None:
                 self._nli = CrossEncoder(NLI_MODEL)
 
-    def _rephrase_is_entailed(self, source: str, generated: str) -> bool:
-        """numbers_are_grounded only catches an invented quantity; a
-        rephrase can still drift into a claim the source never made
-        without using any number at all (observed live: asked about a
-        CATT test result, the model answered about reticulocyte counts --
-        a real diagnostic term, just not one the cited passage mentioned).
-        An NLI model checks the claim as a whole: does the verified source
-        text (premise) actually support this generated sentence (hypothesis)?
+    def _claim_nli_status(self, premise: str, hypothesis: str) -> dict[str, Any]:
+        """Judge one claim (hypothesis) against one piece of source text
+        (premise): does the source actually support this claim, contradict
+        it, or say nothing either way?
 
         This model, measured on real rephrases here, calls almost every
         full-paragraph premise/hypothesis pair "neutral" (0.95+) even for a
         clearly faithful restatement -- it was trained on short, single-
         clause sentence pairs, not paraphrases of a multi-clause technical
-        passage, so requiring its entailment probability to clear an
-        absolute bar rejects good rephrases along with bad ones. With
-        neutral this dominant, entailment and contradiction both often sit
-        near zero for a genuinely faithful rephrase too (observed as low as
-        0.0005 and 0.0008 respectively) -- noise at that scale, not signal,
-        so comparing them directly flips on a coin toss. A real drift
-        (observed: 0.05 contradiction on the CATT/reticulocyte case) clears
+        passage, so requiring either probability to clear an absolute bar
+        rejects good claims along with bad ones. With neutral this
+        dominant, entailment and contradiction both often sit near zero for
+        a genuinely faithful claim too (observed as low as 0.0005 and
+        0.0008 respectively) -- noise at that scale, not signal, so
+        comparing them directly flips on a coin toss. A real drift
+        (observed: 0.05 contradiction on a CATT/reticulocyte mix-up) clears
         that noise floor by roughly an order of magnitude, so only treat
-        contradiction outscoring entailment as meaningful once it is also
-        clearly above the floor faithful rephrases sit at.
+        one side outscoring the other as meaningful once it is also
+        clearly above the floor faithful claims sit at; otherwise the
+        claim is neither confirmed nor refuted by this premise.
 
-        If the NLI model itself is unavailable, this fails open -- rephrase
-        already has numbers_are_grounded as a first line of defence, and a
-        missing model shouldn't silently disable all rephrasing.
+        If the NLI model itself is unavailable, this reports "not_checked"
+        rather than guessing.
         """
         try:
             self._ensure_nli()
         except Exception:
-            return True
+            return {"status": "not_checked", "entailment_score": None, "contradiction_score": None}
         raw = np.asarray(
-            self._nli.predict([[source, generated]], show_progress_bar=False)
+            self._nli.predict([[premise, hypothesis]], show_progress_bar=False)
         )
         if raw.ndim != 2:
-            return True
+            return {"status": "not_checked", "entailment_score": None, "contradiction_score": None}
         probabilities = torch.softmax(torch.tensor(raw), dim=1).numpy()[0]
         labels = [
             str(label).lower() for label in self._nli.model.config.id2label.values()
@@ -493,13 +572,219 @@ class DirectPdfQA:
             None,
         )
         if entailment_index is None or contradiction_index is None:
-            return True
-        contradiction_score = float(probabilities[contradiction_index])
+            return {"status": "not_checked", "entailment_score": None, "contradiction_score": None}
         entailment_score = float(probabilities[entailment_index])
-        return not (
-            contradiction_score > entailment_score
-            and contradiction_score > CONTRADICTION_NOISE_FLOOR
+        contradiction_score = float(probabilities[contradiction_index])
+        if contradiction_score > entailment_score and contradiction_score > CONTRADICTION_NOISE_FLOOR:
+            status = "contradicted"
+        elif entailment_score > contradiction_score and entailment_score > CONTRADICTION_NOISE_FLOOR:
+            status = "supported"
+        else:
+            status = "insufficient_evidence"
+        return {
+            "status": status,
+            "entailment_score": entailment_score,
+            "contradiction_score": contradiction_score,
+        }
+
+    def _rephrase_is_entailed(self, source: str, generated: str) -> bool:
+        """Whole-answer gate used by rephrase() itself: reject only when
+        the generated text as a whole reads as contradicted by the
+        verified source (see _claim_nli_status for why an absolute NLI
+        threshold doesn't work on this model). A missing/unusable NLI
+        model fails open here, same as before -- rephrase already has
+        numbers_are_grounded as a first line of defence.
+
+        The NLI cross-encoder has a hard 512-token limit on the combined
+        premise+hypothesis; past that it silently truncates one or both
+        instead of erroring. For a long, multi-step source (observed live:
+        a 14-step, ~700-token procedure) this cuts off the later steps
+        before scoring, so the model judges the generated text against an
+        incomplete premise and can call a fully faithful, complete
+        rephrase "contradicted" simply because it can no longer see the
+        source material for the steps near the end. Fail open in that
+        case, the same way an unavailable NLI model already does here --
+        numbers_are_grounded has already checked the generated text
+        against the untruncated source before this runs.
+        """
+        try:
+            self._ensure_nli()
+        except Exception:
+            return True
+        combined_length = len(
+            self._nli.tokenizer(source, generated, add_special_tokens=True)["input_ids"]
         )
+        if combined_length > self._nli.tokenizer.model_max_length:
+            return True
+        return self._claim_nli_status(source, generated)["status"] != "contradicted"
+
+    @staticmethod
+    def split_answer_claims(text: str) -> list[dict[str, Any]]:
+        """Split a free-form generated answer into sentence-level claims,
+        each with its exact character offset in the original text, using
+        the same abbreviation-protected sentence-boundary rule as extract()
+        (see its Fig./q.s. handling) so "Fig. 5" and "q.s. water" are never
+        mistaken for sentence ends.
+        """
+        protected = re.sub(r"\bFig\.", "Fig§", text, flags=re.I)
+        protected = re.sub(r"\bq\.s\.", "q§s§", protected, flags=re.I)
+        matches = list(re.finditer(r"(?<=[.!?])\s+(?=[A-Z0-9—])", protected))
+        segment_bounds = [0] + [match.end() for match in matches]
+        segment_ends = [match.start() for match in matches] + [len(text)]
+        claims: list[dict[str, Any]] = []
+        for start, end in zip(segment_bounds, segment_ends):
+            segment = text[start:end]
+            stripped = segment.strip()
+            if not stripped:
+                continue
+            offset = start + segment.find(stripped)
+            claims.append({"text": stripped, "start": offset, "end": offset + len(stripped)})
+        # A bare step marker ("1.", "2)") is not itself a claim -- the same
+        # split point extract() protects against with its own sentences==[]
+        # handling. Glue it onto the claim that follows so "1." and "Weigh
+        # out 3.76g..." are judged and cited together, not as two
+        # unrelated fragments.
+        merged: list[dict[str, Any]] = []
+        pending_marker: dict[str, Any] | None = None
+        for claim in claims:
+            if re.fullmatch(r"\d+[.)]", claim["text"]):
+                pending_marker = claim
+                continue
+            if pending_marker is not None:
+                claim = {
+                    "text": f"{pending_marker['text']} {claim['text']}",
+                    "start": pending_marker["start"],
+                    "end": claim["end"],
+                }
+                pending_marker = None
+            merged.append(claim)
+        if pending_marker is not None:
+            merged.append(pending_marker)
+        return merged
+
+    def verify_answer_claims(self, verified_text: str, generated: str) -> list[dict[str, Any]]:
+        """Localize hallucination detection to individual sentences of a
+        generated (rephrased) answer, instead of the whole-answer gate
+        rephrase() applies. Each claim is checked independently against
+        the same verified source text, so one drifting sentence inside an
+        otherwise faithful answer is identified by name -- not hidden
+        inside a whole-answer PASS/FAIL.
+        """
+        claims = self.split_answer_claims(generated)
+        for claim in claims:
+            claim.update(self._claim_nli_status(verified_text, claim["text"]))
+        return claims
+
+    def attribute_claims_to_chunks(
+        self, generated: str, chunks: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Same per-claim NLI check as verify_answer_claims, but scored
+        against each individual source chunk in turn instead of one merged
+        blob of verified text -- so each claim can be traced back to the
+        one chunk it actually agrees or disagrees with, not just to the
+        answer as a whole. A chunk that actively supports the claim always
+        wins (highest entailment among those); a claim is only reported as
+        contradicted when none of the candidate chunks support it. This
+        priority matters because the candidates here are small individual
+        units (a single extracted step, not a whole chunk) -- and this NLI
+        model, measured on short-premise/short-hypothesis pairs, tends to
+        call an unrelated short step "contradicted" rather than "neutral"
+        (the noise-floor behaviour documented on _claim_nli_status was
+        calibrated on long-premise pairs, a different regime). Without this
+        priority, a claim genuinely supported by one unit would lose to a
+        spurious contradiction against a completely different, unrelated
+        step from the same procedure. When no chunk clears the noise floor
+        either way the claim stays insufficient_evidence and carries no
+        chunk attribution.
+        """
+        claims = self.split_answer_claims(generated)
+        for claim in claims:
+            claim_roots = content_roots(claim["text"])
+            best: dict[str, Any] | None = None
+            best_score = -1.0
+            fallback: dict[str, Any] | None = None
+            fallback_score = -1.0
+            # A candidate the NLI call rated "insufficient_evidence" is
+            # still tracked by its lexical overlap with the claim -- a
+            # near-identical paraphrase of *this* candidate can score
+            # insufficient_evidence on this NLI model even though it is
+            # obviously the claim's real source (observed live: "Place the
+            # containers in the autoclave..." against its own, almost
+            # word-for-word source scored 0.0005/0.0002, both under the
+            # noise floor), while a completely unrelated candidate
+            # elsewhere in the same answer scores a confident false
+            # "contradicted" and would otherwise win the fallback below by
+            # default. Prefer the lexically closest insufficient_evidence
+            # candidate over a contradicted one unless the contradicted
+            # candidate is itself at least as lexically close -- a genuine
+            # contradiction (a real relational reversal, wrong specimen,
+            # etc.) usually still shares most of the claim's words.
+            closest_insufficient: dict[str, Any] | None = None
+            closest_insufficient_overlap = -1
+            for chunk in chunks:
+                text = chunk.get("text") or ""
+                if not text.strip():
+                    continue
+                result = self._claim_nli_status(text, claim["text"])
+                overlap = len(claim_roots & content_roots(text)) if claim_roots else 0
+                if result["status"] == "insufficient_evidence":
+                    if overlap > closest_insufficient_overlap:
+                        closest_insufficient_overlap = overlap
+                        closest_insufficient = {
+                            "chunk_id": chunk.get("chunk_id"),
+                            "pdf_page": chunk.get("pdf_page"),
+                            "printed_page": chunk.get("printed_page"),
+                            "source_text": text,
+                        }
+                    continue
+                attributed = {
+                    **result,
+                    "chunk_id": chunk.get("chunk_id"),
+                    "pdf_page": chunk.get("pdf_page"),
+                    "printed_page": chunk.get("printed_page"),
+                    # The exact source wording this claim was judged against --
+                    # for a contradicted claim, this is what the answer should
+                    # have said instead, so the UI can show the grounded fact
+                    # in place of the drifted one rather than just flagging it.
+                    "source_text": text,
+                    "_overlap": overlap,
+                }
+                if result["status"] == "supported":
+                    entailment = result["entailment_score"] or 0.0
+                    if entailment > best_score:
+                        best_score = entailment
+                        best = attributed
+                else:
+                    contradiction = result["contradiction_score"] or 0.0
+                    if contradiction > fallback_score:
+                        fallback_score = contradiction
+                        fallback = attributed
+            if best is None and fallback is not None and closest_insufficient is not None:
+                if closest_insufficient_overlap > fallback.get("_overlap", -1):
+                    fallback = None
+            if best is None:
+                best = fallback
+            if best is not None:
+                best.pop("_overlap", None)
+                claim.update(best)
+            elif closest_insufficient is not None:
+                claim.update({
+                    "status": "insufficient_evidence",
+                    "entailment_score": None,
+                    "contradiction_score": None,
+                    **closest_insufficient,
+                })
+            else:
+                claim.update({
+                    "status": "insufficient_evidence",
+                    "entailment_score": None,
+                    "contradiction_score": None,
+                    "chunk_id": None,
+                    "pdf_page": None,
+                    "printed_page": None,
+                    "source_text": None,
+                })
+        return claims
 
     def rephrase(self, question: str, verified_text: str) -> str | None:
         """Restate an already exact-span-verified extractive answer in
@@ -541,10 +826,25 @@ class DirectPdfQA:
         encoded = self._generator_tokenizer(rendered, return_tensors="pt")
         device = next(self._generator.parameters()).device
         encoded = {name: tensor.to(device) for name, tensor in encoded.items()}
+        # A fixed 420-token budget is enough for a short answer but not for
+        # a long, multi-step procedure (observed live: 7-14 step answers
+        # either had steps silently dropped, or the model's own output
+        # started repeating/reordering steps as it ran short on room to
+        # restate everything, sometimes truncating mid-sentence badly
+        # enough to fail the post-hoc checks below and return None
+        # entirely). Scale the budget to the actual verified text -- a
+        # faithful restatement is rarely shorter than the source and is
+        # sometimes longer, so double the source's own token count, with
+        # the original 420 as a floor for short answers and a cap so one
+        # unusually long chunk can't make generation run away.
+        source_tokens = len(
+            self._generator_tokenizer(verified_text, add_special_tokens=False)["input_ids"]
+        )
+        max_new_tokens = max(420, min(1600, source_tokens * 2))
         with torch.inference_mode():
             output = self._generator.generate(
                 **encoded,
-                max_new_tokens=420,
+                max_new_tokens=max_new_tokens,
                 do_sample=False,
                 repetition_penalty=1.04,
                 pad_token_id=self._generator_tokenizer.eos_token_id,
