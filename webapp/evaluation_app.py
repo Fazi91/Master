@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -161,7 +162,10 @@ class GraphVerifier:
         return True
 
     def verify(
-        self, chunk_ids: list[str], question_terms: list[str] | None = None
+        self,
+        chunk_ids: list[str],
+        question_terms: list[str] | None = None,
+        relevant_image_ids: set[str] | None = None,
     ) -> dict[str, Any]:
         if not chunk_ids:
             return {"status": "not_run", "verified_chunks": [], "locations": []}
@@ -249,7 +253,7 @@ RETURN chunk, page, document, entities, chunkImages, pageImage, r1, r2, mentionR
                 "status": "verified" if set(chunk_ids).issubset(verified) else "partial",
                 "verified_chunks": verified,
                 "locations": records,
-                "visualization": self._visualization(records),
+                "visualization": self._visualization(records, relevant_image_ids),
                 "content_relevance": content_relevance,
                 "content_relevance_summary": content_relevance_summary,
                 "query": browser_query,
@@ -305,7 +309,21 @@ RETURN chunk, page, document, entities, chunkImages, pageImage, r1, r2, mentionR
         return relevance, summary
 
     @staticmethod
-    def _visualization(records: list[dict[str, Any]]) -> dict[str, Any]:
+    def _visualization(
+        records: list[dict[str, Any]], relevant_image_ids: set[str] | None = None
+    ) -> dict[str, Any]:
+        # The underlying query deliberately follows both ILLUSTRATED_BY (the
+        # narrow, CLIP-filtered "this image is what this chunk is about"
+        # relation) and CONTAINS_IMAGE (every image merely on the same page)
+        # so a page's images are never silently absent -- but showing every
+        # one of them regardless of whether it actually matches *this
+        # answer's own content* buried the 1-2 genuinely relevant images
+        # among unrelated same-page figures (observed live: a 2-chunk answer
+        # pulled in 7 image nodes). When the caller already knows which
+        # image ids passed the answer-specific relevance check (the same
+        # keyword/figure-citation matching related_images() uses), restrict
+        # the graph to just those -- the full traversal still happened, this
+        # only changes what gets drawn.
         nodes: dict[str, dict[str, str]] = {}
         edges: set[tuple[str, str, str]] = set()
 
@@ -331,8 +349,12 @@ RETURN chunk, page, document, entities, chunkImages, pageImage, r1, r2, mentionR
                     edges.add((chunk_id, entity_id, "MENTIONS"))
             for image in record.get("images", []):
                 image_id = image.get("id") if image else None
-                add_node(image_id, image_id or "Image", "Image")
-                if chunk_id and image_id:
+                if not image_id:
+                    continue
+                if relevant_image_ids is not None and image_id not in relevant_image_ids:
+                    continue
+                add_node(image_id, image_id, "Image")
+                if chunk_id:
                     edges.add((chunk_id, image_id, "ILLUSTRATED_BY"))
         # Every image on the page, not just the ones that individually
         # cleared the CLIP-similarity threshold for a specific chunk -- see
@@ -347,9 +369,18 @@ RETURN chunk, page, document, entities, chunkImages, pageImage, r1, r2, mentionR
             page_id = record.get("page_id")
             for image in record.get("page_images", []):
                 image_id = image.get("id") if image else None
-                kind = "Image" if image_id in nodes else "PageImage"
-                add_node(image_id, image_id or "Image", kind)
-                if page_id and image_id:
+                if not image_id:
+                    continue
+                if image_id in nodes:
+                    kind = "Image"
+                elif relevant_image_ids is not None and image_id in relevant_image_ids:
+                    kind = "Image"
+                elif relevant_image_ids is not None:
+                    continue
+                else:
+                    kind = "PageImage"
+                add_node(image_id, image_id, kind)
+                if page_id:
                     edges.add((page_id, image_id, "CONTAINS_IMAGE"))
         return {
             "nodes": list(nodes.values()),
@@ -556,64 +587,95 @@ class EvaluationService:
                 ("", relation, "figure on the cited PDF page")
                 for relation in self.page_images.get(page, [])
             )
+        # A single physical figure in the source PDF is sometimes extracted
+        # as several separate raster objects at the same spot (a photo layer
+        # plus a border/background element, or a compression artifact split
+        # into fragments) -- each gets its own image_id and, since they all
+        # sit under the same caption, the same figure_number, so one citation
+        # can resolve to several image_ids that are not different content at
+        # all (observed live: one "draw blood into the tube" figure came
+        # back as four image_ids, three of them tiny icon-sized fragments).
+        # Two different images from the same procedure also routinely share
+        # the generic words in their keyword sets (e.g. an "adding blood to
+        # citrate" figure and a later "filling the graduated tube" figure
+        # both have "blood" and "citrate" among their keywords), so a flat
+        # >=2 overlap threshold lets both pass even though only one actually
+        # depicts the specific step the answer describes. Score every
+        # candidate, then keep only the strongest representative within its
+        # own signal group -- one image per cited figure_number, and among
+        # keyword-only matches only the one(s) tied at the best overlap --
+        # rather than letting every merely-passing candidate through.
+        MIN_CONTENT_AREA = 6000  # ~78x78px; smaller is reliably an icon/border/rule fragment, not a figure
+        candidates: list[dict[str, Any]] = []
         for chunk_id, relation, reason in relations:
-                image_id = relation.get("image_id", "")
-                if not image_id or image_id in seen:
+            image_id = relation.get("image_id", "")
+            if not image_id or image_id in seen:
+                continue
+            meta = self.images.get(image_id, {})
+            predicted = meta.get("final_type") or meta.get("predicted_type") or relation.get("image_type")
+            relevance = meta.get("content_relevance", "")
+            width = int(meta.get("pixel_width") or meta.get("width") or 0)
+            height = int(meta.get("pixel_height") or meta.get("height") or 0)
+            large_cited_figure = (
+                reason == "figure on the cited PDF page"
+                and width >= 300 and height >= 250
+            )
+            if predicted in {"logo", "decorative"}:
+                continue
+            if predicted == "fragment_or_noise" and not large_cited_figure:
+                continue
+            if relevance.casefold() in {"irrelevant", "decorative"}:
+                continue
+            if width * height < MIN_CONTENT_AREA and not large_cited_figure:
+                continue
+            figure_number = relation.get("figure_number")
+            cites_matching_figure = bool(figure_number) and figure_number in answer_fignums
+            image_keywords = set(meta.get("keywords", "").split())
+            overlap = len(answer_keywords & image_keywords)
+            has_keywords = bool(image_keywords)
+            keyword_match = overlap >= 2 if has_keywords else True
+            if figure_number:
+                if not (cites_matching_figure or keyword_match):
                     continue
-                meta = self.images.get(image_id, {})
-                predicted = meta.get("final_type") or meta.get("predicted_type") or relation.get("image_type")
-                relevance = meta.get("content_relevance", "")
-                width = int(meta.get("pixel_width") or meta.get("width") or 0)
-                height = int(meta.get("pixel_height") or meta.get("height") or 0)
-                large_cited_figure = (
-                    reason == "figure on the cited PDF page"
-                    and width >= 300 and height >= 250
-                )
-                # Every image has a short set of descriptive keywords (its
-                # own caption text, or, for the minority with no caption
-                # anywhere, the body text immediately around it on the
-                # page) -- see build_image_keywords.py. Chunk/page
-                # membership, and even an exact figure-number citation, only
-                # prove an image is located near the source text -- not that
-                # it depicts what the *answer* actually says (a chunk can
-                # cite one figure while the extracted answer sentence is
-                # about an unrelated part of the same chunk). Treat a
-                # figure-number match and a keyword match as two
-                # independent, either-suffices signals of relevance: two
-                # shared keywords is required (one is treated as
-                # coincidental -- e.g. a parasite-morphology figure's
-                # keywords happening to include the generic word "present",
-                # which also appears in an unrelated answer sentence about
-                # parasite density -- observed live). An image with no
-                # stored keywords at all (no caption and no nearby text
-                # could be extracted) is passed through unfiltered on this
-                # check, since there is nothing to check it against either
-                # way.
-                figure_number = relation.get("figure_number")
-                cites_matching_figure = bool(figure_number) and figure_number in answer_fignums
-                image_keywords = set(meta.get("keywords", "").split())
-                keyword_match = (
-                    len(answer_keywords & image_keywords) >= 2 if image_keywords else True
-                )
-                if figure_number:
-                    if not (cites_matching_figure or keyword_match):
-                        continue
-                elif not keyword_match:
+            elif not keyword_match:
+                continue
+            candidates.append({
+                "chunk_id": chunk_id, "relation": relation, "reason": reason,
+                "image_id": image_id, "meta": meta, "predicted": predicted,
+                "figure_number": figure_number,
+                "cites_matching_figure": cites_matching_figure,
+                "overlap": overlap, "has_keywords": has_keywords,
+                "area": width * height,
+            })
+        kept: list[dict[str, Any]] = []
+        for figure_number, group in itertools.groupby(
+            sorted(
+                (c for c in candidates if c["cites_matching_figure"]),
+                key=lambda c: c["figure_number"],
+            ),
+            key=lambda c: c["figure_number"],
+        ):
+            kept.append(max(group, key=lambda c: c["area"]))
+        keyword_only = [c for c in candidates if not c["cites_matching_figure"]]
+        best_overlap = max(
+            (c["overlap"] for c in keyword_only if c["has_keywords"]), default=0
+        )
+        kept.extend(
+            c for c in keyword_only if not c["has_keywords"] or c["overlap"] >= best_overlap
+        )
+        for c in kept:
+                image_id = c["image_id"]
+                if image_id in seen:
                     continue
-                if predicted in {"logo", "decorative"}:
-                    continue
-                if predicted == "fragment_or_noise" and not large_cited_figure:
-                    continue
-                if relevance.casefold() in {"irrelevant", "decorative"}:
-                    continue
+                meta, relation, reason = c["meta"], c["relation"], c["reason"]
                 file_path = meta.get("file_path", "")
                 filename = Path(file_path).name if file_path else ""
                 seen.add(image_id)
                 result.append({
                     "image_id": image_id,
-                    "chunk_id": chunk_id,
+                    "chunk_id": c["chunk_id"],
                     "pdf_page": int(relation.get("pdf_page") or meta.get("first_pdf_page") or 0),
-                    "type": predicted,
+                    "type": c["predicted"],
                     "score": float(relation.get("semantic_score") or 0.0),
                     "relationship": relation.get("relation_type") or "ILLUSTRATED_BY",
                     "verification_reason": reason,
@@ -696,6 +758,12 @@ class EvaluationService:
             if mode == "graph" else self.pdf.answer(question)
         )
         chunk_ids = [source["chunk_id"] for source in result.get("sources", [])]
+        source_pages = [int(source.get("pdf_page") or 0) for source in result.get("sources", [])]
+        result["images"] = (
+            self.related_images(chunk_ids, source_pages, result.get("answer", ""))
+            if result["kind"] == "domain_answer" else []
+        )
+        relevant_image_ids = {img["image_id"] for img in result["images"]}
         graph_result = {
             "status": "not_requested",
             "verified_chunks": [],
@@ -707,7 +775,9 @@ class EvaluationService:
                 for need in result.get("needs", [])
                 for term in need.get("distinctive_subject_terms", [])
             ))
-            graph_result = self.graph.verify(chunk_ids, question_terms=question_terms)
+            graph_result = self.graph.verify(
+                chunk_ids, question_terms=question_terms, relevant_image_ids=relevant_image_ids
+            )
             if graph_result["status"] != "verified":
                 result["kind"] = "not_found"
                 result["answer"] = "The textual evidence could not be fully verified in Neo4j."
@@ -717,11 +787,6 @@ class EvaluationService:
         result["question"] = question
         result["mode"] = mode
         result["graph"] = graph_result
-        source_pages = [int(source.get("pdf_page") or 0) for source in result.get("sources", [])]
-        result["images"] = (
-            self.related_images(chunk_ids, source_pages, result.get("answer", ""))
-            if result["kind"] == "domain_answer" else []
-        )
         result["benchmark"] = (
             {**benchmark, "recognized": True}
             if benchmark else {"recognized": False}
@@ -1414,7 +1479,7 @@ const customQuestion=document.getElementById('customQuestion');
 function question(){return customQuestion.value.trim()||select.selectedOptions[0]?.dataset.q||''}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function cleanSource(text){return String(text??'').replace(/^\d+\s+Manual of basic techniques for a health laboratory\s*/i,'').trim()}
-function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image','PageImage']){const cap=['Entity','Image','PageImage'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790,PageImage:960},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 1060 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg><p class="subtitle">Solid pink = image directly matched to this chunk (relevant). Dashed grey = other images on the same page (context only).</p>`}
+function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image','PageImage']){const cap=['Entity','Image','PageImage'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790,PageImage:960},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 1060 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg><p class="subtitle">Only images judged relevant to this answer are shown; unrelated images on the same chunk/page are left out of the graph entirely.</p>`}
 function graphStats(viz){const nodes=viz?.nodes||[],edges=viz?.edges||[];return `${nodes.length} real Aura nodes · ${edges.length} real relationships`}
 let results={};
 function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),sourceExact=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{},goldMeasured=score.gold_annotated===true,goldCorrect=score.gold_correct===true,ok=goldMeasured?goldCorrect:sourceExact,status=goldMeasured?(goldCorrect?'Gold evidence matched':'Gold evidence incomplete'):(sourceExact?'Source-exact · answer accuracy not measured':'Not verified');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${status}</span></div><p class="answer ${sourceExact?'':'error'}">${esc(data.answer)}</p>${sourceExact&&data.kind!=='small_talk'?`<details open><summary>Rephrased answer (LLM, constrained to the verified text above)</summary><p class="subtitle" id="rephrase-${mode}">Generating…</p></details>`:''}<div class="meta"><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j traceability: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>share of selected source chunks located in Aura; not answer accuracy</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(cleanSource(s.text))}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
@@ -1426,16 +1491,14 @@ function renderClaims(rd){if(!rd.natural_answer)return 'Not available for this a
   // source wording it was checked against (shown as verified/green) instead
   // of leaving the wrong sentence on screen at all.
   if(c.status==='contradicted'&&c.source_text){
-    const cite=c.chunk_id?` <small>[${esc(c.chunk_id)}${c.graph_path?` · ${esc(c.graph_path)}`:''}]</small>`:'';
-    const img=c.image&&c.image.url?` <a href="${esc(c.image.url)}" target="_blank">[image]</a>`:'';
-    return `<span class="state ok" style="display:inline;white-space:normal" title="Replaced: the generated sentence drifted from the source">${esc(c.source_text)}</span>${cite}${img}`;
+    return `<span class="state ok" style="display:inline;white-space:normal" title="Replaced: the generated sentence drifted from the source">${esc(c.source_text)}</span>`;
   }
-  const cls=badge[c.status]||'idle';const cite=c.chunk_id?` <small>[${esc(c.chunk_id)}${c.graph_path?` · ${esc(c.graph_path)}`:''}]</small>`:'';const img=c.image&&c.image.url?` <a href="${esc(c.image.url)}" target="_blank">[image]</a>`:'';
+  const cls=badge[c.status]||'idle';
   // Independent of the NLI verdict: the cited source may simply be about
   // the wrong specimen (e.g. CSF instead of blood) -- wording overlap can
   // make NLI call that "supported" anyway, so this warns regardless.
   const mismatch=c.specimen_mismatch?' <small class="state bad">⚠ possibly wrong specimen type in cited source</small>':'';
-  return `<span class="state ${cls}" style="display:inline;white-space:normal">${esc(c.text)}</span>${mismatch}${cite}${img}`}).join(' ')}
+  return `<span class="state ${cls}" style="display:inline;white-space:normal">${esc(c.text)}</span>${mismatch}`}).join(' ')}
 function unique(values){return [...new Set(values||[])]}
 function chunkText(values){return values.length?values.map(esc).join(', '):'<span class="subtitle">None (same evidence as the other mode)</span>'}
 async function compareBoth(){results={};document.getElementById('comparison').innerHTML='';await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct,g=results.graph?.scores?.accuracy_pct,measured=p!=null&&g!=null,d=measured?g-p:null,pdfAccepted=unique(results.pdf?.retrieval_trace?.accepted_chunks),graphAccepted=unique(results.graph?.retrieval_trace?.accepted_chunks),common=pdfAccepted.filter(id=>graphAccepted.includes(id));const improved=measured&&d>0,verdict=!measured?'No Gold annotation exists for this question, so no comparison is reported.':d>0?'Neo4j retrieved more of the correct evidence than the PDF-only search.':d<0?'Neo4j retrieved less of the correct evidence than the PDF-only search.':'Both modes accepted the same evidence for this question.';document.getElementById('comparison').innerHTML=`<section class="panel compare-panel"><div class="head"><h2>PDF vs Neo4j comparison</h2><span class="state ${improved?'ok':'idle'}">${improved?'Measured graph gain':'No measured gain'}</span></div><p class="subtitle ${d<0?'loss':d>0?'gain':''}">${verdict}</p><div class="compare-grid"><div class="metric"><b>PDF accepted</b><div class="chunk-list">${chunkText(pdfAccepted)}</div></div><div class="metric"><b>Common evidence</b><div class="chunk-list">${chunkText(common)}</div></div></div></section>`}

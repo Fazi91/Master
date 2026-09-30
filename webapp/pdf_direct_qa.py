@@ -309,6 +309,112 @@ def numbers_are_grounded(generated: str, source: str) -> bool:
     return True
 
 
+RUNNING_HEADER_RE = re.compile(r"^\s*(?:\d+\.\s+)?[A-Z][^.;:]*\s\d{1,3}\s*$")
+REFERENCE_PREFIX_RE = re.compile(
+    r"\b(?:fig(?:ure)?s?|tables?|sections?|no|page|reagent)\.?$", re.I
+)
+
+
+def strip_running_headers(text: str) -> str:
+    """Drop page running-header lines (e.g. "9. Haematology 293") that
+    extraction occasionally keeps as a unit of their own."""
+    return "\n".join(
+        line for line in text.splitlines() if not RUNNING_HEADER_RE.match(line)
+    ).strip()
+
+
+def drop_unsupported_sentences(generated: str, source: str, question: str) -> str:
+    """Remove generated sentences whose content words mostly do not occur
+    in the verified source (or the question itself) -- a small model can
+    append a plausible-sounding general-knowledge fact that no number or
+    NLI check catches (observed: "Reticulocytes can be identified by their
+    larger size..." added to a stain procedure that never says so).
+    Numbered lines are renumbered afterwards so a dropped step leaves no
+    gap."""
+    allowed = roots(source) | roots(question)
+    kept_lines: list[str] = []
+    for line in generated.splitlines():
+        marker = re.match(r"^\s*\d+[.)]\s+", line)
+        body = line[marker.end():] if marker else line
+        kept = []
+        for sentence in re.split(r"(?<=[.!?])\s+(?=\S)", body):
+            # Quantities are checked separately (numbers_are_grounded /
+            # missing_quantity_sentences) and tokenize inconsistently
+            # ("15cm" vs "15 cm"), so only words are judged here.
+            sentence_roots = {r for r in content_roots(sentence) if not any(ch.isdigit() for ch in r)}
+            if len(sentence_roots) >= 4 and len(sentence_roots & allowed) < 0.6 * len(sentence_roots):
+                continue
+            kept.append(sentence)
+        if body.strip() and not " ".join(kept).strip():
+            continue
+        kept_lines.append((marker.group(0) if marker else "") + " ".join(kept))
+    step = 0
+    renumbered: list[str] = []
+    for line in kept_lines:
+        if re.match(r"^\s*\d+[.)]\s+", line):
+            step += 1
+            line = re.sub(r"^\s*\d+([.)])", lambda m: f"{step}{m.group(1)}", line, count=1)
+        renumbered.append(line)
+    return "\n".join(renumbered).strip()
+
+
+def missing_quantity_sentences(generated: str, source: str) -> list[str]:
+    """The reverse of numbers_are_grounded(): return each source sentence
+    stating a quantity (a number+unit pair, or a bare number used as a
+    value such as "divide by 100") that the generated text no longer
+    contains. Step numbers, figure/table/section/reagent references, and
+    running headers are not quantities and are ignored."""
+    generated_pairs = _number_unit_pairs(generated)
+    generated_numbers = set(NUMBER_RE.findall(generated))
+    missing: list[str] = []
+    for line in source.splitlines():
+        if RUNNING_HEADER_RE.match(line):
+            continue
+        for sentence in re.split(r"(?<=[.;!?])\s+(?=\S)", line):
+            unit_spans: list[tuple[int, int]] = []
+            dropped = False
+            for match in NUMBER_WITH_UNIT_RE.finditer(sentence):
+                unit_spans.append(match.span())
+                value = match.group(1).replace(",", "")
+                unit = _UNIT_ALIASES.get(match.group(2).lower())
+                if unit and (value, unit) not in generated_pairs:
+                    dropped = True
+            for match in NUMBER_RE.finditer(sentence):
+                if dropped:
+                    break
+                if any(s <= match.start() and match.end() <= e for s, e in unit_spans):
+                    continue
+                value = match.group(0)
+                prefix = sentence[:match.start()].rstrip()
+                if not prefix or value.count(".") >= 2:
+                    continue
+                if REFERENCE_PREFIX_RE.search(prefix):
+                    continue
+                if value not in generated_numbers:
+                    dropped = True
+            if dropped and sentence.strip() not in missing:
+                missing.append(sentence.strip())
+    return missing
+
+
+DEFINES_TERM_RE = re.compile(
+    r"\b(?:is|are)\s+(?:called|known as|defined as|termed)\s+(?:the\s+|an?\s+)?([^.(;,]+)",
+    re.I,
+)
+
+
+def introduces_other_concept(text: str, query: str) -> bool:
+    """True when a sentence defines a term the question did not ask about
+    ("The number of erythrocytes in 1 litre ... is called the erythrocyte
+    number concentration") -- in a manual that is how a new section opens,
+    so it marks where the current topic ends."""
+    match = DEFINES_TERM_RE.search(text)
+    if not match:
+        return False
+    defined = roots(match.group(1))
+    return bool(defined) and not defined <= roots(query)
+
+
 def subject_match(required: set[str], available: set[str]) -> bool:
     """Require the topic, without demanding every descriptive query word."""
     if not required:
@@ -807,7 +913,13 @@ class DirectPdfQA:
             "You restate already-verified laboratory manual text in clear, "
             "natural English. Use only the facts given to you. Do not add "
             "any number, quantity, reagent, or step that is not already in "
-            "the given text. Do not answer from general knowledge."
+            "the given text. Do not answer from general knowledge. If the "
+            "source describes numbered steps, restate every step exactly "
+            "once, in the same order as the source, without skipping, "
+            "merging, repeating, or renumbering any of them. If a fact in "
+            "the source is conditional (e.g. \"if X, then Y; with Z, then "
+            "W\"), keep it conditional in your restatement instead of "
+            "stating only one branch as if it were the only rule."
         )
         prompt = (
             f"Question: {question}\n\n"
@@ -815,6 +927,30 @@ class DirectPdfQA:
             "Restate this as a clear, natural answer to the question, "
             "using only facts present in the source text above."
         )
+        # A fluent restatement that silently drops a quantity (a time
+        # limit, a dilution, "divide by 100") is worse than the plain
+        # extractive text, because it reads as complete. Every quantity in
+        # the verified text must survive; one retry names the dropped
+        # sentences explicitly, and if they are still missing the complete
+        # verified text itself is returned instead of a partial rewrite.
+        fallback = strip_running_headers(verified_text)
+        generated = self._generate_rephrase(system, prompt, verified_text)
+        if generated is None:
+            return fallback
+        missing = missing_quantity_sentences(generated, verified_text)
+        if missing:
+            retry_prompt = (
+                prompt
+                + "\n\nYour answer must also include every one of these facts "
+                "from the source, in their original place in the sequence:\n"
+                + "\n".join(f"- {sentence}" for sentence in missing)
+            )
+            generated = self._generate_rephrase(system, retry_prompt, verified_text)
+            if generated is None or missing_quantity_sentences(generated, verified_text):
+                return fallback
+        return generated
+
+    def _generate_rephrase(self, system: str, prompt: str, verified_text: str) -> str | None:
         rendered = self._generator_tokenizer.apply_chat_template(
             [
                 {"role": "system", "content": system},
@@ -853,6 +989,7 @@ class DirectPdfQA:
             output[0][encoded["input_ids"].shape[1]:],
             skip_special_tokens=True,
         ).strip()
+        generated = drop_unsupported_sentences(generated, verified_text, prompt)
         if not generated or not numbers_are_grounded(generated, verified_text):
             return None
         if not self._rephrase_is_entailed(verified_text, generated):
@@ -1409,34 +1546,68 @@ class DirectPdfQA:
                                     break
                                 expanded.append(candidate)
                         elif following is None and distinctive_subject:
-                            # A trailing remark right after the final step,
-                            # in the same chunk (e.g. "If neither X nor Y is
-                            # available, do Z instead") can name the exact
-                            # reagents/subject the question asked about
-                            # without being part of the numbered sequence
-                            # itself -- unlike the mid-sequence case above,
-                            # there is no next step to bound the search, so
-                            # only take a couple of immediately-following
-                            # sentences and only when they are genuinely
-                            # on-topic, not just whatever comes next.
-                            for candidate in sorted(
+                            # Sentences right after the final step, in the
+                            # same chunk, often finish the procedure without
+                            # being numbered (e.g. "Examine at least 100
+                            # erythrocytes. Keep a careful count of ...
+                            # reticulocytes."). Take the contiguous run up
+                            # to the last on-topic sentence within a short
+                            # window -- an off-topic sentence in between
+                            # still belongs to that run -- but stop where the
+                            # text starts defining a different concept
+                            # ("X is called Y"), which marks the next section
+                            # of the manual rather than more of this one.
+                            window = sorted(
                                 (
                                     c for c in ranked_units
                                     if c.chunk_index == unit.chunk_index
-                                    and unit.order < c.order <= unit.order + 2
-                                    and not re.match(r"^\s*\d+[.)]\s+", c.text)
+                                    and unit.order < c.order <= unit.order + 6
                                 ),
                                 key=lambda c: c.order,
-                            ):
-                                if distinctive_subject & roots(candidate.text):
-                                    expanded.append(candidate)
+                            )
+                            run: list[Unit] = []
+                            hit_boundary = False
+                            for candidate in window:
+                                if (
+                                    re.match(r"^\s*\d+[.)]\s+", candidate.text)
+                                    or re.match(r"^\s*Fig(?:ure)?\.?\s*\d", candidate.text, re.I)
+                                    or introduces_other_concept(candidate.text, need.query)
+                                    or candidate.text.rstrip().endswith(":")
+                                ):
+                                    hit_boundary = True
+                                    break
+                                run.append(candidate)
+                            # Keep up to the last on-topic sentence. When a
+                            # boundary (next numbered item, figure caption,
+                            # a new concept being defined, or a sentence
+                            # opening its own ":" sub-list) closes the tail
+                            # right after the final step, the one or two
+                            # sentences before it finish that step even when
+                            # they don't repeat the subject ("Let the slide
+                            # dry completely in the air.").
+                            last_on_topic = max(
+                                (
+                                    position for position, candidate in enumerate(run)
+                                    if distinctive_subject & roots(candidate.text)
+                                ),
+                                default=-1,
+                            )
+                            keep = last_on_topic + 1
+                            if hit_boundary:
+                                keep = max(keep, min(2, len(run)))
+                            expanded.extend(run[:keep])
                     return expanded
 
                 if len(sequence) >= 2:
                     lead_candidates = [
                         unit for unit in filtered
                         if unit not in sequence
-                        and unit.chunk_index <= start.chunk_index
+                        # A lead-in must precede step 1 in the source; a
+                        # sentence from after the last step is a trailing
+                        # remark (handled by with_continuations), and
+                        # promoting it to the front both misorders the
+                        # answer and repeats it at the end.
+                        and (unit.chunk_index, unit.order) < (start.chunk_index, start.order)
                         and self.chunks[unit.chunk_index].pdf_page
                             == self.chunks[start.chunk_index].pdf_page
                         and subject_roots & roots(unit.text)
