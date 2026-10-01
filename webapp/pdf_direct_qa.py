@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import math
 import os
 import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -25,9 +26,6 @@ RERANK_MODEL = os.getenv(
 )
 GENERATOR_MODEL = os.getenv(
     "LOCAL_ANSWER_MODEL", "Qwen/Qwen2.5-1.5B-Instruct"
-)
-NLI_MODEL = os.getenv(
-    "NLI_VERIFIER_MODEL", "cross-encoder/nli-deberta-v3-small"
 )
 CONTRADICTION_NOISE_FLOOR = float(os.getenv("NLI_CONTRADICTION_FLOOR", "0.02"))
 EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
@@ -72,6 +70,10 @@ GENERIC_SUBJECT_ROOTS = {
     "not", "rather", "than", "between", "per", "number", "maximum",
 }
 CONTRASTIVE_TERM_PAIRS = ({"thick", "thin"},)
+SYNONYM_SIMILARITY = 0.745  # see DirectPdfQA.paraphrased
+# A descriptive detail needs a closer match to count as kept: "nasal" for
+# "nose" (0.92) is the same detail, "parasites" for "malaria" is not.
+DETAIL_SIMILARITY = 0.85
 SELF_LABELED_STEP_RE = re.compile(r"^\s*\d+[.)]\s*([A-Za-z]+)\s+(?:film|smear)\.\s")
 MID_COLON_BULLET_RE = re.compile(r":\s*[-—•]")
 FIELD_LABEL_RE = re.compile(r"^([A-Z][A-Za-z](?:[A-Za-z \-]{0,20}[A-Za-z])?):\s")
@@ -268,133 +270,60 @@ def _number_unit_pairs(text: str) -> set[tuple[str, str]]:
     return pairs
 
 
-def numbers_are_grounded(generated: str, source: str) -> bool:
-    """The one class of hallucination a fluency-only rephrase could still
-    introduce is inventing or altering a quantity (a reagent amount, a
-    time, a temperature) -- exactly the detail that matters most in a
-    laboratory procedure. Reject the rephrase outright if it states any
-    number the verified source text does not itself contain; a step
-    number ("1.", "2.") is exempt since the source's own numbered list
-    supplies those independently of this check.
-
-    A bare digit-only check is not enough: a source with several reagent
-    amounts (e.g. "Phenol red crystals 0.1g" next to "Distilled water
-    10ml") already contains the digit "10" somewhere, so a rephrase that
-    misquotes the phenol red amount as "10 grams" would pass a check that
-    only asks whether "10" appears anywhere in the source. Whenever a
-    number carries a recognizable unit, require that exact (number, unit)
-    pair -- not just the bare digit -- to appear in the source; only
-    numbers without an attached unit (step numbers, section references)
-    fall back to the bare-digit check.
-    """
-    source_pairs = _number_unit_pairs(source)
-    unit_claimed_spans: list[tuple[int, int]] = []
-    for match in NUMBER_WITH_UNIT_RE.finditer(generated):
-        unit_claimed_spans.append(match.span())
-        value = match.group(1).replace(",", "")
-        unit = _UNIT_ALIASES.get(match.group(2).lower())
-        if unit and (value, unit) not in source_pairs:
-            return False
-    source_numbers = set(NUMBER_RE.findall(source))
-    for match in NUMBER_RE.finditer(generated):
-        if any(start <= match.start() and match.end() <= end for start, end in unit_claimed_spans):
-            continue  # already checked above as a number+unit pair
-        value = match.group(0)
-        if value in source_numbers:
-            continue
-        prefix = generated[:match.start()].rstrip()
-        if re.search(r"(?:^|[.\n])\s*$", prefix) or not prefix:
-            continue  # a step-number heading a new sentence, not a claimed quantity
-        return False
-    return True
-
-
 RUNNING_HEADER_RE = re.compile(r"^\s*(?:\d+\.\s+)?[A-Z][^.;:]*\s\d{1,3}\s*$")
 REFERENCE_PREFIX_RE = re.compile(
     r"\b(?:fig(?:ure)?s?|tables?|sections?|no|page|reagent)\.?$", re.I
 )
 
 
-def strip_running_headers(text: str) -> str:
-    """Drop page running-header lines (e.g. "9. Haematology 293") that
-    extraction occasionally keeps as a unit of their own."""
-    return "\n".join(
-        line for line in text.splitlines() if not RUNNING_HEADER_RE.match(line)
-    ).strip()
-
-
-def drop_unsupported_sentences(generated: str, source: str, question: str) -> str:
-    """Remove generated sentences whose content words mostly do not occur
-    in the verified source (or the question itself) -- a small model can
-    append a plausible-sounding general-knowledge fact that no number or
-    NLI check catches (observed: "Reticulocytes can be identified by their
-    larger size..." added to a stain procedure that never says so).
-    Numbered lines are renumbered afterwards so a dropped step leaves no
-    gap."""
-    allowed = roots(source) | roots(question)
-    kept_lines: list[str] = []
-    for line in generated.splitlines():
-        marker = re.match(r"^\s*\d+[.)]\s+", line)
-        body = line[marker.end():] if marker else line
-        kept = []
-        for sentence in re.split(r"(?<=[.!?])\s+(?=\S)", body):
-            # Quantities are checked separately (numbers_are_grounded /
-            # missing_quantity_sentences) and tokenize inconsistently
-            # ("15cm" vs "15 cm"), so only words are judged here.
-            sentence_roots = {r for r in content_roots(sentence) if not any(ch.isdigit() for ch in r)}
-            if len(sentence_roots) >= 4 and len(sentence_roots & allowed) < 0.6 * len(sentence_roots):
-                continue
-            kept.append(sentence)
-        if body.strip() and not " ".join(kept).strip():
+def clean_answer_text(answer: str) -> str:
+    """Present an already-verified extractive answer as readable text with
+    no model involved: drop the [S#] source tags, page running headers and
+    figure captions glued onto the end of a step, and repair the PDF's
+    undecodable glyphs (U+FFFD) from their surrounding characters. Wording
+    is never changed, so nothing can be added, dropped or reordered."""
+    lines: list[str] = []
+    for raw_line in answer.splitlines():
+        line = re.sub(r"\s*\[S\d+\]", "", raw_line).strip()
+        if not line or RUNNING_HEADER_RE.match(line):
             continue
-        kept_lines.append((marker.group(0) if marker else "") + " ".join(kept))
-    step = 0
-    renumbered: list[str] = []
-    for line in kept_lines:
-        if re.match(r"^\s*\d+[.)]\s+", line):
-            step += 1
-            line = re.sub(r"^\s*\d+([.)])", lambda m: f"{step}{m.group(1)}", line, count=1)
-        renumbered.append(line)
-    return "\n".join(renumbered).strip()
-
-
-def missing_quantity_sentences(generated: str, source: str) -> list[str]:
-    """The reverse of numbers_are_grounded(): return each source sentence
-    stating a quantity (a number+unit pair, or a bare number used as a
-    value such as "divide by 100") that the generated text no longer
-    contains. Step numbers, figure/table/section/reagent references, and
-    running headers are not quantities and are ignored."""
-    generated_pairs = _number_unit_pairs(generated)
-    generated_numbers = set(NUMBER_RE.findall(generated))
-    missing: list[str] = []
-    for line in source.splitlines():
-        if RUNNING_HEADER_RE.match(line):
+        if re.match(r"^\d+\s+Manual of basic techniques for a health laboratory\b", line, re.I):
             continue
-        for sentence in re.split(r"(?<=[.;!?])\s+(?=\S)", line):
-            unit_spans: list[tuple[int, int]] = []
-            dropped = False
-            for match in NUMBER_WITH_UNIT_RE.finditer(sentence):
-                unit_spans.append(match.span())
-                value = match.group(1).replace(",", "")
-                unit = _UNIT_ALIASES.get(match.group(2).lower())
-                if unit and (value, unit) not in generated_pairs:
-                    dropped = True
-            for match in NUMBER_RE.finditer(sentence):
-                if dropped:
-                    break
-                if any(s <= match.start() and match.end() <= e for s, e in unit_spans):
-                    continue
-                value = match.group(0)
-                prefix = sentence[:match.start()].rstrip()
-                if not prefix or value.count(".") >= 2:
-                    continue
-                if REFERENCE_PREFIX_RE.search(prefix):
-                    continue
-                if value not in generated_numbers:
-                    dropped = True
-            if dropped and sentence.strip() not in missing:
-                missing.append(sentence.strip())
-    return missing
+        line = re.sub(r"(?<=[.!?])\s+Fig(?:ure)?\.?\s*\d+\.\d+\s+[A-Z][^.()]*$", "", line)
+        # This PDF's font maps the multiplication sign to the yen glyph.
+        line = line.replace("¥", "×")
+        line = re.sub(r"(?<=\d)�(?=\d)", "–", line)
+        line = re.sub(r"(?<=[\d)])\s*�\s*(?=[\d(])", " × ", line)
+        line = re.sub(r"(?<=[A-Za-z])�(?=[A-Za-z])", "’", line)
+        line = re.sub(r"^�\s*", "• ", line)
+        line = re.sub(r"�\s*(?=\d)", "× ", line)
+        line = line.replace("�", "\"")
+        lines.append(" ".join(line.split()))
+    return "\n".join(lines)
+
+
+# (label, pattern that marks it in the source, pattern that keeps it in a
+# rewrite). The words that set a step's conditions matter more than any
+# other wording: "before" vs "after", alternatives ("or") vs a sequence,
+# a negation, a condition, a limit.
+CONDITION_WORDS: list[tuple[str, str, str]] = [
+    ("before", r"\b(?:before|prior to)\b", r"\b(?:before|prior to|preceding)\b"),
+    ("after", r"\b(?:after|following)\b", r"\b(?:after|following|once)\b"),
+    # Only a real choice between options ("either ... or", "..., or ...",
+    # "alternatively"); a plain "X or Y" noun pair ("nose or pharynx") is
+    # not a condition and rewording it is not a change of meaning.
+    ("or (alternatives)", r"\beither\b|,\s*or\b|\balternatively\b", r"\b(?:or|either|alternatively|alternative)\b"),
+    ("not/never/without", r"\b(?:not|never|no|without|cannot|nor)\b", r"\b(?:not|never|no|without|cannot|nor|avoid|none)\b"),
+    ("if/unless", r"\b(?:if|unless)\b", r"\b(?:if|unless|when|whenever|provided|in case)\b"),
+    ("until", r"\b(?:until|till)\b", r"\b(?:until|till)\b"),
+    ("at least", r"\b(?:at least|not less than|minimum)\b", r"\b(?:at least|not less than|no less than|minimum)\b"),
+    ("at most", r"\b(?:at most|not more than|no more than|maximum|up to)\b", r"\b(?:at most|not more than|no more than|maximum|up to)\b"),
+]
+
+
+def _normalize_for_conditions(text: str) -> str:
+    text = text.casefold().replace("n't", " not")
+    return re.sub(r"\bno\.\s*\d", " ", text)  # "reagent no. 28" is not a negation
 
 
 DEFINES_TERM_RE = re.compile(
@@ -413,6 +342,699 @@ def introduces_other_concept(text: str, query: str) -> bool:
         return False
     defined = roots(match.group(1))
     return bool(defined) and not defined <= roots(query)
+
+
+GENERIC_ENTITY_KEYS = {
+    stem(word) for word in (
+        "sample", "specimen", "test", "material", "solution", "method",
+        "result", "patient", "procedure", "examination", "technique",
+    )
+}
+
+
+def entity_display(name: str) -> str:
+    """An entity name as extraction left it can carry a list-bullet glyph
+    rendered as a leading "G" ("G Westergren ESR tubes") or a leading
+    article ("The sample"); strip both for display and matching."""
+    text = re.sub(r"^G\s+(?=[A-Z0-9])", "", name.strip())
+    return re.sub(r"^(?:the|a|an)\s+", "", text, flags=re.I).strip()
+
+
+def american_spelling(text: str) -> str:
+    """centre/litre/metre/fibre/theatre (and compounds such as millilitre)
+    -> -er; no other "-re" word is touched ("culture", "measure")."""
+    return re.sub(r"\b(\w*?(?:cent|lit|met|fib|theat))re(s?)\b", r"\1er\2", text)
+
+
+def entity_key(name: str) -> str:
+    """One key per real-world entity: case, bullets, articles, British/
+    American spelling and singular/plural removed, and "sample of blood"
+    read as "blood sample" -- so the graph's near-duplicate entity names
+    collapse to one for matching and display."""
+    text = entity_display(name).casefold()
+    text = american_spelling(text)
+    of_phrase = re.fullmatch(r"(\w+) of (\w+)", text)
+    if of_phrase:
+        text = f"{of_phrase.group(2)} {of_phrase.group(1)}"
+    return " ".join(stem(word) for word in re.findall(r"[a-z0-9]+", text))
+
+
+def entity_is_generic(name: str) -> bool:
+    """Too generic to count as an entity: an empty name, a generic word
+    ("sample"), a very short one, or a single word that is really a
+    qualifier ("well" as in "mix well", "early") or a lab action
+    ("Collecting" -- the action checks already cover it)."""
+    key = entity_key(name)
+    if not key:
+        return True
+    if " " in key:
+        return False
+    return key in GENERIC_ENTITY_KEYS or len(key) < 4 or key in _ACTION_BY_ROOT or key in {
+        stem(word) for group in QUALIFIER_GROUPS for word in group
+    } | {stem(word) for word in _EXTRA_QUALIFIERS}
+
+
+# ---------------------------------------------------------------------------
+# Fact layer: the graph's own record of what each source sentence states,
+# so an LLM rewrite can be checked against Neo4j instead of re-read text.
+# Built into Neo4j by scripts/extract_semantic_relations.py --facts as
+# (:Chunk)-[:STATES]->(:Fact)-[:INVOLVES]->(:Entity), (:Fact)-[:NEXT]->(:Fact).
+# ---------------------------------------------------------------------------
+
+# Qualifiers that change how or when a step is done ("cough deeply",
+# "early morning", "mix gently"); words in one group are interchangeable.
+QUALIFIER_GROUPS: list[set[str]] = [
+    {"well", "thoroughly"}, {"gently", "softly", "lightly"},
+    {"quickly", "rapidly", "fast", "promptly"}, {"slowly", "gradually"},
+    {"immediately", "promptly", "straightaway", "instantly"},
+    {"firmly", "tightly", "securely"}, {"carefully", "cautiously"},
+    {"completely", "fully", "entirely", "thoroughly"}, {"usually", "normally", "typically", "generally", "commonly"},
+    {"approximately", "roughly", "about", "around"}, {"always", "invariably"},
+    {"especially", "specifically", "particularly"}, {"exclusively", "solely", "only"},
+    {"deeply"}, {"early"}, {"directly"}, {"freshly"}, {"daily"}, {"separately"},
+    {"just", "only", "merely", "solely"}, {"exactly", "precisely"}, {"almost", "nearly", "mostly", "most"},
+    {"sufficient", "enough", "adequate"},
+]
+_NOT_QUALIFIERS = {
+    "only", "apply", "supply", "reply", "assembly", "family", "rely", "fly",
+    "july", "belly", "jelly", "lily", "oily", "likely", "anomaly", "butterfly",
+    "friendly", "ugly", "holy", "silly", "firstly", "secondly", "finally",
+}
+_EXTRA_QUALIFIERS = {"well", "fast", "always", "about", "around", "just", "almost", "nearly", "most"}
+LAB_ACTIONS: list[set[str]] = [
+    {"collect", "gather", "obtain", "take", "taken", "took"}, {"place", "put", "set", "position"},
+    {"add", "pour"}, {"mix", "stir"}, {"shake", "agitate"}, {"boil"}, {"pour", "empty"},
+    {"fill"}, {"centrifuge", "spin", "spun"}, {"examine", "inspect", "look", "observe", "check"},
+    {"check", "ensure", "verify", "confirm"},
+    {"count"}, {"leave", "left", "allow", "let", "stand"}, {"remove", "withdraw"}, {"draw", "drawn", "drew"},
+    {"filter"}, {"spread", "smear"}, {"dry", "dried"}, {"fix"}, {"stain"}, {"wash", "rinse"},
+    {"clean"}, {"sterilize", "autoclave"}, {"heat", "warm"}, {"cool"}, {"cover", "plug", "close"},
+    {"label", "mark"}, {"record", "note", "write", "written", "wrote"}, {"report"}, {"read"}, {"measure"},
+    {"read", "check"},
+    {"dilute"}, {"incubate"}, {"discard", "dispose"}, {"store", "keep", "kept"}, {"transfer"},
+    {"pipette"}, {"cough"}, {"expectorate", "spit"}, {"ask", "instruct"},
+    {"prepare", "make", "made"}, {"use"}, {"send", "sent", "dispatch"}, {"wait"}, {"cut"}, {"insert"},
+]
+# A word in several groups ("check" = examine, and "check that" = ensure)
+# accepts the synonyms of all of them.
+_ACTION_BY_ROOT: dict[str, frozenset[str]] = {}
+for _group in LAB_ACTIONS:
+    for _word in _group:
+        _ACTION_BY_ROOT[stem(_word)] = _ACTION_BY_ROOT.get(stem(_word), frozenset()) | {stem(w) for w in _group}
+_QUALIFIER_GROUP: dict[str, frozenset[str]] = {}
+for _group in QUALIFIER_GROUPS:
+    for _word in _group:
+        _QUALIFIER_GROUP[_word] = _QUALIFIER_GROUP.get(_word, frozenset()) | frozenset(_group)
+
+# Fixed phrases whose verb is not a lab action ("care should be taken").
+_IDIOMS_RE = re.compile(
+    r"\b(?:care\s+(?:should|must)\s+be\s+taken|take\s+care|taken?\s+into\s+account|takes?\s+place)\b",
+    re.I,
+)
+
+
+def fact_qualifiers(text: str) -> set[str]:
+    tokens = re.findall(r"[a-z]+", text.casefold().replace("at once", "immediately"))
+    return {
+        token for token in tokens
+        if token in _EXTRA_QUALIFIERS
+        or (token.endswith("ly") and len(token) >= 5 and token not in _NOT_QUALIFIERS)
+    }
+
+
+_ACTION_WORD = {stem(word): word for group in LAB_ACTIONS for word in sorted(group)}
+
+
+def _all_stems(text: str) -> set[str]:
+    # Every word, including ones roots() drops as question-framing words
+    # ("ensure", "check") -- for actions those are the content.
+    return {stem(word) for word in words(text)}
+
+
+def fact_actions(text: str) -> set[str]:
+    return {root for root in _all_stems(_IDIOMS_RE.sub(" ", text)) if root in _ACTION_BY_ROOT}
+
+
+def fact_quantities(text: str) -> set[str]:
+    """Quantities stated in the text as "value unit" (or a bare value used
+    as a quantity, e.g. "divide by 100"), skipping step numbers and figure,
+    table, section and reagent references."""
+    quantities = {f"{value} {unit}" for value, unit in _number_unit_pairs(text)}
+    unit_spans = [match.span() for match in NUMBER_WITH_UNIT_RE.finditer(text)]
+    for match in NUMBER_RE.finditer(text):
+        if any(start <= match.start() and match.end() <= end for start, end in unit_spans):
+            continue
+        prefix = text[:match.start()].rstrip()
+        if not prefix or re.search(r"(?:^|[.\n])\s*$", prefix) or match.group(0).count(".") >= 2:
+            continue
+        if REFERENCE_PREFIX_RE.search(prefix):
+            continue
+        quantities.add(match.group(0).replace(",", ""))
+    return quantities
+
+
+def fact_conditions(text: str) -> set[str]:
+    normalized = _normalize_for_conditions(text)
+    return {label for label, in_source, _kept in CONDITION_WORDS if re.search(in_source, normalized)}
+
+
+# Nouns that make an "at/in/on ..." phrase a time, not a place ("at the
+# height of an episode of fever", "in the morning").
+TIME_WORDS = {
+    "height", "peak", "morning", "evening", "night", "day", "days", "hour", "hours", "minute",
+    "minutes", "onset", "end", "beginning", "start", "stage", "phase", "episode", "time", "period",
+    "week", "weeks", "month", "months", "year", "moment", "interval", "afternoon", "noon", "midnight",
+}
+
+# Prepositions that attach a role to the action, and the role they mark.
+ROLE_PREPOSITIONS = {
+    "into": "destination", "onto": "destination",
+    "with": "material", "containing": "material",
+    "for": "purpose", "from": "source",
+    "in": "place", "inside": "place", "on": "place", "at": "place", "under": "place",
+}
+_ROLE_STOP = {
+    "the", "a", "an", "each", "some", "any", "this", "that", "these", "those",
+    "its", "their", "his", "her", "all", "both", "another", "other", "such", "his", "your",
+}
+# "for this purpose", "in this way": the phrase names no real target.
+_ROLE_FILLER = {stem(word) for word in ("purpose", "reason", "way", "case", "example", "instance", "manner", "task")}
+_ROLE_BREAK = set(ROLE_PREPOSITIONS) | {"of", "either", "neither", "both", "whether", "and", "or", "then", "until", "before", "after", "if", "unless", "to", "by", "which", "that", "as"}
+
+
+def fact_roles(text: str) -> set[str]:
+    """What the action is done into/with/for/from/in: "role=head", the head
+    being the last word of the phrase after the preposition ("into the
+    container" -> "destination=container", "for culture of Mycobacterium
+    tuberculosis" -> "purpose=tuberculosis"). Phrases carrying a number are
+    left to the quantity check."""
+    roles: set[str] = set()
+    normalized = american_spelling(text.casefold())
+    tokens = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*|[,.;:()]", normalized)
+    for index, token in enumerate(tokens):
+        role = ROLE_PREPOSITIONS.get(token)
+        if not role:
+            continue
+        following_words = [t for t in tokens[index + 1:index + 3] if re.match(r"[a-z]", t) and t not in _ROLE_STOP]
+        if token == "for" and following_words and following_words[0].endswith("ing") and len(following_words[0]) >= 6:
+            # The purpose is the action ("for preparing the film"), not its
+            # object -- "to maintain the film" keeps "film" but not the purpose.
+            roles.add(f"purpose={following_words[0]}")
+            continue
+        phrase: list[str] = []
+        for following in tokens[index + 1:index + 8]:
+            if following == ",":
+                continue  # "a wide-mouthed, screw-topped jar"
+            if not re.match(r"[a-z0-9]", following) or following in _ROLE_BREAK:
+                break
+            if following in _ROLE_STOP:
+                continue
+            phrase.append(following)
+        if not phrase or any(ch.isdigit() for word in phrase for ch in word):
+            continue
+        head = stem(phrase[-1])
+        if role == "place" and phrase[-1] in TIME_WORDS:
+            role = "time"
+        if len(head) >= 3 and head not in _ROLE_FILLER:
+            roles.add(f"{role}={phrase[-1]}")
+    return roles
+
+
+def fact_attributes(text: str, entity_names: list[str]) -> set[str]:
+    """Descriptive words directly in front of an entity the sentence names
+    ("liquid frothy saliva" -> "liquid|saliva"): dropping one ("frothy
+    saliva") changes what is described."""
+    attributes: set[str] = set()
+    lowered = text.casefold()
+    action_roots = set(_ACTION_BY_ROOT)
+    for name in entity_names:
+        display = entity_display(name).casefold()
+        if not display:
+            continue
+        for match in re.finditer(rf"\b{re.escape(display)}\b", lowered):
+            before = re.findall(r"[a-z]+|[^a-z\s]", lowered[max(0, match.start() - 40):match.start()])
+            for word in reversed(before[-2:]):
+                # Only words directly in front of the name, stopping at the
+                # first one that is not a description ("culture of X": "of").
+                if not (
+                    len(word) >= 4 and word.isalpha() and word not in _ROLE_STOP
+                    and word not in _ROLE_BREAK and not word.endswith("ly")
+                    and stem(word) not in action_roots and word not in QUESTION_WORDS
+                    and stem(word) not in set(entity_key(display).split())
+                ):
+                    break
+                attributes.add(f"{word}|{display}")
+    return attributes
+
+
+CLAIM_SIMILARITY = 0.78  # see DirectPdfQA.claim_covered
+
+
+def fact_claims(text: str) -> list[str]:
+    """The separate statements a source sentence makes (split at sentence
+    ends, semicolons and dashes): "Wait for 5 minutes before reading --
+    a positive result may be obvious before this time." holds two, and a
+    rewrite that keeps only the first has left information out."""
+    body = re.sub(r"^\s*\d+[.)]\s+", "", text.strip())
+    parts = re.split(r"(?<=[.:!?])\s+(?=[A-Z(])|(?<=;)\s+|\s+[—–]\s+", body)
+    return [part.strip() for part in parts if len(words(part)) >= 3]
+
+
+def extract_fact_frame(text: str) -> dict[str, list[str]]:
+    """What one sentence states, as the graph stores it: its lab actions,
+    the qualifiers on them, its quantities, its condition words and the
+    roles attached to the action (destination, material, purpose, source,
+    place). Attributes need the sentence's entities and are added by the
+    graph build (fact_attributes)."""
+    return {
+        "actions": sorted(fact_actions(text)),
+        "qualifiers": sorted(fact_qualifiers(text)),
+        "quantities": sorted(fact_quantities(text)),
+        "conditions": sorted(fact_conditions(text)),
+        "roles": sorted(fact_roles(text)),
+        "claims": fact_claims(text),
+    }
+
+
+def fact_id(chunk_id: str, text: str) -> str:
+    return hashlib.sha1(f"{chunk_id}|{normalize_for_exact_check(text)}".encode("utf-8")).hexdigest()[:20]
+
+
+def _loose(root: str) -> str:
+    # The stemmer keeps a final "e" on some words and not their inflections
+    # ("culture" vs "culturing" -> "cultur"); compare without it.
+    return root[:-1] if len(root) > 4 and root.endswith("e") else root
+
+
+def _context_roots(text: str, word: str, width: int = 3) -> set[str]:
+    """Roots of the words around the first form of `word` in `text`."""
+    tokens = re.findall(r"[a-z]+", text.casefold())
+    target = _loose(stem(word))
+    for index, token in enumerate(tokens):
+        if _loose(stem(token)) == target or token.startswith(word[:5]):
+            window = tokens[max(0, index - width):index] + tokens[index + 1:index + 1 + width]
+            return {_loose(stem(t)) for t in window if len(t) >= 3}
+    return set()
+
+
+_AUXILIARIES = {
+    "is", "are", "was", "were", "be", "been", "being", "has", "have", "had", "do", "does", "did",
+    "should", "must", "may", "might", "can", "could", "will", "would", "shall", "need", "needs",
+}
+
+
+# Place/time/sequence adverbs: "as described below" -- a word in front of
+# one of these describes nothing ("described" is not a detail of "below").
+_ADVERBS = {
+    "below", "above", "here", "there", "later", "earlier", "again", "first", "then", "now",
+    "once", "twice", "too", "also", "only", "even", "still", "back", "away", "out", "off",
+    "up", "down", "over", "under", "beforehand", "afterwards", "overnight", "together", "instead",
+}
+
+
+_PRONOUNS = {"which", "that", "who", "whom", "it", "they", "this", "these", "those", "he", "she", "we", "you"}
+_COMMON_VERBS = {
+    verb + ending
+    for verb in ("contain", "include", "require", "allow", "show", "give", "cause", "become",
+                 "remain", "provide", "produce", "indicate", "mean", "need", "help", "make",
+                 "take", "appear", "seem", "occur", "depend", "consist", "represent", "prevent",
+                 "avoid", "ensure")
+    for ending in ("", "s")
+}
+
+
+def _technical_terms(text: str) -> list[list[str]]:
+    """Runs of three or more consecutive content words -- the manual's
+    compound technical terms ("leukocyte type number fractions",
+    "sodium nitroprusside crystals") -- as lists of loose stems."""
+    terms: list[list[str]] = []
+    run: list[str] = []
+    for token in re.findall(r"[a-z]+(?:-[a-z]+)*|[^a-z\s]", text.casefold()) + ["."]:
+        if (
+            token[0].isalpha() and len(token) >= 3 and token not in _ROLE_STOP
+            and token not in _ROLE_BREAK and token not in _AUXILIARIES and token not in _ADVERBS
+            and token not in _PRONOUNS and token not in QUESTION_WORDS
+            and token not in _COMMON_VERBS and not token.endswith(("ed", "ing"))
+            and stem(token) not in _ACTION_BY_ROOT
+        ):
+            run.append(_loose(stem(token)))
+            continue
+        if len(run) >= 3:
+            terms.append(run)
+        run = []
+    return terms
+
+
+def _term_intact(term: list[str], generated_sequence: list[str]) -> bool:
+    """The term's words appear in order and together -- or as "<head> of
+    <rest>" ("crystals of sodium nitroprusside")."""
+    size = len(term)
+    head_first = [term[-1], "of", *term[:-1]]
+    for start in range(len(generated_sequence)):
+        if generated_sequence[start:start + size] == term:
+            return True
+        if generated_sequence[start:start + size + 1] == head_first:
+            return True
+    return False
+
+
+# Words that only measure the noun after them ("a sufficient number of
+# crystals" = "enough crystals"): never the thing a description is about.
+_MEASURE_WORDS = {
+    "number", "numbers", "amount", "amounts", "quantity", "quantities", "volume", "volumes",
+    "portion", "part", "parts", "piece", "pieces", "series", "range", "kind", "kinds", "type", "types",
+    "sort", "sorts", "lot", "lots", "variety",
+}
+
+
+def _snippet(text: str, word: str, width: int = 3) -> str:
+    """The source words around `word` ("at the height of an episode")."""
+    tokens = re.findall(r"\S+", text)
+    for index, token in enumerate(tokens):
+        if token.casefold().strip(".,;:()").startswith(word.casefold()[:5]):
+            return " ".join(tokens[max(0, index - width):index + width + 1])
+    return word
+
+
+def _premodifiers(text: str) -> dict[str, str]:
+    """Descriptive words directly in front of another content word, i.e.
+    the modifiers inside a noun phrase ("liquid frothy saliva" -> liquid,
+    frothy; "thick film" -> thick), found without needing the noun to be an
+    entity in the graph. Verbs, qualifiers and function words are skipped."""
+    tokens = re.findall(r"[a-z]+(?:-[a-z]+)*|[^a-z\s]", text.casefold())
+    modifiers: dict[str, str] = {}
+    for index, (word, following) in enumerate(zip(tokens, tokens[1:])):
+        if not (word[0].isalpha() and following[0].isalpha()):
+            continue
+        # "stains, which contain essential dyes": after a relative or
+        # personal pronoun comes the verb, not a description.
+        if (index and tokens[index - 1] in _PRONOUNS) or word in _COMMON_VERBS:
+            continue
+        # "Blood specimens should ...": a word before a verb is the subject,
+        # not a description; generic nouns ("specimen") describe nothing.
+        if following in _AUXILIARIES or following in _ADVERBS or stem(word) in GENERIC_ENTITY_KEYS:
+            continue
+        if (
+            len(word) >= 4 and len(following) >= 3
+            and word not in _ROLE_STOP and word not in _ROLE_BREAK
+            and following not in _ROLE_STOP and following not in _ROLE_BREAK
+            and word not in QUESTION_WORDS and not word.endswith(("ly", "ing"))
+            and stem(word) not in _ACTION_BY_ROOT
+            and word not in _EXTRA_QUALIFIERS
+        ):
+            before = tokens[index - 1] if index and tokens[index - 1] in {"most", "more", "less", "least", "very"} else ""
+            modifiers[word] = " ".join(part for part in (before, word, following) if part)
+    return modifiers
+
+
+def compare_with_fact(
+    fact: dict[str, Any],
+    generated: str,
+    paraphrased: Callable[..., bool] | None = None,
+    list_items: str = "",
+    covered: Callable[[str, str], bool] | None = None,
+    similarity: Callable[[str, str], float] | None = None,
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Neo4j's verdict on an LLM sentence, compared in both directions with
+    the Fact of its source sentence. Returns four lists of reasons --
+    (meaning changed, unsupported claim, information dropped, review) --
+    all empty when the graph supports the sentence. A difference in
+    wording alone is never any of them.
+
+    Meaning changed (source -> answer, something replaced):
+      - a quantity replaced by another, or one the graph does not record;
+      - a condition word gone (before/after, alternatives, negation,
+        if/unless, until, at least/at most) -- for a sentence introducing a
+        list, the LLM's rewrite of the list items (`list_items`) counts, so
+        "either:" followed by "... or ..." keeps the choice;
+      - a qualifier replaced by another ("deeply" -> "forcefully").
+    Unsupported claim (answer -> source): a statement of the LLM sentence
+    that the source sentence does not make, in words or in meaning.
+    Information dropped (source -> answer, something gone): a whole
+    statement (claim), a quantity, a qualifier ("Just before" -> "Before"),
+    or a descriptive detail ("liquid frothy saliva" -> "frothy saliva").
+    Review (the graph cannot tell a synonym from a change): the lab action
+    replaced by a different one (only the closest replacement is named:
+    "expectorate -> cough", not every new verb), a role of the action
+    (destination, material, purpose, source, place) or an entity it
+    involves no longer there.
+    `paraphrased(term, text)` and `covered(claim, text)` are meaning-
+    similarity checks that clear synonyms; `similarity(a, b)` ranks which
+    new action replaced a dropped one."""
+    def kept(term: str) -> bool:
+        return bool(paraphrased and paraphrased(term, generated))
+
+    changed: list[str] = []
+    unsupported: list[str] = []
+    dropped: list[str] = []
+    review: list[str] = []
+    source = fact.get("text") or ""
+
+    recorded_quantities = set(fact.get("quantities") or [])
+    generated_quantities = fact_quantities(generated)
+    missing = sorted(recorded_quantities - generated_quantities)
+    added = sorted(generated_quantities - recorded_quantities)
+    if missing and added:
+        changed.append(f"quantity changed: {', '.join(missing)} -> {', '.join(added)}")
+    elif added:
+        changed.append("quantity not in the source: " + ", ".join(added))
+    elif missing:
+        dropped.append("quantity left out: " + ", ".join(missing))
+
+    lost_claims = [claim for claim in fact.get("claims") or [] if covered and not covered(claim, generated)]
+    generated_conditions = _normalize_for_conditions(f"{generated} {list_items}")
+    # A condition word inside a statement that was left out entirely is
+    # reported with that statement (information dropped), not again here.
+    kept_source = source
+    for claim in lost_claims:
+        kept_source = kept_source.replace(claim, " ")
+    source_conditions = _normalize_for_conditions(kept_source)
+    missing_conditions = [
+        label for label, in_source, kept_pattern in CONDITION_WORDS
+        if label in (fact.get("conditions") or [])
+        and len(re.findall(kept_pattern, generated_conditions))
+        < max(1, len(re.findall(in_source, source_conditions)))
+    ]
+    if missing_conditions:
+        changed.append("condition dropped: " + ", ".join(missing_conditions))
+
+    # Qualifiers are compared statement by statement: each source statement
+    # with the LLM statement that says the same thing, so a qualifier of
+    # one statement ("dry thoroughly") is never matched against another's
+    # ("gently fanning"). Word forms count as the same qualifier
+    # ("urgently" / "urgent results", "gentle heat" / "gently").
+    statements = fact_claims(generated) or [generated]
+
+    def aligned(claim: str) -> str:
+        if len(statements) == 1:
+            return statements[0]
+        if similarity:
+            return max(statements, key=lambda statement: similarity(claim, statement))
+        claim_roots = roots(claim)
+        return max(statements, key=lambda statement: len(claim_roots & roots(statement)))
+
+    def has_qualifier(qualifier: str, qualifiers: set[str], text: str, own: str) -> bool:
+        tokens = set(re.findall(r"[a-z]+", text.casefold()))
+        if _QUALIFIER_GROUP.get(qualifier, frozenset({qualifier})) & (qualifiers | tokens):
+            return True
+        # "urgently" is kept by "urgent results" -- but "deeply" is not kept
+        # by the "deep" of "a deep breath" that was already there.
+        own_tokens = set(re.findall(r"[a-z]+", own.casefold()))
+        forms = {qualifier[:-2], qualifier[:-1] + "e"} if qualifier.endswith("ly") else set()
+        return bool((forms - own_tokens) & tokens)
+
+    source_claims = [claim for claim in (fact.get("claims") or [source]) if claim not in lost_claims] or [source]
+    for claim in source_claims:
+        statement = aligned(claim)
+        claim_qualifiers = fact_qualifiers(claim)
+        statement_qualifiers = fact_qualifiers(statement)
+        missing_qualifiers = sorted(q for q in claim_qualifiers if not has_qualifier(q, statement_qualifiers, statement, claim))
+        added_qualifiers = sorted(q for q in statement_qualifiers if not has_qualifier(q, claim_qualifiers, claim, statement))
+        if missing_qualifiers and added_qualifiers:
+            changed.append(f"'{', '.join(missing_qualifiers)}' changed to '{', '.join(added_qualifiers)}' in \"{claim}\"")
+        elif missing_qualifiers:
+            dropped.append(f"'{', '.join(missing_qualifiers)}' left out of \"{claim}\"")
+        elif added_qualifiers:
+            review.append(f"'{', '.join(added_qualifiers)}' added to \"{claim}\"")
+
+    for claim in lost_claims:
+        dropped.append(f"left out: '{claim}'")
+
+    if covered and source:
+        for statement in fact_claims(generated):
+            if not covered(statement, f"{source} {list_items}"):
+                unsupported.append(f"'{statement}'")
+
+    generated_roots = {
+        _loose(root)
+        for root in roots(american_spelling(re.sub(r"['’]s\b", "", generated.casefold())))
+    }
+    generated_tokens = set(re.findall(r"[a-z0-9]+", generated.casefold()))
+
+    def present(word: str) -> bool:
+        parts = re.findall(r"[a-z0-9]+", word.casefold())
+        return bool(parts) and all(part in generated_tokens for part in parts)
+
+    missing_entities = sorted(
+        entity_display(name) for name in fact.get("entities") or []
+        if not entity_is_generic(name)
+        and (key_words := {_loose(w) for w in entity_key(name).split()}) and not key_words <= generated_roots
+        and not present(entity_display(name)) and not kept(entity_display(name))
+    )
+    # One change reported once: words already inside a reported lost
+    # statement or a missing entity are not reported again.
+    reported = {_loose(word) for name in missing_entities for word in entity_key(name).split()}
+    reported |= {_loose(root) for claim in lost_claims for root in roots(claim)}
+
+    # A detail counts as kept by a synonym only where the LLM put a word
+    # of its own ("appropriate preparation" -> "proper preparation"), not
+    # where it simply left the word out ("liquid frothy saliva" -> "frothy
+    # saliva" still resembles the source because "frothy saliva" remains).
+    source_words = {_loose(stem(word)) for word in re.findall(r"[a-z0-9]+", source.casefold())}
+    detail_context = dict(_premodifiers(source))
+    for attribute in fact.get("attributes") or []:
+        word, entity = attribute.split("|", 1)
+        if stem(word) not in GENERIC_ENTITY_KEYS:
+            detail_context.setdefault(word, f"{word} {entity}")
+    details = sorted(
+        word for word, context in detail_context.items()
+        if (loose := _loose(stem(word))) not in generated_roots and not present(word)
+        and not (_QUALIFIER_GROUP.get(word, frozenset()) & generated_tokens)
+        and loose not in reported
+        and not (paraphrased and (
+            paraphrased(context, generated, DETAIL_SIMILARITY, source_words)
+            or paraphrased(word, generated, DETAIL_SIMILARITY, source_words)
+        ))
+    )
+    if details:
+        dropped.append("detail left out: " + ", ".join(details))
+
+    # The noun a description belongs to must survive too: "gentle heat" ->
+    # "warm light" keeps the idea of gentleness but changes what is used;
+    # "small drop" -> "small amount" generalises the thing. Likewise every
+    # part of a hyphenated compound ("heat-fixed" -> "fixed permanently"
+    # loses the heat). A synonym in its place ("specimen" -> "sample")
+    # clears it; a different word is reported as a change of meaning.
+    def replacement_for(term: str, threshold: float = SYNONYM_SIMILARITY) -> bool:
+        return bool(paraphrased and paraphrased(term, generated, threshold, source_words))
+
+    for word, context in _premodifiers(source).items():
+        head = context.split()[-1]
+        # The phrase is judged as a whole ("gentle heat" vs "warm light"):
+        # a single new word can resemble the head ("warm" ~ "heat") while
+        # the phrase says something else.
+        if (
+            len(head) >= 3 and stem(head) not in GENERIC_ENTITY_KEYS and head not in QUESTION_WORDS
+            and head not in _MEASURE_WORDS
+            and _loose(stem(head)) not in generated_roots and not present(head)
+            and _loose(stem(head)) not in reported
+            and (not replacement_for(context, DETAIL_SIMILARITY) or re.search(
+                rf"\b{re.escape(word)}\s+(?:{'|'.join(sorted(_MEASURE_WORDS))})\b", generated.casefold()
+            ))
+        ):
+            generalised = re.search(
+                rf"\b{re.escape(word)}\s+({'|'.join(sorted(_MEASURE_WORDS))})\b", generated.casefold()
+            )
+            if generalised:
+                dropped.append(f"'{context}' generalised to '{word} {generalised.group(1)}'")
+            else:
+                changed.append(f"'{context}' no longer refers to '{head}'")
+    for compound in sorted(set(re.findall(r"\b[a-z]+(?:-[a-z]+)+\b", source.casefold()))):
+        parts = compound.split("-")
+        # A part is kept in any form ("fixed" by "fix", "heat" by "heating").
+        lost = [
+            part for part in parts
+            if len(part) >= 3 and _loose(stem(part)) not in generated_roots and not any(
+                token.startswith(part) or (len(token) >= 3 and part.startswith(token))
+                for token in generated_tokens
+            )
+        ]
+        if lost and len(lost) < len(parts) and not present(compound) and not replacement_for(compound, DETAIL_SIMILARITY):
+            changed.append(f"'{compound}' lost '{', '.join(lost)}'")
+
+    recorded_actions = fact.get("actions") or []
+    allowed = {root for action in recorded_actions for root in _ACTION_BY_ROOT.get(action, {action})}
+    generated_stems = {_loose(root) for root in _all_stems(generated)}
+    dropped_actions = [
+        _ACTION_WORD.get(action, action) for action in recorded_actions
+        if not ({_loose(r) for r in _ACTION_BY_ROOT.get(action, frozenset({action}))} & generated_stems)
+        and not kept(_ACTION_WORD.get(action, action))
+    ]
+    new_actions = [_ACTION_WORD.get(action, action) for action in sorted(fact_actions(generated) - allowed)]
+    for action in dropped_actions:
+        if not new_actions:
+            break
+        # The replacement is the new verb standing where the old one stood
+        # ("to expectorate directly into" -> "to cough directly into", not
+        # the "filled" of "filled with 25 ml"): most shared neighbouring
+        # words, then meaning similarity as a tie-break.
+        source_context = _context_roots(source, action)
+        replacement = max(
+            new_actions,
+            key=lambda candidate: (
+                len(source_context & _context_roots(generated, candidate)),
+                similarity(action, candidate) if similarity else 0.0,
+            ),
+        )
+        review.append(f"action changed: {action} -> {replacement}")
+
+    # A compound technical term whose words are all still there but no
+    # longer in order ("leukocyte type number fractions" -> "the number of
+    # leukocyte types fractions") has become a different, garbled term.
+    generated_sequence = [
+        "of" if token == "of" else _loose(stem(token))
+        for token in re.findall(r"[a-z]+(?:-[a-z]+)*", generated.casefold())
+        if token == "of" or (token not in _ROLE_STOP and len(token) >= 3)
+    ]
+    def together(term: list[str]) -> bool:
+        width = len(term) + 2
+        return any(
+            set(term) <= set(generated_sequence[start:start + width])
+            for start in range(max(1, len(generated_sequence) - width + 1))
+        )
+
+    for term in _technical_terms(source):
+        if together(term) and not _term_intact(term, generated_sequence):
+            words_in_order = [w for w in re.findall(r"[a-z]+(?:-[a-z]+)*", source.casefold()) if _loose(stem(w)) in term]
+            review.append(f"term reworded: '{' '.join(words_in_order[:len(term)])}'")
+            break
+
+    # A list item ("— estimating the number of thrombocytes") rewritten
+    # into a longer statement with new content words has gained a claim.
+    if re.match(r"^\s*[-—•]", source):
+        source_roots = {_loose(root) for root in content_roots(source)}
+        added_words = sorted({
+            _loose(root) for root in content_roots(generated)
+            if _loose(root) not in source_roots and not any(ch.isdigit() for ch in root)
+        })
+        if len(added_words) >= 3 and len(added_words) >= 0.5 * max(1, len(source_roots)):
+            review.append(
+                "list item rewritten as a separate statement -- its link to the list is lost "
+                "and wording was added: " + ", ".join(added_words)
+            )
+
+    lost_roles = [
+        role for role in fact.get("roles") or []
+        if (head := _loose(stem(role.split("=", 1)[1]))) not in generated_roots
+        and head not in reported and not kept(role.split("=", 1)[1])
+    ]
+    def role_kind(role: str) -> str:
+        kind, head = role.split("=", 1)
+        return "time" if kind == "place" and head in TIME_WORDS else kind
+
+    lost_times = [role for role in lost_roles if role_kind(role) == "time"]
+    lost_others = [role for role in lost_roles if role_kind(role) != "time"]
+    if lost_times:
+        dropped.append("time detail left out: " + ", ".join(
+            f"\"{_snippet(source, role.split('=', 1)[1])}\"" for role in lost_times
+        ))
+    if lost_others:
+        review.append("no longer kept: " + ", ".join(
+            f"{role_kind(role)} \"{_snippet(source, role.split('=', 1)[1])}\"" for role in lost_others
+        ))
+    if missing_entities:
+        dropped.append("no longer named: " + ", ".join(missing_entities[:4]))
+    return changed, unsupported, dropped, review
 
 
 def subject_match(required: set[str], available: set[str]) -> bool:
@@ -482,10 +1104,12 @@ class DirectPdfQA:
         self._reranker: CrossEncoder | None = None
         self._generator = None
         self._generator_tokenizer = None
-        self._nli: CrossEncoder | None = None
         self._embedder: SentenceTransformer | None = None
         self._chunk_embeddings: np.ndarray | None = None
         self._model_lock = threading.Lock()
+        self._rewrite_lock = threading.Lock()
+        self._rewrite_cache: dict[str, str] = {}
+        self._term_embeddings: dict[str, np.ndarray] = {}
 
     @staticmethod
     def _load_chunks() -> list[Chunk]:
@@ -536,6 +1160,70 @@ class DirectPdfQA:
                 generator.to("cpu")
             generator.eval()
             self._generator = generator
+
+    def claim_covered(self, claim: str, text: str) -> bool:
+        """Does `text` still say `claim` (one statement of a source
+        sentence)? Yes when it keeps most of the claim's content words, or
+        when one of its sentences means the same (local embedding model).
+        Measured on real rewrites here: kept statements score 0.88-1.00
+        (e.g. "check that a sufficient amount of sputum has been produced"
+        vs "ensure that a sufficient volume ... has been collected" 0.89),
+        dropped ones 0.47-0.65 ("a positive result may be obvious before
+        this time" 0.65) -- CLAIM_SIMILARITY sits between."""
+        claim_roots = {r for r in content_roots(claim) if not any(ch.isdigit() for ch in r)}
+        text_roots = {_loose(r) for r in roots(text)}
+        if claim_roots and len({_loose(r) for r in claim_roots} & text_roots) >= 0.8 * len(claim_roots):
+            return True
+        parts = [p for p in re.split(r"(?<=[.;!?])\s+|\s+[—–]\s+", text) if len(words(p)) >= 3] + [text]
+        self._ensure_embedder()
+        missing = [t for t in [claim, *parts] if t not in self._term_embeddings]
+        if missing:
+            vectors = self._embedder.encode(missing, normalize_embeddings=True, show_progress_bar=False)
+            self._term_embeddings.update(zip(missing, vectors))
+        target = self._term_embeddings[claim]
+        return max(float(target @ self._term_embeddings[p]) for p in parts) >= CLAIM_SIMILARITY
+
+    def term_similarity(self, a: str, b: str) -> float:
+        self._ensure_embedder()
+        missing = [t for t in (a, b) if t not in self._term_embeddings]
+        if missing:
+            vectors = self._embedder.encode(missing, normalize_embeddings=True, show_progress_bar=False)
+            self._term_embeddings.update(zip(missing, vectors))
+        return float(self._term_embeddings[a] @ self._term_embeddings[b])
+
+    def paraphrased(
+        self, term: str, text: str, threshold: float = SYNONYM_SIMILARITY,
+        source_words: set[str] | None = None,
+    ) -> bool:
+        """Does `text` say `term` in other words? The local embedding model
+        compares the term with every 1-3 word phrase of the text. Measured on
+        this manual's wording, real synonyms mostly score above ~0.75
+        (toilet/lavatory 0.75, nasal/nose 0.92, 60 grams/60g 0.92) and real
+        changes mostly below (keep/use 0.72, expectorate/cough 0.58) -- but
+        the ranges overlap (thick film/thin film 0.86), so a known
+        contrastive counterpart in the text always counts as a change."""
+        term_words = set(re.findall(r"[a-z]+", term.casefold()))
+        text_words = set(re.findall(r"[a-z]+", text.casefold()))
+        for pair in CONTRASTIVE_TERM_PAIRS:
+            for word in pair & term_words:
+                if (pair - {word}) & text_words and word not in text_words:
+                    return False
+        tokens = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", text.casefold())
+        grams = sorted({
+            " ".join(tokens[i:i + n])
+            for n in (1, 2, 3) for i in range(len(tokens) - n + 1)
+            if any(len(w) >= 3 and w not in _ROLE_STOP and w not in _ROLE_BREAK for w in tokens[i:i + n])
+            and (source_words is None or any(_loose(stem(w)) not in source_words for w in tokens[i:i + n]))
+        })
+        if not grams:
+            return False
+        self._ensure_embedder()
+        missing = [t for t in [term.casefold(), *grams] if t not in self._term_embeddings]
+        if missing:
+            vectors = self._embedder.encode(missing, normalize_embeddings=True, show_progress_bar=False)
+            self._term_embeddings.update(zip(missing, vectors))
+        target = self._term_embeddings[term.casefold()]
+        return max(float(target @ self._term_embeddings[g]) for g in grams) >= threshold
 
     def _ensure_embedder(self) -> None:
         if self._chunk_embeddings is not None:
@@ -625,376 +1313,117 @@ class DirectPdfQA:
                 index = neighbour
         return sorted(window)
 
-    def _ensure_nli(self) -> None:
-        if self._nli is not None:
-            return
-        with self._model_lock:
-            if self._nli is None:
-                self._nli = CrossEncoder(NLI_MODEL)
 
-    def _claim_nli_status(self, premise: str, hypothesis: str) -> dict[str, Any]:
-        """Judge one claim (hypothesis) against one piece of source text
-        (premise): does the source actually support this claim, contradict
-        it, or say nothing either way?
-
-        This model, measured on real rephrases here, calls almost every
-        full-paragraph premise/hypothesis pair "neutral" (0.95+) even for a
-        clearly faithful restatement -- it was trained on short, single-
-        clause sentence pairs, not paraphrases of a multi-clause technical
-        passage, so requiring either probability to clear an absolute bar
-        rejects good claims along with bad ones. With neutral this
-        dominant, entailment and contradiction both often sit near zero for
-        a genuinely faithful claim too (observed as low as 0.0005 and
-        0.0008 respectively) -- noise at that scale, not signal, so
-        comparing them directly flips on a coin toss. A real drift
-        (observed: 0.05 contradiction on a CATT/reticulocyte mix-up) clears
-        that noise floor by roughly an order of magnitude, so only treat
-        one side outscoring the other as meaningful once it is also
-        clearly above the floor faithful claims sit at; otherwise the
-        claim is neither confirmed nor refuted by this premise.
-
-        If the NLI model itself is unavailable, this reports "not_checked"
-        rather than guessing.
-        """
-        try:
-            self._ensure_nli()
-        except Exception:
-            return {"status": "not_checked", "entailment_score": None, "contradiction_score": None}
-        raw = np.asarray(
-            self._nli.predict([[premise, hypothesis]], show_progress_bar=False)
-        )
-        if raw.ndim != 2:
-            return {"status": "not_checked", "entailment_score": None, "contradiction_score": None}
-        probabilities = torch.softmax(torch.tensor(raw), dim=1).numpy()[0]
-        labels = [
-            str(label).lower() for label in self._nli.model.config.id2label.values()
-        ]
-        entailment_index = next(
-            (index for index, label in enumerate(labels) if "entail" in label),
-            None,
-        )
-        contradiction_index = next(
-            (index for index, label in enumerate(labels) if "contra" in label),
-            None,
-        )
-        if entailment_index is None or contradiction_index is None:
-            return {"status": "not_checked", "entailment_score": None, "contradiction_score": None}
-        entailment_score = float(probabilities[entailment_index])
-        contradiction_score = float(probabilities[contradiction_index])
-        if contradiction_score > entailment_score and contradiction_score > CONTRADICTION_NOISE_FLOOR:
-            status = "contradicted"
-        elif entailment_score > contradiction_score and entailment_score > CONTRADICTION_NOISE_FLOOR:
-            status = "supported"
-        else:
-            status = "insufficient_evidence"
-        return {
-            "status": status,
-            "entailment_score": entailment_score,
-            "contradiction_score": contradiction_score,
-        }
-
-    def _rephrase_is_entailed(self, source: str, generated: str) -> bool:
-        """Whole-answer gate used by rephrase() itself: reject only when
-        the generated text as a whole reads as contradicted by the
-        verified source (see _claim_nli_status for why an absolute NLI
-        threshold doesn't work on this model). A missing/unusable NLI
-        model fails open here, same as before -- rephrase already has
-        numbers_are_grounded as a first line of defence.
-
-        The NLI cross-encoder has a hard 512-token limit on the combined
-        premise+hypothesis; past that it silently truncates one or both
-        instead of erroring. For a long, multi-step source (observed live:
-        a 14-step, ~700-token procedure) this cuts off the later steps
-        before scoring, so the model judges the generated text against an
-        incomplete premise and can call a fully faithful, complete
-        rephrase "contradicted" simply because it can no longer see the
-        source material for the steps near the end. Fail open in that
-        case, the same way an unavailable NLI model already does here --
-        numbers_are_grounded has already checked the generated text
-        against the untruncated source before this runs.
-        """
-        try:
-            self._ensure_nli()
-        except Exception:
-            return True
-        combined_length = len(
-            self._nli.tokenizer(source, generated, add_special_tokens=True)["input_ids"]
-        )
-        if combined_length > self._nli.tokenizer.model_max_length:
-            return True
-        return self._claim_nli_status(source, generated)["status"] != "contradicted"
-
-    @staticmethod
-    def split_answer_claims(text: str) -> list[dict[str, Any]]:
-        """Split a free-form generated answer into sentence-level claims,
-        each with its exact character offset in the original text, using
-        the same abbreviation-protected sentence-boundary rule as extract()
-        (see its Fig./q.s. handling) so "Fig. 5" and "q.s. water" are never
-        mistaken for sentence ends.
-        """
-        protected = re.sub(r"\bFig\.", "Fig§", text, flags=re.I)
-        protected = re.sub(r"\bq\.s\.", "q§s§", protected, flags=re.I)
-        matches = list(re.finditer(r"(?<=[.!?])\s+(?=[A-Z0-9—])", protected))
-        segment_bounds = [0] + [match.end() for match in matches]
-        segment_ends = [match.start() for match in matches] + [len(text)]
-        claims: list[dict[str, Any]] = []
-        for start, end in zip(segment_bounds, segment_ends):
-            segment = text[start:end]
-            stripped = segment.strip()
-            if not stripped:
-                continue
-            offset = start + segment.find(stripped)
-            claims.append({"text": stripped, "start": offset, "end": offset + len(stripped)})
-        # A bare step marker ("1.", "2)") is not itself a claim -- the same
-        # split point extract() protects against with its own sentences==[]
-        # handling. Glue it onto the claim that follows so "1." and "Weigh
-        # out 3.76g..." are judged and cited together, not as two
-        # unrelated fragments.
-        merged: list[dict[str, Any]] = []
-        pending_marker: dict[str, Any] | None = None
-        for claim in claims:
-            if re.fullmatch(r"\d+[.)]", claim["text"]):
-                pending_marker = claim
-                continue
-            if pending_marker is not None:
-                claim = {
-                    "text": f"{pending_marker['text']} {claim['text']}",
-                    "start": pending_marker["start"],
-                    "end": claim["end"],
-                }
-                pending_marker = None
-            merged.append(claim)
-        if pending_marker is not None:
-            merged.append(pending_marker)
-        return merged
-
-    def verify_answer_claims(self, verified_text: str, generated: str) -> list[dict[str, Any]]:
-        """Localize hallucination detection to individual sentences of a
-        generated (rephrased) answer, instead of the whole-answer gate
-        rephrase() applies. Each claim is checked independently against
-        the same verified source text, so one drifting sentence inside an
-        otherwise faithful answer is identified by name -- not hidden
-        inside a whole-answer PASS/FAIL.
-        """
-        claims = self.split_answer_claims(generated)
-        for claim in claims:
-            claim.update(self._claim_nli_status(verified_text, claim["text"]))
-        return claims
-
-    def attribute_claims_to_chunks(
-        self, generated: str, chunks: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        """Same per-claim NLI check as verify_answer_claims, but scored
-        against each individual source chunk in turn instead of one merged
-        blob of verified text -- so each claim can be traced back to the
-        one chunk it actually agrees or disagrees with, not just to the
-        answer as a whole. A chunk that actively supports the claim always
-        wins (highest entailment among those); a claim is only reported as
-        contradicted when none of the candidate chunks support it. This
-        priority matters because the candidates here are small individual
-        units (a single extracted step, not a whole chunk) -- and this NLI
-        model, measured on short-premise/short-hypothesis pairs, tends to
-        call an unrelated short step "contradicted" rather than "neutral"
-        (the noise-floor behaviour documented on _claim_nli_status was
-        calibrated on long-premise pairs, a different regime). Without this
-        priority, a claim genuinely supported by one unit would lose to a
-        spurious contradiction against a completely different, unrelated
-        step from the same procedure. When no chunk clears the noise floor
-        either way the claim stays insufficient_evidence and carries no
-        chunk attribution.
-        """
-        claims = self.split_answer_claims(generated)
-        for claim in claims:
-            claim_roots = content_roots(claim["text"])
-            best: dict[str, Any] | None = None
-            best_score = -1.0
-            fallback: dict[str, Any] | None = None
-            fallback_score = -1.0
-            # A candidate the NLI call rated "insufficient_evidence" is
-            # still tracked by its lexical overlap with the claim -- a
-            # near-identical paraphrase of *this* candidate can score
-            # insufficient_evidence on this NLI model even though it is
-            # obviously the claim's real source (observed live: "Place the
-            # containers in the autoclave..." against its own, almost
-            # word-for-word source scored 0.0005/0.0002, both under the
-            # noise floor), while a completely unrelated candidate
-            # elsewhere in the same answer scores a confident false
-            # "contradicted" and would otherwise win the fallback below by
-            # default. Prefer the lexically closest insufficient_evidence
-            # candidate over a contradicted one unless the contradicted
-            # candidate is itself at least as lexically close -- a genuine
-            # contradiction (a real relational reversal, wrong specimen,
-            # etc.) usually still shares most of the claim's words.
-            closest_insufficient: dict[str, Any] | None = None
-            closest_insufficient_overlap = -1
-            for chunk in chunks:
-                text = chunk.get("text") or ""
-                if not text.strip():
-                    continue
-                result = self._claim_nli_status(text, claim["text"])
-                overlap = len(claim_roots & content_roots(text)) if claim_roots else 0
-                if result["status"] == "insufficient_evidence":
-                    if overlap > closest_insufficient_overlap:
-                        closest_insufficient_overlap = overlap
-                        closest_insufficient = {
-                            "chunk_id": chunk.get("chunk_id"),
-                            "pdf_page": chunk.get("pdf_page"),
-                            "printed_page": chunk.get("printed_page"),
-                            "source_text": text,
-                        }
-                    continue
-                attributed = {
-                    **result,
-                    "chunk_id": chunk.get("chunk_id"),
-                    "pdf_page": chunk.get("pdf_page"),
-                    "printed_page": chunk.get("printed_page"),
-                    # The exact source wording this claim was judged against --
-                    # for a contradicted claim, this is what the answer should
-                    # have said instead, so the UI can show the grounded fact
-                    # in place of the drifted one rather than just flagging it.
-                    "source_text": text,
-                    "_overlap": overlap,
-                }
-                if result["status"] == "supported":
-                    entailment = result["entailment_score"] or 0.0
-                    if entailment > best_score:
-                        best_score = entailment
-                        best = attributed
-                else:
-                    contradiction = result["contradiction_score"] or 0.0
-                    if contradiction > fallback_score:
-                        fallback_score = contradiction
-                        fallback = attributed
-            if best is None and fallback is not None and closest_insufficient is not None:
-                if closest_insufficient_overlap > fallback.get("_overlap", -1):
-                    fallback = None
-            if best is None:
-                best = fallback
-            if best is not None:
-                best.pop("_overlap", None)
-                claim.update(best)
-            elif closest_insufficient is not None:
-                claim.update({
-                    "status": "insufficient_evidence",
-                    "entailment_score": None,
-                    "contradiction_score": None,
-                    **closest_insufficient,
-                })
-            else:
-                claim.update({
-                    "status": "insufficient_evidence",
-                    "entailment_score": None,
-                    "contradiction_score": None,
-                    "chunk_id": None,
-                    "pdf_page": None,
-                    "printed_page": None,
-                    "source_text": None,
-                })
-        return claims
-
-    def rephrase(self, question: str, verified_text: str) -> str | None:
-        """Restate an already exact-span-verified extractive answer in
-        fluent language -- the model's only job is wording, not content: it
-        is handed nothing but text that has already passed verify_unit(),
-        and told explicitly not to add anything beyond it. This is
-        deliberately not open-ended RAG generation from raw chunks, which
-        would give the model room to introduce a fact the source never
-        stated; confined to rephrasing already-verified text, it has none.
-        Returns None (falls back to the extractive answer) if generation
-        is unavailable or the output fails the post-hoc number check.
-        """
-        if not verified_text.strip():
-            return None
+    def rephrase_units(self, question: str, units: list[dict[str, str]]) -> list[dict[str, Any]]:
+        """The LLM's answer: each verified unit of the extractive answer
+        rewritten on its own, so nothing can be dropped or reordered.
+        `units` are the answer's evidence items ({"text", "chunk_id"});
+        returns [] if the generator is unavailable. No judgement is made
+        here -- the LLM output is judged against Neo4j (see
+        compare_with_fact) by the caller. Rewrites are cached per unit, so
+        the PDF-only and PDF + Neo4j views of one question show the same
+        LLM sentences from a single generation."""
         try:
             self._ensure_generator()
         except Exception:
-            return None
-        system = (
-            "You restate already-verified laboratory manual text in clear, "
-            "natural English. Use only the facts given to you. Do not add "
-            "any number, quantity, reagent, or step that is not already in "
-            "the given text. Do not answer from general knowledge. If the "
-            "source describes numbered steps, restate every step exactly "
-            "once, in the same order as the source, without skipping, "
-            "merging, repeating, or renumbering any of them. If a fact in "
-            "the source is conditional (e.g. \"if X, then Y; with Z, then "
-            "W\"), keep it conditional in your restatement instead of "
-            "stating only one branch as if it were the only rule."
-        )
-        prompt = (
-            f"Question: {question}\n\n"
-            f"Verified source text:\n{verified_text}\n\n"
-            "Restate this as a clear, natural answer to the question, "
-            "using only facts present in the source text above."
-        )
-        # A fluent restatement that silently drops a quantity (a time
-        # limit, a dilution, "divide by 100") is worse than the plain
-        # extractive text, because it reads as complete. Every quantity in
-        # the verified text must survive; one retry names the dropped
-        # sentences explicitly, and if they are still missing the complete
-        # verified text itself is returned instead of a partial rewrite.
-        fallback = strip_running_headers(verified_text)
-        generated = self._generate_rephrase(system, prompt, verified_text)
-        if generated is None:
-            return fallback
-        missing = missing_quantity_sentences(generated, verified_text)
-        if missing:
-            retry_prompt = (
-                prompt
-                + "\n\nYour answer must also include every one of these facts "
-                "from the source, in their original place in the sequence:\n"
-                + "\n".join(f"- {sentence}" for sentence in missing)
-            )
-            generated = self._generate_rephrase(system, retry_prompt, verified_text)
-            if generated is None or missing_quantity_sentences(generated, verified_text):
-                return fallback
-        return generated
+            return []
+        items: list[dict[str, Any]] = []
+        for unit in units:
+            text = (unit.get("text") or "").strip()
+            if not text or RUNNING_HEADER_RE.match(text):
+                continue
+            marker = re.match(r"^\s*(\d+[.)])\s+", text)
+            items.append({
+                "chunk_id": unit.get("chunk_id"),
+                "source_raw": text,
+                "marker": f"{marker.group(1)} " if marker else "",
+                "source": text[marker.end():] if marker else text,
+                "llm": None,
+                "status": "unchanged",
+                "problems": [],
+                "graph_fact": None,
+            })
+        to_rewrite = [
+            index for index, item in enumerate(items)
+            if len(words(item["source"])) >= 6
+            and not re.match(r"^\s*Fig(?:ure)?\.?\s*\d", item["source"], re.I)
+        ]
+        rewritten = self._rewrite_units([items[i]["source"] for i in to_rewrite])
+        for index, candidate in zip(to_rewrite, rewritten):
+            if candidate:
+                items[index]["llm"] = candidate
+                items[index]["status"] = "unchecked"
+        return items
 
-    def _generate_rephrase(self, system: str, prompt: str, verified_text: str) -> str | None:
-        rendered = self._generator_tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            tokenize=False,
-            add_generation_prompt=True,
+    def _rewrite_units(self, bodies: list[str]) -> list[str | None]:
+        # One lock around lookup + generation: when both answer panels ask
+        # at once, the second waits and then reuses the first's rewrites
+        # instead of running the CPU-bound model a second time.
+        with self._rewrite_lock:
+            pending = list(dict.fromkeys(body for body in bodies if body not in self._rewrite_cache))
+            if pending:
+                for body, text in zip(pending, self._generate_rewrites(pending)):
+                    if text:
+                        self._rewrite_cache[body] = text
+            return [self._rewrite_cache.get(body) for body in bodies]
+
+    def _generate_rewrites(self, bodies: list[str]) -> list[str | None]:
+        if not bodies:
+            return []
+        # The question is deliberately not shown: given it, the model
+        # pulled the question's own nouns into unrelated steps ("a tube
+        # containing 2.0 ml of trisodium citrate").
+        system = (
+            "Rewrite the given text from a laboratory manual in your own "
+            "clear, fluent, natural English so it is easy to read. Keep "
+            "every fact, number, unit, reagent, condition and the order of "
+            "actions exactly as they are. Do not add, remove, summarise or "
+            "explain anything. Reply with the rewritten text only."
         )
-        encoded = self._generator_tokenizer(rendered, return_tensors="pt")
-        device = next(self._generator.parameters()).device
-        encoded = {name: tensor.to(device) for name, tensor in encoded.items()}
-        # A fixed 420-token budget is enough for a short answer but not for
-        # a long, multi-step procedure (observed live: 7-14 step answers
-        # either had steps silently dropped, or the model's own output
-        # started repeating/reordering steps as it ran short on room to
-        # restate everything, sometimes truncating mid-sentence badly
-        # enough to fail the post-hoc checks below and return None
-        # entirely). Scale the budget to the actual verified text -- a
-        # faithful restatement is rarely shorter than the source and is
-        # sometimes longer, so double the source's own token count, with
-        # the original 420 as a floor for short answers and a cap so one
-        # unusually long chunk can't make generation run away.
-        source_tokens = len(
-            self._generator_tokenizer(verified_text, add_special_tokens=False)["input_ids"]
-        )
-        max_new_tokens = max(420, min(1600, source_tokens * 2))
-        with torch.inference_mode():
-            output = self._generator.generate(
-                **encoded,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                repetition_penalty=1.04,
-                pad_token_id=self._generator_tokenizer.eos_token_id,
+        tokenizer = self._generator_tokenizer
+        tokenizer.padding_side = "left"
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        prompts = [
+            tokenizer.apply_chat_template(
+                [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": body},
+                ],
+                tokenize=False,
+                add_generation_prompt=True,
             )
-        generated = self._generator_tokenizer.decode(
-            output[0][encoded["input_ids"].shape[1]:],
-            skip_special_tokens=True,
-        ).strip()
-        generated = drop_unsupported_sentences(generated, verified_text, prompt)
-        if not generated or not numbers_are_grounded(generated, verified_text):
-            return None
-        if not self._rephrase_is_entailed(verified_text, generated):
-            return None
-        return generated
+            for body in bodies
+        ]
+        device = next(self._generator.parameters()).device
+        results: list[str | None] = []
+        batch_size = 8
+        for start in range(0, len(prompts), batch_size):
+            batch_prompts = prompts[start:start + batch_size]
+            batch_bodies = bodies[start:start + batch_size]
+            encoded = tokenizer(batch_prompts, return_tensors="pt", padding=True)
+            encoded = {name: tensor.to(device) for name, tensor in encoded.items()}
+            longest = max(
+                len(tokenizer(body, add_special_tokens=False)["input_ids"])
+                for body in batch_bodies
+            )
+            try:
+                with torch.inference_mode():
+                    output = self._generator.generate(
+                        **encoded,
+                        max_new_tokens=min(400, longest * 2 + 40),
+                        do_sample=False,
+                        repetition_penalty=1.04,
+                        pad_token_id=tokenizer.pad_token_id,
+                    )
+            except Exception:
+                results.extend([None] * len(batch_prompts))
+                continue
+            prompt_length = encoded["input_ids"].shape[1]
+            for row in output:
+                text = tokenizer.decode(row[prompt_length:], skip_special_tokens=True).strip()
+                results.append(" ".join(text.split()) or None)
+        return results
 
     @staticmethod
     def answer_type(question: str) -> str:
@@ -2041,12 +2470,216 @@ class DirectPdfQA:
                 chunk_idx = neighbor_idx
         return extended
 
+    @staticmethod
+    def blocks(text: str) -> list[str]:
+        """The chunk's paragraphs in source order, headings included --
+        the same cleaning units() applies, without its filtering."""
+        cleaned = text.replace("\r", "")
+        cleaned = re.sub(r"(?<=[A-Za-z])-\n(?=[a-z])", "", cleaned)
+        cleaned = re.sub(r"^\s*G\s+", "— ", cleaned, flags=re.M)
+        cleaned = re.sub(r"\n(?=\s*\d+[.)]\s+[A-Z])", "\n\n", cleaned)
+        cleaned = re.sub(r"(?<=[.!?])\s+(?=\d+[.)]\s+[A-Z])", "\n\n", cleaned)
+        return [block for block in map(compact, re.split(r"\n\s*\n+", cleaned)) if block]
+
+    def complete_section(self, need: Need, units: list[Unit]) -> list[Unit]:
+        """Give a procedure answer the structure of the section it comes
+        from. units() drops short unpunctuated lines, so sub-headings that
+        separate alternative methods ("Using an autoclave" / "Boiling in
+        detergent" / "Using formaldehyde solution or cresol") vanished and
+        the methods read as one continuous sequence, while a later method
+        with no numbered steps of its own was never reached. Three
+        additions, all exact source text:
+          - before step 1: the short heading/intro lines leading into it,
+            back to the heading that names the question's subject;
+          - between selected units: any sub-heading that sits between them;
+          - after the last unit, when the next thing in the source is a
+            sub-heading: keep going heading by heading, into the next chunk
+            if the section continues there, while each heading's section is
+            about the question's subject (by shared subject words or the
+            reranker), and stop at the first unrelated one, a numbered
+            section heading, a restarted numbered list, or a new concept
+            being defined.
+        """
+        if need.answer_type != "procedure" or not units:
+            return units
+        subject = set(need.subject_terms) - {stem(term) for term in GENERIC_SUBJECT_ROOTS}
+        if not subject:
+            return units
+
+        def is_noise(block: str) -> bool:
+            return bool(
+                re.match(r"^\d+\s+(?:Manual|Index)\b", block, re.I)
+                or RUNNING_HEADER_RE.match(block)
+                or re.match(r"^Fig(?:ure)?\.?\s*\d", block, re.I)
+            )
+
+        def is_section_number_heading(block: str) -> bool:
+            return bool(re.match(r"^\d+(?:\.\d+)+\s+\S", block))
+
+        def is_heading(block: str) -> bool:
+            return (
+                len(words(block)) <= 12
+                and not re.search(r"[.!?:;]$", block)
+                and not re.match(r"^\s*\d+[.)]\s", block)
+                and not re.match(r"^[—•\-]", block)
+                and not is_noise(block)
+            )
+
+        def heading_text(block: str) -> str:
+            text = re.sub(r"^\d+(?:\.\d+)+\s+", "", block)
+            return re.sub(r"(?<=[a-z])\d{1,2}$", "", text)
+
+        def locate(unit: Unit, chunk_blocks: list[str]) -> int | None:
+            # The block containing the unit; only if none does, a block that
+            # makes up most of the unit (a unit spanning a block break) --
+            # never a short heading that merely occurs inside the unit's
+            # text ("Method" inside "This is the best method.").
+            target = normalize_for_exact_check(unit.text)
+            if not target:
+                return None
+            normalized_blocks = [normalize_for_exact_check(block) for block in chunk_blocks]
+            for index, normalized in enumerate(normalized_blocks):
+                if target in normalized:
+                    return index
+            for index, normalized in enumerate(normalized_blocks):
+                if normalized and normalized in target and len(normalized) >= 0.5 * len(target):
+                    return index
+            return None
+
+        def section_is_related(chunk_blocks: list[str], index: int) -> bool:
+            window = [chunk_blocks[index]]
+            for block in chunk_blocks[index + 1:]:
+                if is_heading(block) or len(window) >= 3:
+                    break
+                if not is_noise(block):
+                    window.append(block)
+            if subject & roots(" ".join(window)):
+                return True
+            score = float(self.reranker.predict(
+                [[need.query, " ".join(window)]], show_progress_bar=False
+            )[0])
+            return score > 0
+
+        step_numbers = [
+            int(match.group(1)) for unit in units
+            if (match := re.match(r"^\s*(\d+)[.)]\s+", unit.text))
+        ]
+        max_step = max(step_numbers, default=0)
+
+        def make(unit: Unit, text: str, chunk_index: int | None = None) -> Unit:
+            return Unit(unit.chunk_index if chunk_index is None else chunk_index, unit.order, text, unit.score)
+
+        result: list[Unit] = []
+        # Before step 1.
+        first = units[0]
+        if re.match(r"^\s*1[.)]\s", first.text):
+            chunk_blocks = self.blocks(self.chunks[first.chunk_index].text)
+            position = locate(first, chunk_blocks)
+            lead: list[str] = []
+            index = (position if position is not None else 0) - 1
+            while position is not None and index >= 0 and len(lead) < 4:
+                block = chunk_blocks[index]
+                index -= 1
+                if is_noise(block):
+                    continue
+                if is_section_number_heading(block) or re.match(r"^\s*\d+[.)]\s", block):
+                    break
+                if is_heading(block):
+                    lead.insert(0, heading_text(block))
+                    if subject & roots(block):
+                        break
+                    continue
+                if len(words(block)) <= 15 and block.endswith("."):
+                    lead.insert(0, block)
+                    continue
+                break
+            result.extend(make(first, text) for text in lead)
+        # Sub-headings between selected units of the same chunk.
+        for position, unit in enumerate(units):
+            result.append(unit)
+            following = units[position + 1] if position + 1 < len(units) else None
+            if following is None or following.chunk_index != unit.chunk_index:
+                continue
+            chunk_blocks = self.blocks(self.chunks[unit.chunk_index].text)
+            start, end = locate(unit, chunk_blocks), locate(following, chunk_blocks)
+            if start is None or end is None or end <= start + 1:
+                continue
+            for block in chunk_blocks[start + 1:end]:
+                if is_heading(block) or (
+                    is_section_number_heading(block) and len(words(block)) <= 12
+                ):
+                    result.append(make(unit, heading_text(block)))
+        # After the last unit, section by section.
+        last = units[-1]
+        chunk_index = last.chunk_index
+        chunk_blocks = self.blocks(self.chunks[chunk_index].text)
+        position = locate(last, chunk_blocks)
+        if position is not None:
+            existing = " ".join(normalize_for_exact_check(unit.text) for unit in result)
+            index = position + 1
+            while index < len(chunk_blocks) and is_noise(chunk_blocks[index]):
+                index += 1
+            if (
+                index < len(chunk_blocks)
+                and is_heading(chunk_blocks[index])
+                and section_is_related(chunk_blocks, index)
+            ):
+                added = 0
+                crossed = False
+                while added < 12:
+                    if index >= len(chunk_blocks):
+                        if crossed or chunk_index + 1 >= len(self.chunks):
+                            break
+                        chunk_index += 1
+                        crossed = True
+                        chunk_blocks = self.blocks(self.chunks[chunk_index].text)
+                        index = 0
+                        continue
+                    block = chunk_blocks[index]
+                    index += 1
+                    if is_noise(block):
+                        continue
+                    # Headings are judged as section boundaries first, before
+                    # the overlap check below -- a short heading's text can
+                    # occur inside an earlier answer sentence and must not
+                    # be skipped past as if already included.
+                    if is_section_number_heading(block):
+                        break
+                    if is_heading(block):
+                        if normalize_for_exact_check(heading_text(block)) in {
+                            normalize_for_exact_check(unit.text) for unit in result
+                        }:
+                            continue  # repeated in the next chunk's overlap
+                        if not section_is_related(chunk_blocks, index - 1):
+                            break
+                        result.append(make(last, heading_text(block), chunk_index))
+                        added += 1
+                        continue
+                    # Chunk-overlap text already in the answer.
+                    if normalize_for_exact_check(block) in existing:
+                        continue
+                    # Only the next step of the same list may follow; any
+                    # other number is a different list, and a gap would
+                    # break need_complete()'s 1..n check and blank the answer.
+                    step = re.match(r"^\s*(\d+)[.)]\s+", block)
+                    if step:
+                        if int(step.group(1)) != max_step + 1:
+                            break
+                        max_step += 1
+                    if introduces_other_concept(block, need.query):
+                        break
+                    result.append(make(last, block, chunk_index))
+                    existing += " " + normalize_for_exact_check(block)
+                    added += 1
+        return result
+
     def extract_verified(self, need: Need, ranked: list[tuple[int, float]]) -> list[Unit]:
         units = [unit for unit in self.extract(need, ranked) if self.verify_unit(unit)]
-        return [
+        units = [
             unit for unit in self.extend_across_chunk_boundary(need, units)
             if self.verify_unit(unit)
         ]
+        return [unit for unit in self.complete_section(need, units) if self.verify_unit(unit)]
 
     @staticmethod
     def need_complete(need: Need, units: list[Unit]) -> bool:

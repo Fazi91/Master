@@ -20,9 +20,18 @@ from pydantic import BaseModel
 from webapp.pdf_direct_qa import (
     GENERIC_SUBJECT_ROOTS,
     DirectPdfQA,
+    clean_answer_text,
     clean_question,
+    american_spelling,
+    compare_with_fact,
     content_roots,
     detect_specimen_types,
+    entity_display,
+    entity_is_generic,
+    entity_key,
+    extract_fact_frame,
+    fact_attributes,
+    fact_id,
     roots,
     small_talk_response,
     stem,
@@ -135,8 +144,9 @@ class RephraseSource(BaseModel):
 
 class RephraseRequest(BaseModel):
     question: str
-    verified_text: str
+    verified_text: str = ""
     sources: list[RephraseSource] = []
+    mode: Literal["pdf", "graph"] = "pdf"
 
 
 class GraphVerifier:
@@ -326,6 +336,7 @@ RETURN chunk, page, document, entities, chunkImages, pageImage, r1, r2, mentionR
         # only changes what gets drawn.
         nodes: dict[str, dict[str, str]] = {}
         edges: set[tuple[str, str, str]] = set()
+        entity_node_by_key: dict[str, str] = {}
 
         def add_node(node_id: str | None, label: str, kind: str) -> None:
             if node_id:
@@ -344,8 +355,15 @@ RETURN chunk, page, document, entities, chunkImages, pageImage, r1, r2, mentionR
                 edges.add((page_id, chunk_id, "HAS_CHUNK"))
             for entity in record.get("entities", []):
                 entity_id = entity.get("id") if entity else None
-                add_node(entity_id, entity.get("label") or entity_id or "Entity", "Entity")
-                if chunk_id and entity_id:
+                if not entity_id:
+                    continue
+                label = entity.get("label") or entity_id
+                # One node per real entity: near-duplicate names ("blood
+                # sample" / "blood samples") share the first id seen.
+                key = entity_key(label) or entity_id
+                entity_id = entity_node_by_key.setdefault(key, entity_id)
+                add_node(entity_id, entity_display(label) or label, "Entity")
+                if chunk_id:
                     edges.add((chunk_id, entity_id, "MENTIONS"))
             for image in record.get("images", []):
                 image_id = image.get("id") if image else None
@@ -389,6 +407,48 @@ RETURN chunk, page, document, entities, chunkImages, pageImage, r1, r2, mentionR
                 for source, target, label in sorted(edges)
             ],
         }
+
+    def chunk_entity_names(self, chunk_ids: list[str]) -> dict[str, list[str]] | None:
+        """Names of the entities each chunk MENTIONS; None if the graph
+        could not be reached."""
+        try:
+            if not self.connect():
+                return None
+            query = """
+            MATCH (c:Chunk) WHERE c.id IN $chunk_ids
+            OPTIONAL MATCH (c)-[:MENTIONS]->(e:Entity)
+            RETURN c.id AS chunk_id, collect(DISTINCT coalesce(e.canonical_name, e.normalized_name)) AS names
+            """
+            with self.driver.session(database=self.database) as session:
+                return {
+                    record["chunk_id"]: [name for name in record["names"] if name]
+                    for record in session.run(query, chunk_ids=chunk_ids)
+                }
+        except Exception:
+            return None
+
+    def facts_by_id(self, fact_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """The Fact nodes (see extract_semantic_relations.py --facts) for
+        these ids, each with the names of the entities it INVOLVES."""
+        if not fact_ids:
+            return {}
+        try:
+            if not self.connect():
+                return {}
+            query = """
+            MATCH (c:Chunk)-[:STATES]->(f:Fact)
+            WHERE f.id IN $fact_ids
+            OPTIONAL MATCH (f)-[:INVOLVES]->(e:Entity)
+            RETURN f.id AS id, c.id AS chunk_id, f.text AS text, f.actions AS actions,
+                   f.qualifiers AS qualifiers, f.quantities AS quantities,
+                   f.conditions AS conditions, f.roles AS roles, f.attributes AS attributes,
+                   f.claims AS claims,
+                   collect(DISTINCT coalesce(e.canonical_name, e.normalized_name)) AS entities
+            """
+            with self.driver.session(database=self.database) as session:
+                return {record["id"]: record.data() for record in session.run(query, fact_ids=fact_ids)}
+        except Exception:
+            return {}
 
     def expand(self, chunk_ids: list[str]) -> list[str]:
         """Return graph-linked chunk candidates without replacing text retrieval."""
@@ -787,6 +847,10 @@ class EvaluationService:
         result["question"] = question
         result["mode"] = mode
         result["graph"] = graph_result
+        result["clean_answer"] = (
+            clean_answer_text(result.get("answer", ""))
+            if result["kind"] == "domain_answer" else result.get("answer", "")
+        )
         result["benchmark"] = (
             {**benchmark, "recognized": True}
             if benchmark else {"recognized": False}
@@ -844,14 +908,7 @@ class EvaluationService:
         complete = True
         for need in needs:
             ranked = self.pdf.retrieve(need)
-            pdf_units = [
-                unit for unit in self.pdf.extract(need, ranked)
-                if self.pdf.verify_unit(unit)
-            ]
-            pdf_units = [
-                unit for unit in self.pdf.extend_across_chunk_boundary(need, pdf_units)
-                if self.pdf.verify_unit(unit)
-            ]
+            pdf_units = self.pdf.extract_verified(need, ranked)
             pdf_complete = self.pdf.need_complete(need, pdf_units)
             seed_ids = [
                 self.pdf.chunks[index].chunk_id for index, _ in ranked[:10]
@@ -899,6 +956,10 @@ class EvaluationService:
             ]
             graph_units = [
                 unit for unit in self.pdf.extend_across_chunk_boundary(need, graph_units)
+                if self.pdf.verify_unit(unit)
+            ]
+            graph_units = [
+                unit for unit in self.pdf.complete_section(need, graph_units)
                 if self.pdf.verify_unit(unit)
             ]
             # Aura may fill a missing need, but it must not replace an already
@@ -1323,110 +1384,111 @@ def ask(request: EvaluationRequest) -> dict[str, Any]:
 
 @app.post("/rephrase")
 def rephrase(request: RephraseRequest) -> dict[str, Any]:
-    # Separate from /ask so the fast, already-verified extractive answer
-    # never has to wait on this: the local model has no usable GPU on this
-    # deployment and can take tens of seconds per call.
+    """The LLM's answer (each verified sentence rewritten by the local LLM)
+    and, in graph mode, Neo4j's verdict on it. Separate from /ask so the
+    fast, already-verified extractive answer never waits on the CPU-bound
+    model; rewrites are cached, so both modes share one generation."""
     question = clean_question(request.question)
-    if not question or not request.verified_text.strip():
-        return {"natural_answer": None, "claims": []}
-    natural_answer = service().pdf.rephrase(question, request.verified_text)
-    if not natural_answer:
-        return {"natural_answer": None, "claims": []}
-    if request.sources:
-        claims = service().pdf.attribute_claims_to_chunks(
-            natural_answer, [source.model_dump() for source in request.sources]
-        )
-        _attach_claim_graph_evidence(claims)
-    else:
-        claims = service().pdf.verify_answer_claims(request.verified_text, natural_answer)
-    _flag_specimen_mismatch(question, claims)
-    return {"natural_answer": natural_answer, "claims": claims}
-
-
-def _flag_specimen_mismatch(question: str, claims: list[dict[str, Any]]) -> None:
-    """A second, independent hallucination-risk axis alongside the NLI
-    status: does the specimen type this claim's cited source text is
-    actually about (blood/urine/CSF/stool/sputum/...) match the specimen
-    type the question asked about? Procedural wording (drops, centrifuge,
-    ml, stain) repeats near-identically across specimen types in this
-    document, which is exactly the overlap that can make word-level NLI
-    call a claim "supported" even when it was answered from the wrong
-    specimen's section entirely -- this flag catches that case regardless
-    of the NLI verdict.
-    """
-    question_specimens = detect_specimen_types(question)
-    if not question_specimens:
-        return
-    for claim in claims:
-        source_text = claim.get("source_text")
-        if not source_text:
-            continue
-        claim_specimens = detect_specimen_types(source_text)
-        claim["specimen_mismatch"] = bool(claim_specimens) and not (claim_specimens & question_specimens)
-
-
-def _attach_claim_graph_evidence(claims: list[dict[str, Any]]) -> None:
-    """Look up the page/image the graph already links each claim's cited
-    chunk to (one batched Neo4j round trip for every claim in the answer,
-    not one per claim), so a claim's evidence can point at the same
-    illustration or page a reader would find in the Aura graph -- reusing
-    the /media/<filename> URL convention the rest of this file already
-    uses for image evidence.
-    """
-    chunk_ids = sorted({claim["chunk_id"] for claim in claims if claim.get("chunk_id")})
-    if not chunk_ids:
-        for claim in claims:
-            claim["image"] = None
-            claim["graph_path"] = None
-        return
-    records = {
-        record["chunk_id"]: record
-        for record in service().graph.verify(chunk_ids).get("locations", [])
+    if not question or not request.sources:
+        return {"items": [], "rewritten": 0, "changed": 0, "unsupported": 0, "dropped": 0, "review": 0, "facts_checked": 0, "mode": request.mode}
+    items = service().pdf.rephrase_units(
+        question, [{"text": s.text, "chunk_id": s.chunk_id} for s in request.sources]
+    )
+    facts_checked = _neo4j_fact_check(items) if request.mode == "graph" and items else 0
+    number = 0
+    for item in items:
+        if item["llm"]:
+            number += 1
+            item["number"] = number
+            item["llm"] = clean_answer_text(item["llm"])
+        item["source"] = clean_answer_text(item["source"])
+    return {
+        "items": items,
+        "rewritten": number,
+        "changed": sum(1 for item in items if item["status"] == "changed"),
+        "unsupported": sum(1 for item in items if item["status"] == "unsupported"),
+        "dropped": sum(1 for item in items if item["status"] == "dropped"),
+        "review": sum(1 for item in items if item["status"] == "review"),
+        "facts_checked": facts_checked,
+        "mode": request.mode,
     }
-    for claim in claims:
-        record = records.get(claim.get("chunk_id"))
-        if not record:
-            claim["image"] = None
-            claim["graph_path"] = None
+
+
+def _neo4j_fact_check(items: list[dict[str, Any]]) -> int:
+    """Neo4j is the only judge of the LLM's answer: each LLM sentence is
+    compared with the Fact node its source sentence has in the graph
+    ((:Chunk)-[:STATES]->(:Fact), built by extract_semantic_relations.py
+    --facts). A quantity, condition or qualifier the graph records that the
+    LLM replaced is "meaning changed"; a statement of the LLM sentence the
+    source does not make is an "unsupported claim"; a statement, quantity,
+    qualifier or descriptive detail left out is "information dropped"; a
+    changed action, role or entity -- possibly a synonym -- is shown for
+    review; plain rewording passes (see compare_with_fact). A sentence
+    whose source has no Fact node is left unjudged. Returns how many
+    sentences were judged."""
+    keyed = {
+        index: fact_id(item["chunk_id"], item["source_raw"])
+        for index, item in enumerate(items)
+        if item.get("llm") and item.get("chunk_id")
+    }
+    facts = service().graph.facts_by_id(sorted(set(keyed.values())))
+    # A verified evidence sentence that is not itself a stored Fact (e.g.
+    # extraction narrowed a step down to its "reason" clause) gets its Fact
+    # built the same way the graph build does: from that exact chunk text
+    # and the entities the chunk MENTIONS in Neo4j. Only when the graph
+    # answered -- otherwise the sentence stays unchecked.
+    unmatched_chunks = sorted({
+        items[index]["chunk_id"] for index, identifier in keyed.items() if identifier not in facts
+    })
+    chunk_names = service().graph.chunk_entity_names(unmatched_chunks) if unmatched_chunks else {}
+    paraphrased = service().pdf.paraphrased
+    checked = 0
+    for index, item in enumerate(items):
+        if not item.get("llm"):
             continue
-        images = [img for img in record.get("images", []) if img.get("id")]
-        # A citation-derived image's figure_number, or an image's own
-        # descriptive keywords (see build_image_keywords.py and the longer
-        # comment in related_images()), are only meaningful for *this*
-        # claim if the claim's own text actually names that figure or
-        # shares those keywords -- otherwise the image may belong to a
-        # different topic within the same multi-topic chunk. Prefer a
-        # match on either signal; an image with neither a figure_number
-        # nor any stored keywords imposes no requirement and remains the
-        # fallback.
-        claim_text = f"{claim.get('text', '')} {claim.get('source_text', '')}"
-        claim_fignums = set(re.findall(r"Fig(?:ure)?\.?\s*(\d+\.\d+)", claim_text, re.I))
-        claim_keywords = content_roots(claim_text)
-
-        def claim_matches(img: dict[str, Any]) -> bool:
-            figure_number = img.get("figure_number")
-            image_keywords = set((img.get("keywords") or "").split())
-            if figure_number and figure_number in claim_fignums:
-                return True
-            if image_keywords:
-                return len(claim_keywords & image_keywords) >= 2
-            return not figure_number
-
-        candidates = [img for img in images if claim_matches(img)]
-        image = candidates[0] if candidates else None
-        claim["image"] = (
-            {
-                "image_id": image["id"],
-                "url": f"/media/{Path(image['file_path']).name}" if image.get("file_path") else None,
+        fact = facts.get(keyed.get(index, ""))
+        item["fact_source"] = "stored"
+        if fact is None and chunk_names and item["chunk_id"] in chunk_names:
+            text = item["source_raw"]
+            text_roots = roots(american_spelling(text.casefold()))
+            names = [
+                name for name in chunk_names[item["chunk_id"]]
+                if not entity_is_generic(name) and set(entity_key(name).split()) <= text_roots
+            ]
+            fact = {
+                **extract_fact_frame(text), "text": text, "chunk_id": item["chunk_id"],
+                "entities": names, "attributes": sorted(fact_attributes(text, names)),
             }
-            if image else None
+            item["fact_source"] = "derived from the chunk text"
+        if fact is None:
+            item["status"] = "no_fact"
+            continue
+        checked += 1
+        # A sentence ending in ":" introduces the list that follows it
+        # ("Pour into each sputum pot either:" / "- 10ml formaldehyde, or" /
+        # "- 5ml cresol"); its conditions are judged together with that list.
+        list_items = ""
+        if item["source_raw"].rstrip().endswith(":"):
+            following = []
+            for later in items[index + 1:]:
+                if not re.match(r"^\s*[-—•]", later["source_raw"]):
+                    break
+                following.append(later["llm"] or later["source_raw"])
+            list_items = " ".join(following)
+        changed, unsupported, dropped, review = compare_with_fact(
+            fact, item["llm"], paraphrased, list_items,
+            service().pdf.claim_covered, service().pdf.term_similarity,
         )
-        path_parts = [f"Chunk {claim['chunk_id']}"]
-        if record.get("pdf_page") is not None:
-            path_parts.append(f"Page {record['pdf_page']}")
-        if image:
-            path_parts.append(f"Image {image['id']}")
-        claim["graph_path"] = " -> ".join(path_parts)
+        item["findings"] = {
+            "changed": changed, "unsupported": unsupported, "dropped": dropped, "review": review,
+        }
+        item["problems"] = changed + [f"unsupported claim: {u}" for u in unsupported] + dropped + review
+        item["status"] = (
+            "changed" if changed else "unsupported" if unsupported
+            else "dropped" if dropped else "review" if review else "passed"
+        )
+        item["graph_fact"] = fact.get("chunk_id")
+    return checked
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1482,23 +1544,23 @@ function cleanSource(text){return String(text??'').replace(/^\d+\s+Manual of bas
 function graphMarkup(viz){const raw=viz?.nodes||[],kept=[];for(const type of ['Document','Page','Chunk','Entity','Image','PageImage']){const cap=['Entity','Image','PageImage'].includes(type)?6:20;kept.push(...raw.filter(n=>n.type===type).slice(0,cap))}if(!kept.length)return '<p class="subtitle">No graph path was returned.</p>';const ids=new Set(kept.map(n=>n.id)),edges=(viz.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)),columns={Document:85,Page:255,Chunk:430,Entity:620,Image:790,PageImage:960},counts={},positions={};for(const n of kept){const i=counts[n.type]||0;counts[n.type]=i+1;positions[n.id]={x:columns[n.type]||430,y:55+i*62}}const height=Math.max(220,...Object.values(positions).map(p=>p.y+45));const edgeSvg=edges.map(e=>{const a=positions[e.source],b=positions[e.target],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;return `<line class="graph-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><text class="graph-label" x="${mx}" y="${my-4}" text-anchor="middle">${esc(e.label)}</text>`}).join('');const nodeSvg=kept.map(n=>{const p=positions[n.id],label=String(n.label||n.id).slice(0,24);return `<g><rect class="node-${n.type.toLowerCase()}" x="${p.x-68}" y="${p.y-18}" width="136" height="36" rx="9" stroke="#94a3b8"/><text x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(label)}</text></g>`}).join('');return `<svg class="graph" viewBox="0 0 1060 ${height}" role="img" aria-label="Neo4j evidence graph">${edgeSvg}${nodeSvg}</svg><p class="subtitle">Only images judged relevant to this answer are shown; unrelated images on the same chunk/page are left out of the graph entirely.</p>`}
 function graphStats(viz){const nodes=viz?.nodes||[],edges=viz?.edges||[];return `${nodes.length} real Aura nodes · ${edges.length} real relationships`}
 let results={};
-function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),sourceExact=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{},goldMeasured=score.gold_annotated===true,goldCorrect=score.gold_correct===true,ok=goldMeasured?goldCorrect:sourceExact,status=goldMeasured?(goldCorrect?'Gold evidence matched':'Gold evidence incomplete'):(sourceExact?'Source-exact · answer accuracy not measured':'Not verified');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${status}</span></div><p class="answer ${sourceExact?'':'error'}">${esc(data.answer)}</p>${sourceExact&&data.kind!=='small_talk'?`<details open><summary>Rephrased answer (LLM, constrained to the verified text above)</summary><p class="subtitle" id="rephrase-${mode}">Generating…</p></details>`:''}<div class="meta"><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<div class="metric"><b>Neo4j traceability: ${esc(data.graph?.status)} · ${score.neo4j_verification_pct??0}%</b><span>share of selected source chunks located in Aura; not answer accuracy</span></div><details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(cleanSource(s.text))}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
+function render(mode,data){results[mode]=data;const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult'),sourceExact=data.kind==='domain_answer'&&data.verification?.complete;const sources=data.sources||[],images=data.images||[],score=data.scores||{},goldMeasured=score.gold_annotated===true,goldCorrect=score.gold_correct===true,ok=goldMeasured?goldCorrect:sourceExact,status=goldMeasured?(goldCorrect?'Gold evidence matched':'Gold evidence incomplete'):(sourceExact?'Source-exact · answer accuracy not measured':'Not verified');target.innerHTML=`<div class="head"><h2>${mode==='pdf'?'PDF only':'PDF + Neo4j'}</h2><span class="state ${ok?'ok':'bad'}">${status}</span></div><p class="answer ${sourceExact?'':'error'}">${esc(data.clean_answer??data.answer)}</p>${sourceExact&&data.kind!=='small_talk'?`<details open><summary>${mode==='graph'?'Neo4j check of the LLM answer':'LLM answer (not checked)'}</summary><div class="subtitle" id="llm-${mode}">${mode==='graph'?'Waiting for the LLM answer, then checking it against Neo4j…':'The local LLM is rewriting each verified sentence…'} (about 1–2 minutes on CPU)</div></details>`:''}<div class="meta"><div class="metric"><b>${sources.length}</b><span>source chunks</span></div><div class="metric"><b>${images.length}</b><span>related images</span></div><div class="metric"><b>${data.timing_ms??'-'} ms</b><span>runtime</span></div></div>${mode==='graph'?`<details open><summary>Neo4j evidence graph</summary><p class="subtitle">${esc(graphStats(data.graph?.visualization))} · loaded from the connected Aura database</p>${graphMarkup(data.graph?.visualization)}</details><details open><summary>Cypher executed on Aura</summary><pre class="chunk-list">${esc(data.graph?.query||'')}</pre></details>`:''}<details open><summary>Evidence and locations</summary>${sources.length?sources.map(s=>`<div class="source"><b>${esc(s.chunk_id)}</b> · PDF ${esc(s.pdf_page)} · Printed ${esc(s.printed_page)}<p>${esc(cleanSource(s.text))}</p></div>`).join(''):'<p class="subtitle">No verified source.</p>'}</details>${images.length?`<details open><summary>Related image evidence</summary><div class="images">${images.map(i=>`<div>${i.url?`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt="${esc(i.image_id)}"></a>`:''}<small>${esc(i.image_id)} · page ${esc(i.pdf_page)}</small></div>`).join('')}</div></details>`:'<details><summary>Related image evidence</summary><p class="subtitle">No image relationship was verified for these sources.</p></details>'}`}
 const runToken={pdf:0,graph:0};
-async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const token=++runToken[mode];const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>Answer</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});if(runToken[mode]!==token)return;const data=await r.json();render(mode,data);const sourceExact=data.kind==='domain_answer'&&data.verification?.complete;if(sourceExact&&data.kind!=='small_talk'){const evidenceItems=(data.needs||[]).flatMap(n=>n.evidence||[]);const verifiedText=evidenceItems.map(e=>e.text).join('\n');fetch('/rephrase',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,verified_text:verifiedText,sources:evidenceItems})}).then(rr=>rr.json()).then(rd=>{if(runToken[mode]!==token)return;const el=document.getElementById(`rephrase-${mode}`);if(el)el.innerHTML=renderClaims(rd)}).catch(()=>{if(runToken[mode]!==token)return;const el=document.getElementById(`rephrase-${mode}`);if(el)el.textContent='Not available for this answer.'})}}catch(e){if(runToken[mode]===token)target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
-function renderClaims(rd){if(!rd.natural_answer)return 'Not available for this answer.';if(!rd.claims||!rd.claims.length)return esc(rd.natural_answer);const badge={supported:'ok',contradicted:'bad',insufficient_evidence:'idle',not_checked:'idle'};return rd.claims.map(c=>{
-  // A contradicted claim is drift the model introduced, not a fact worth
-  // showing in red next to everything else -- replace it with the exact
-  // source wording it was checked against (shown as verified/green) instead
-  // of leaving the wrong sentence on screen at all.
-  if(c.status==='contradicted'&&c.source_text){
-    return `<span class="state ok" style="display:inline;white-space:normal" title="Replaced: the generated sentence drifted from the source">${esc(c.source_text)}</span>`;
-  }
-  const cls=badge[c.status]||'idle';
-  // Independent of the NLI verdict: the cited source may simply be about
-  // the wrong specimen (e.g. CSF instead of blood) -- wording overlap can
-  // make NLI call that "supported" anyway, so this warns regardless.
-  const mismatch=c.specimen_mismatch?' <small class="state bad">⚠ possibly wrong specimen type in cited source</small>':'';
-  return `<span class="state ${cls}" style="display:inline;white-space:normal">${esc(c.text)}</span>${mismatch}`}).join(' ')}
+async function run(mode){const q=question();if(!q){alert('Select or enter a question.');return}const token=++runToken[mode];const target=document.getElementById(mode==='pdf'?'pdfResult':'graphResult');target.innerHTML=`<div class="head"><h2>Answer</h2><span class="state idle">Running…</span></div><p class="subtitle">The first request loads the reranker once.</p>`;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,mode})});if(runToken[mode]!==token)return;const data=await r.json();render(mode,data);const sourceExact=data.kind==='domain_answer'&&data.verification?.complete;if(sourceExact){const evidenceItems=(data.needs||[]).flatMap(n=>n.evidence||[]);fetch('/rephrase',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,sources:evidenceItems,mode})}).then(rr=>rr.json()).then(rd=>{if(runToken[mode]!==token)return;const el=document.getElementById(`llm-${mode}`);if(el)el.innerHTML=renderLLM(rd)}).catch(()=>{if(runToken[mode]!==token)return;const el=document.getElementById(`llm-${mode}`);if(el)el.textContent='LLM not available for this answer.'})}}catch(e){if(runToken[mode]===token)target.innerHTML=`<p class="error">${esc(e.message)}</p>`}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
+function renderLLM(rd){const items=rd.items||[];if(!items.length)return 'LLM not available for this answer.';
+  if(rd.mode!=='graph')return items.map(it=>it.llm?`<p style="margin:6px 0"><b>[${it.number}]</b> ${esc(it.marker+it.llm)}</p>`:`<p style="margin:6px 0">${esc(it.marker+it.source)}</p>`).join('');
+  // Neo4j is the judge: one line when the LLM answer passes, otherwise only
+  // the sentences it flags, each with the source sentence to use instead.
+  const kinds={changed:['✗','bad','meaning changed'],unsupported:['✗','bad','unsupported claim'],dropped:['⚠','idle','information dropped'],review:['⚠','idle','needs review (may be a synonym)']};
+  const flagged=items.filter(it=>kinds[it.status]),unjudged=items.filter(it=>it.status==='no_fact').length;
+  const scope=`${rd.facts_checked} of ${rd.rewritten} LLM sentences checked against the graph${unjudged?`; ${unjudged} could not be checked (no Fact in the graph)`:''}`;
+  // "Supported" only when every rewritten sentence was actually checked.
+  if(!rd.rewritten)return `<p><span class="state idle" style="display:inline">○ Not checked</span> The LLM did not rewrite any sentence here (they are too short), so there was nothing to check.</p>`;
+  if(!rd.facts_checked)return `<p><span class="state idle" style="display:inline">○ Not checked</span> None of the LLM sentences has a Fact in the graph to check it against.</p>`;
+  if(!flagged.length&&unjudged)return `<p><span class="state idle" style="display:inline">◐ Partly checked</span> No problem in the checked sentences (${scope}).</p>`;
+  if(!flagged.length)return `<p><span class="state ok" style="display:inline">✓ Supported</span> Neo4j found no problem in the LLM answer (${scope}).</p>`;
+  const head=`<p>${Object.entries(kinds).filter(([k])=>rd[k]).map(([k,[icon,cls,label]])=>`<span class="state ${cls}" style="display:inline">${icon} ${rd[k]} ${label}</span>`).join(' ')} (${scope})</p>`;
+  return head+flagged.map(it=>{const [icon,cls,label]=kinds[it.status],f=it.findings||{};const reasons=[['meaning changed',f.changed],['unsupported claim',f.unsupported],['information dropped',f.dropped],['needs review',f.review]].filter(([,v])=>v&&v.length).map(([l,v])=>`${l}: ${esc(v.join(' · '))}`).join('<br>');return `<p style="margin:8px 0">${icon} <b>Sentence [${it.number}]</b> ${cls==='bad'?`<del>${esc(it.llm)}</del>`:esc(it.llm)}<br><small class="state ${cls}" style="white-space:normal">${reasons}</small><br><small>Source sentence (Neo4j Fact in ${esc(it.graph_fact||'')}):</small> ${esc(it.marker+it.source)}</p>`}).join('')}
 function unique(values){return [...new Set(values||[])]}
 function chunkText(values){return values.length?values.map(esc).join(', '):'<span class="subtitle">None (same evidence as the other mode)</span>'}
 async function compareBoth(){results={};document.getElementById('comparison').innerHTML='';await run('pdf');await run('graph');const p=results.pdf?.scores?.accuracy_pct,g=results.graph?.scores?.accuracy_pct,measured=p!=null&&g!=null,d=measured?g-p:null,pdfAccepted=unique(results.pdf?.retrieval_trace?.accepted_chunks),graphAccepted=unique(results.graph?.retrieval_trace?.accepted_chunks),common=pdfAccepted.filter(id=>graphAccepted.includes(id));const improved=measured&&d>0,verdict=!measured?'No Gold annotation exists for this question, so no comparison is reported.':d>0?'Neo4j retrieved more of the correct evidence than the PDF-only search.':d<0?'Neo4j retrieved less of the correct evidence than the PDF-only search.':'Both modes accepted the same evidence for this question.';document.getElementById('comparison').innerHTML=`<section class="panel compare-panel"><div class="head"><h2>PDF vs Neo4j comparison</h2><span class="state ${improved?'ok':'idle'}">${improved?'Measured graph gain':'No measured gain'}</span></div><p class="subtitle ${d<0?'loss':d>0?'gain':''}">${verdict}</p><div class="compare-grid"><div class="metric"><b>PDF accepted</b><div class="chunk-list">${chunkText(pdfAccepted)}</div></div><div class="metric"><b>Common evidence</b><div class="chunk-list">${chunkText(common)}</div></div></div></section>`}

@@ -374,14 +374,197 @@ class RelationExtractor:
         self.driver.close()
 
 
+def build_fact_layer(extractor: RelationExtractor, dry_run: bool) -> int:
+    """Give every source sentence of the manual its own Fact node, so an
+    LLM rewrite of that sentence can be verified against the graph:
+
+        (:Chunk)-[:STATES]->(:Fact)-[:INVOLVES]->(:Entity)
+        (:Fact)-[:NEXT]->(:Fact)            (source order within a chunk)
+
+    A Fact records what the sentence states -- its lab actions, the
+    qualifiers on them ("deeply", "early", "gently"), its quantities and
+    its condition words (before/after, alternatives, negation, if,
+    until, at least/at most), the roles attached to the action
+    (destination, material, purpose, source, place) and the descriptive
+    words in front of its entities ("liquid frothy saliva") -- extracted by the same deterministic rules
+    the app uses on the LLM's rewrite (webapp.pdf_direct_qa.
+    extract_fact_frame), so the two are compared like for like. INVOLVES
+    links only the chunk's existing MENTIONS entities that the sentence
+    itself names. Additive and idempotent (MERGE on a content hash); remove
+    with --clear-facts.
+    """
+    from webapp.pdf_direct_qa import (
+        DirectPdfQA, american_spelling, entity_is_generic, entity_key, extract_fact_frame, fact_attributes, fact_id,
+        roots, words,
+    )
+
+    extractor._run_query("CREATE CONSTRAINT fact_id IF NOT EXISTS FOR (f:Fact) REQUIRE f.id IS UNIQUE")
+    mentions = {
+        row["chunk_id"]: row["entities"]
+        for row in extractor._run_query("""
+            MATCH (c:Chunk)-[:MENTIONS]->(e:Entity)
+            RETURN c.id AS chunk_id,
+                   collect({id: e.id, name: coalesce(e.canonical_name, e.normalized_name)}) AS entities
+        """)
+    }
+    rows: list[dict] = []
+    next_pairs: list[dict] = []
+    for chunk in DirectPdfQA._load_chunks():
+        entities = [
+            (entity["id"], entity["name"], set(entity_key(entity["name"]).split()))
+            for entity in mentions.get(chunk.chunk_id, [])
+            if entity.get("name") and not entity_is_generic(entity["name"])
+        ]
+        unit_texts = DirectPdfQA.units(chunk.text)
+        texts = list(dict.fromkeys(unit_texts + DirectPdfQA.blocks(chunk.text)))
+        previous = None
+        for order, text in enumerate(texts):
+            if len(words(text)) < 4:
+                continue
+            text_roots = roots(american_spelling(text.casefold()))
+            frame = extract_fact_frame(text)
+            involved = [(eid, name) for eid, name, key_words in entities if key_words and key_words <= text_roots]
+            identifier = fact_id(chunk.chunk_id, text)
+            rows.append({
+                "id": identifier,
+                "chunk_id": chunk.chunk_id,
+                "text": text,
+                "order": order,
+                **frame,
+                "attributes": sorted(fact_attributes(text, [name for _eid, name in involved])),
+                "entity_ids": sorted({eid for eid, _name in involved}),
+            })
+            # NEXT follows the sentence units in source order; whole-paragraph
+            # blocks (appended after them) duplicate that content.
+            if order < len(unit_texts):
+                if previous:
+                    next_pairs.append({"a": previous, "b": identifier})
+                previous = identifier
+    involves = sum(len(row["entity_ids"]) for row in rows)
+    print(f"Facts: {len(rows)} sentences, {involves} INVOLVES links, {len(next_pairs)} NEXT links", flush=True)
+    if dry_run:
+        for row in rows[:15]:
+            print(" ", {k: row[k] for k in ("chunk_id", "actions", "qualifiers", "quantities", "conditions", "roles", "attributes")}, "|", row["text"][:80])
+        return len(rows)
+    for start in range(0, len(rows), 300):
+        extractor._run_query("""
+            UNWIND $rows AS row
+            MATCH (c:Chunk {id: row.chunk_id})
+            MERGE (f:Fact {id: row.id})
+            SET f.text = row.text, f.order = row.order, f.actions = row.actions,
+                f.qualifiers = row.qualifiers, f.quantities = row.quantities,
+                f.conditions = row.conditions, f.roles = row.roles,
+                f.attributes = row.attributes, f.claims = row.claims,
+                f.extraction_method = 'rule_v3'
+            MERGE (c)-[:STATES]->(f)
+            WITH f, row
+            UNWIND row.entity_ids AS entity_id
+            MATCH (e:Entity {id: entity_id})
+            MERGE (f)-[:INVOLVES]->(e)
+        """, rows=rows[start:start + 300])
+        print(f"  wrote {min(start + 300, len(rows))}/{len(rows)} facts", flush=True)
+    for start in range(0, len(next_pairs), 1000):
+        extractor._run_query("""
+            UNWIND $pairs AS pair
+            MATCH (a:Fact {id: pair.a}), (b:Fact {id: pair.b})
+            MERGE (a)-[:NEXT]->(b)
+        """, pairs=next_pairs[start:start + 1000])
+    return len(rows)
+
+
+def complete_mentions(extractor: RelationExtractor, dry_run: bool) -> int:
+    """Link each chunk to every existing Entity its text names but that the
+    original entity pass never linked (measured before this was added:
+    17,929 such gaps -- e.g. a sputum-collection chunk naming "sputum",
+    "distilled water" and "sodium chloride" without a MENTIONS link to
+    any of them). The Fact layer's INVOLVES links, and so the Neo4j
+    hallucination check, only see linked entities.
+
+    Only exact whole-word name matches (plural "s" allowed) are linked;
+    generic names ("The sample"), quantity names ("25ml") and near-duplicate
+    names of an entity the chunk already links ("blood samples" when
+    "blood sample" is linked) are skipped. New links are tagged
+    method = 'name_match_v1' and removed with --clear-name-mentions.
+    Existing links are never modified.
+    """
+    from webapp.pdf_direct_qa import DirectPdfQA, entity_display, entity_is_generic, entity_key
+
+    entities = extractor._run_query(
+        "MATCH (e:Entity) RETURN e.id AS id, coalesce(e.canonical_name, e.normalized_name) AS name ORDER BY e.id"
+    )
+    linked = {
+        row["chunk_id"]: set(row["ids"])
+        for row in extractor._run_query(
+            "MATCH (c:Chunk)-[:MENTIONS]->(e:Entity) RETURN c.id AS chunk_id, collect(e.id) AS ids"
+        )
+    }
+    key_of = {}
+    candidates = []
+    for entity in entities:
+        name = entity["name"] or ""
+        display = entity_display(name)
+        if entity_is_generic(name) or len(display) < 4 or any(ch.isdigit() for ch in display):
+            continue
+        key_of[entity["id"]] = entity_key(name)
+        candidates.append((entity["id"], re.compile(rf"\b{re.escape(display.casefold())}s?\b")))
+    rows = []
+    for chunk in DirectPdfQA._load_chunks():
+        text = re.sub(r"\s+", " ", re.sub(r"(?<=[a-z])-\n(?=[a-z])", "", chunk.text)).casefold()
+        have = linked.get(chunk.chunk_id, set())
+        have_keys = {key_of.get(eid) for eid in have}
+        for entity_id, pattern in candidates:
+            key = key_of[entity_id]
+            if entity_id in have or key in have_keys or not pattern.search(text):
+                continue
+            have_keys.add(key)
+            rows.append({"chunk_id": chunk.chunk_id, "entity_id": entity_id})
+    print(f"New MENTIONS links (name match): {len(rows)} across {len({r['chunk_id'] for r in rows})} chunks", flush=True)
+    if dry_run:
+        return len(rows)
+    for start in range(0, len(rows), 1000):
+        extractor._run_query("""
+            UNWIND $rows AS row
+            MATCH (c:Chunk {id: row.chunk_id}), (e:Entity {id: row.entity_id})
+            MERGE (c)-[r:MENTIONS]->(e)
+            ON CREATE SET r.method = 'name_match_v1'
+        """, rows=rows[start:start + 1000])
+        print(f"  wrote {min(start + 1000, len(rows))}/{len(rows)}", flush=True)
+    return len(rows)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--facts", action="store_true",
+                        help="build the Fact layer (one node per source sentence) instead of LLM relations")
+    parser.add_argument("--clear-facts", action="store_true", help="delete every Fact node and its relations")
+    parser.add_argument("--complete-mentions", action="store_true",
+                        help="link chunks to existing entities their text names but that are not yet linked")
+    parser.add_argument("--clear-name-mentions", action="store_true",
+                        help="remove the MENTIONS links added by --complete-mentions")
     args = parser.parse_args()
 
     extractor = RelationExtractor()
+    if args.clear_facts:
+        extractor._run_query("MATCH (f:Fact) DETACH DELETE f")
+        print("All Fact nodes removed.")
+        extractor.close()
+        return 0
+    if args.clear_name_mentions:
+        extractor._run_query("MATCH ()-[r:MENTIONS {method: 'name_match_v1'}]->() DELETE r")
+        print("Name-match MENTIONS links removed.")
+        extractor.close()
+        return 0
+    if args.complete_mentions:
+        complete_mentions(extractor, args.dry_run)
+        extractor.close()
+        return 0
+    if args.facts:
+        build_fact_layer(extractor, args.dry_run)
+        extractor.close()
+        return 0
     ordered_chunks = extractor.all_chunks_with_entities()
     all_windows = extractor.build_windows(ordered_chunks, radius=1)
     if args.offset or args.limit:
